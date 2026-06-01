@@ -40,6 +40,7 @@ const readCsv = (name: string, fallback: string[]) => {
 export const env = {
   port: readInt("PORT", 8787),
   webOrigin: process.env.WEB_ORIGIN?.trim() || "http://localhost:8788",
+  databaseFile: path.resolve(process.cwd(), process.env.DATABASE_FILE || ".data/agent-fleet.sqlite"),
   llmEndpointsFile: path.resolve(process.cwd(), process.env.LLM_ENDPOINTS_FILE || ".data/llm-endpoints.json"),
   toolSettingsFile: path.resolve(process.cwd(), process.env.TOOL_SETTINGS_FILE || ".data/tool-settings.json"),
   agentRunsFile: path.resolve(process.cwd(), process.env.AGENT_RUNS_FILE || ".data/agent-runs.json"),

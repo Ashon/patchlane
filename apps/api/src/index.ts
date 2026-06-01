@@ -3,6 +3,7 @@ import express from "express";
 import { ZodError } from "zod";
 import { AgentRunStore } from "./agent/agentRunStore";
 import { env } from "./config/env";
+import { AppDatabase } from "./db/database";
 import { HttpError } from "./http/errors";
 import { LlmEndpointStore } from "./llm/endpointStore";
 import { createAgentRouter } from "./routes/agent";
@@ -13,10 +14,11 @@ import { SandboxWorkspaceStore } from "./sandbox/sandboxWorkspaceStore";
 import { ToolSettingsStore } from "./tools/toolSettingsStore";
 
 const app = express();
-const llmStore = new LlmEndpointStore(env.llmEndpointsFile, env.defaultEndpoint);
-const toolSettingsStore = new ToolSettingsStore(env.toolSettingsFile);
-const sandboxWorkspaceStore = new SandboxWorkspaceStore(env.sandboxWorkspacesFile, env.sandbox.rootDir);
-const agentRunStore = new AgentRunStore(env.agentRunsFile);
+const database = new AppDatabase(env.databaseFile);
+const llmStore = new LlmEndpointStore(database, env.defaultEndpoint, env.llmEndpointsFile);
+const toolSettingsStore = new ToolSettingsStore(database, env.toolSettingsFile);
+const sandboxWorkspaceStore = new SandboxWorkspaceStore(database, env.sandbox.rootDir, env.sandboxWorkspacesFile);
+const agentRunStore = new AgentRunStore(database, env.agentRunsFile);
 
 app.use(
   cors({

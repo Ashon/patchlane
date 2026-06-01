@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import {
   createSandboxWorkspaceSchema,
@@ -8,22 +8,41 @@ import {
   type CreateSandboxWorkspaceInput,
   type SandboxWorkspace
 } from "@agent-fleet/shared";
+import { AppDatabase, optionalString } from "../db/database";
+import { readLegacyJson } from "../db/legacyJson";
 import { notFound } from "../http/errors";
+
+type SandboxWorkspaceRow = {
+  id: string;
+  name: string;
+  path: string;
+  repository_url: string | null;
+  workspace_ref: string | null;
+  status: "ready" | "error";
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export class SandboxWorkspaceStore {
   constructor(
-    private readonly filePath: string,
-    private readonly rootDir: string
-  ) {}
+    private readonly database: AppDatabase,
+    private readonly rootDir: string,
+    private readonly legacyFilePath?: string
+  ) {
+    this.ensureSeeded();
+  }
 
   async list() {
-    const workspaces = await this.read();
-    return workspaces.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const rows = this.database.sqlite
+      .prepare("SELECT * FROM sandbox_workspaces ORDER BY created_at DESC")
+      .all() as unknown as SandboxWorkspaceRow[];
+
+    return sandboxWorkspaceListSchema.parse(rows.map(toWorkspace));
   }
 
   async get(id: string) {
-    const workspaces = await this.read();
-    const workspace = workspaces.find((item) => item.id === id);
+    const workspace = this.getById(id);
 
     if (!workspace) {
       throw notFound(`Sandbox workspace '${id}' was not found`);
@@ -52,26 +71,12 @@ export class SandboxWorkspaceStore {
       updatedAt: now
     });
 
-    const workspaces = await this.read();
-    workspaces.push(workspace);
-    await this.write(workspaces);
-
+    this.insert(workspace);
     return workspace;
   }
 
   async markError(id: string, error: string) {
-    const workspaces = await this.read();
-    const index = workspaces.findIndex((item) => item.id === id);
-
-    if (index < 0) {
-      throw notFound(`Sandbox workspace '${id}' was not found`);
-    }
-
-    const current = workspaces[index];
-    if (!current) {
-      throw notFound(`Sandbox workspace '${id}' was not found`);
-    }
-
+    const current = await this.get(id);
     const updated = sandboxWorkspaceSchema.parse({
       ...current,
       status: "error",
@@ -79,22 +84,23 @@ export class SandboxWorkspaceStore {
       updatedAt: new Date().toISOString()
     });
 
-    workspaces[index] = updated;
-    await this.write(workspaces);
+    this.database.sqlite
+      .prepare("UPDATE sandbox_workspaces SET status = ?, error = ?, updated_at = ? WHERE id = ?")
+      .run(updated.status, updated.error ?? null, updated.updatedAt, updated.id);
 
     return updated;
   }
 
   async remove(id: string) {
-    const workspaces = await this.read();
-    const workspace = workspaces.find((item) => item.id === id);
-
-    if (!workspace) {
-      throw notFound(`Sandbox workspace '${id}' was not found`);
-    }
+    const workspace = await this.get(id);
 
     await rm(ensureWithinRoot(this.rootDir, workspace.path), { force: true, recursive: true });
-    await this.write(workspaces.filter((item) => item.id !== id));
+
+    const result = this.database.sqlite.prepare("DELETE FROM sandbox_workspaces WHERE id = ?").run(id);
+
+    if (result.changes === 0) {
+      throw notFound(`Sandbox workspace '${id}' was not found`);
+    }
   }
 
   private getWorkspacePath(name: string, id: string) {
@@ -102,27 +108,54 @@ export class SandboxWorkspaceStore {
     return ensureWithinRoot(this.rootDir, path.join(this.rootDir, directoryName));
   }
 
-  private async read(): Promise<SandboxWorkspace[]> {
-    try {
-      const raw = await readFile(this.filePath, "utf8");
-      return sandboxWorkspaceListSchema.parse(JSON.parse(raw));
-    } catch (error) {
-      if (isMissingFileError(error)) {
-        await this.write([]);
-        return [];
-      }
+  private getById(id: string) {
+    const row = this.database.sqlite
+      .prepare("SELECT * FROM sandbox_workspaces WHERE id = ?")
+      .get(id) as unknown as SandboxWorkspaceRow | undefined;
 
-      throw error;
-    }
+    return row ? toWorkspace(row) : undefined;
   }
 
-  private async write(workspaces: SandboxWorkspace[]) {
-    await mkdir(path.dirname(this.filePath), { recursive: true });
-    await mkdir(this.rootDir, { recursive: true });
+  private ensureSeeded() {
+    const countRow = this.database.sqlite.prepare("SELECT COUNT(*) AS count FROM sandbox_workspaces").get() as { count: number };
 
-    const tmpPath = `${this.filePath}.${process.pid}.tmp`;
-    await writeFile(tmpPath, `${JSON.stringify(workspaces, null, 2)}\n`, "utf8");
-    await rename(tmpPath, this.filePath);
+    if (countRow.count > 0) {
+      return;
+    }
+
+    const legacyWorkspaces = readLegacyJson(this.legacyFilePath, sandboxWorkspaceListSchema);
+
+    if (!legacyWorkspaces?.length) {
+      return;
+    }
+
+    this.database.transaction(() => {
+      for (const workspace of legacyWorkspaces) {
+        this.insert(workspace);
+      }
+    });
+  }
+
+  private insert(workspace: SandboxWorkspace) {
+    this.database.sqlite
+      .prepare(
+        `
+        INSERT INTO sandbox_workspaces (
+          id, name, path, repository_url, workspace_ref, status, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+      )
+      .run(
+        workspace.id,
+        workspace.name,
+        workspace.path,
+        workspace.repositoryUrl ?? null,
+        workspace.ref ?? null,
+        workspace.status,
+        workspace.error ?? null,
+        workspace.createdAt,
+        workspace.updatedAt
+      );
   }
 }
 
@@ -136,6 +169,20 @@ export const ensureWithinRoot = (rootDir: string, candidatePath: string) => {
   }
 
   return resolvedPath;
+};
+
+const toWorkspace = (row: SandboxWorkspaceRow) => {
+  return sandboxWorkspaceSchema.parse({
+    id: row.id,
+    name: row.name,
+    path: row.path,
+    repositoryUrl: optionalString(row.repository_url),
+    ref: optionalString(row.workspace_ref),
+    status: row.status,
+    error: optionalString(row.error),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  });
 };
 
 const getWorkspaceName = (repositoryUrl?: string) => {
@@ -157,8 +204,4 @@ const slugify = (value: string) => {
     .slice(0, 60);
 
   return slug || "workspace";
-};
-
-const isMissingFileError = (error: unknown) => {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 };
