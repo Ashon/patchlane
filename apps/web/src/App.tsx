@@ -3,11 +3,13 @@ import type { CreateLlmEndpointInput, LlmEndpoint, LlmEndpointTestResult } from 
 import {
   CheckCircle2,
   Loader2,
+  MessageSquare,
   Network,
   Plus,
   RefreshCw,
   Save,
   Server,
+  Settings,
   Trash2,
   XCircle
 } from "lucide-react";
@@ -18,7 +20,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +108,14 @@ export default function App() {
     setSelectedId(null);
     setDraft(emptyDraft);
     setError(null);
+  };
+
+  const selectEndpointById = (id: string) => {
+    const endpoint = endpoints.find((item) => item.id === id);
+
+    if (endpoint) {
+      selectEndpoint(endpoint);
+    }
   };
 
   const saveEndpoint = async (event: FormEvent<HTMLFormElement>) => {
@@ -197,126 +215,159 @@ export default function App() {
         </div>
       </section>
 
-      <section className="mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
-        <aside className="flex min-h-[calc(100vh-112px)] flex-col gap-4">
-          <Card className="flex min-h-0 flex-1 flex-col">
-            <CardHeader className="flex-row items-center justify-between space-y-0 p-4">
-              <CardTitle className="text-base">Endpoints</CardTitle>
-              <Button variant="secondary" onClick={startNewEndpoint} size="sm">
-                <Plus />
-                New
-              </Button>
-            </CardHeader>
-            <Separator />
-            <CardContent className="min-h-0 flex-1 p-0">
-              <ScrollArea className="h-[360px] lg:h-full">
-                <div className="space-y-2 p-3">
-                  {error ? (
-                    <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      {error}
-                    </div>
-                  ) : null}
+      <Tabs className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8" defaultValue="chat">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <TabsList>
+            <TabsTrigger className="gap-2" value="chat">
+              <MessageSquare className="h-4 w-4" />
+              Chat
+            </TabsTrigger>
+            <TabsTrigger className="gap-2" value="settings">
+              <Settings className="h-4 w-4" />
+              Endpoint Settings
+            </TabsTrigger>
+          </TabsList>
 
-                  {loading ? (
-                    <div className="grid gap-2">
-                      {[0, 1, 2].map((item) => (
-                        <div key={item} className="h-24 animate-pulse rounded-md border bg-card" />
-                      ))}
-                    </div>
-                  ) : endpoints.length > 0 ? (
-                    <div className="grid gap-2">
-                      {endpoints.map((endpoint) => (
-                        <EndpointCard
-                          endpoint={endpoint}
-                          key={endpoint.id}
-                          selected={endpoint.id === selectedId}
-                          testResult={testResults[endpoint.id]}
-                          testing={testingId === endpoint.id}
-                          onSelect={() => selectEndpoint(endpoint)}
-                          onTest={() => void testEndpoint(endpoint)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-                      No endpoints
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+          <div className="flex flex-col gap-2 md:w-[420px]">
+            <Label className="text-xs text-muted-foreground">Active endpoint</Label>
+            <Select disabled={!endpoints.length || loading} onValueChange={selectEndpointById} value={selectedId ?? undefined}>
+              <SelectTrigger className="bg-background">
+                <SelectValue placeholder={loading ? "Loading endpoints..." : "Select endpoint"} />
+              </SelectTrigger>
+              <SelectContent>
+                {endpoints.map((endpoint) => (
+                  <SelectItem key={endpoint.id} value={endpoint.id}>
+                    {endpoint.name} / {endpoint.defaultModel}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
-          <Card className="h-fit">
-            <CardHeader className="p-4">
-              <CardTitle className="text-base">{selectedEndpoint ? "Endpoint settings" : "New endpoint"}</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <form className="space-y-4" onSubmit={saveEndpoint}>
-              <Field label="Name">
-                <Input
-                  value={draft.name}
-                  onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="Ollama Local"
-                  required
-                />
-              </Field>
+        <TabsContent className="mt-0" value="chat">
+          <ChatPanel endpoint={selectedEndpoint} />
+        </TabsContent>
 
-              <Field label="Base URL">
-                <Input
-                  value={draft.baseUrl}
-                  onChange={(event) => setDraft((current) => ({ ...current, baseUrl: event.target.value }))}
-                  placeholder="http://localhost:11434/v1"
-                  required
-                />
-              </Field>
-
-              <Field label="Default model">
-                <Input
-                  value={draft.defaultModel}
-                  onChange={(event) => setDraft((current) => ({ ...current, defaultModel: event.target.value }))}
-                  placeholder="llama3.1"
-                  required
-                />
-              </Field>
-
-              <Field label="API key env">
-                <Input
-                  value={draft.apiKeyEnvVar || ""}
-                  onChange={(event) => setDraft((current) => ({ ...current, apiKeyEnvVar: event.target.value }))}
-                  placeholder="LOCAL_LLM_API_KEY"
-                />
-              </Field>
-
-              <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                <span className="font-medium">Enabled</span>
-                <input
-                  checked={draft.enabled}
-                  className="h-4 w-4 accent-primary"
-                  onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
-                  type="checkbox"
-                />
-              </label>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button className="flex-1" disabled={saving} type="submit">
-                  {saving ? <Loader2 className="animate-spin" /> : <Save />}
-                  Save
+        <TabsContent className="mt-0" value="settings">
+          <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+            <Card className="flex min-h-[calc(100vh-172px)] flex-col">
+              <CardHeader className="flex-row items-center justify-between space-y-0 p-4">
+                <CardTitle className="text-base">Endpoints</CardTitle>
+                <Button variant="secondary" onClick={startNewEndpoint} size="sm">
+                  <Plus />
+                  New
                 </Button>
-                {selectedEndpoint ? (
-                  <Button disabled={saving} onClick={() => void deleteEndpoint()} type="button" variant="destructive">
-                    <Trash2 />
-                    Delete
-                  </Button>
-                ) : null}
-              </div>
-            </form>
-            </CardContent>
-          </Card>
-        </aside>
+              </CardHeader>
+              <Separator />
+              <CardContent className="min-h-0 flex-1 p-0">
+                <ScrollArea className="h-[520px] lg:h-full">
+                  <div className="space-y-2 p-3">
+                    {error ? (
+                      <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        {error}
+                      </div>
+                    ) : null}
 
-        <ChatPanel endpoint={selectedEndpoint} />
-      </section>
+                    {loading ? (
+                      <div className="grid gap-2">
+                        {[0, 1, 2].map((item) => (
+                          <div key={item} className="h-24 animate-pulse rounded-md border bg-card" />
+                        ))}
+                      </div>
+                    ) : endpoints.length > 0 ? (
+                      <div className="grid gap-2">
+                        {endpoints.map((endpoint) => (
+                          <EndpointCard
+                            endpoint={endpoint}
+                            key={endpoint.id}
+                            selected={endpoint.id === selectedId}
+                            testResult={testResults[endpoint.id]}
+                            testing={testingId === endpoint.id}
+                            onSelect={() => selectEndpoint(endpoint)}
+                            onTest={() => void testEndpoint(endpoint)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+                        No endpoints
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            <Card className="h-fit">
+              <CardHeader className="p-4">
+                <CardTitle className="text-base">{selectedEndpoint ? "Endpoint settings" : "New endpoint"}</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <form className="space-y-4" onSubmit={saveEndpoint}>
+                  <Field label="Name">
+                    <Input
+                      value={draft.name}
+                      onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                      placeholder="Ollama Local"
+                      required
+                    />
+                  </Field>
+
+                  <Field label="Base URL">
+                    <Input
+                      value={draft.baseUrl}
+                      onChange={(event) => setDraft((current) => ({ ...current, baseUrl: event.target.value }))}
+                      placeholder="http://localhost:11434/v1"
+                      required
+                    />
+                  </Field>
+
+                  <Field label="Default model">
+                    <Input
+                      value={draft.defaultModel}
+                      onChange={(event) => setDraft((current) => ({ ...current, defaultModel: event.target.value }))}
+                      placeholder="llama3.1"
+                      required
+                    />
+                  </Field>
+
+                  <Field label="API key env">
+                    <Input
+                      value={draft.apiKeyEnvVar || ""}
+                      onChange={(event) => setDraft((current) => ({ ...current, apiKeyEnvVar: event.target.value }))}
+                      placeholder="LOCAL_LLM_API_KEY"
+                    />
+                  </Field>
+
+                  <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                    <span className="font-medium">Enabled</span>
+                    <input
+                      checked={draft.enabled}
+                      className="h-4 w-4 accent-primary"
+                      onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
+                      type="checkbox"
+                    />
+                  </label>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button className="flex-1" disabled={saving} type="submit">
+                      {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                      Save
+                    </Button>
+                    {selectedEndpoint ? (
+                      <Button disabled={saving} onClick={() => void deleteEndpoint()} type="button" variant="destructive">
+                        <Trash2 />
+                        Delete
+                      </Button>
+                    ) : null}
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </section>
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
