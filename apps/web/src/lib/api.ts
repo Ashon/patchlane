@@ -1,10 +1,19 @@
 import type {
+  AgentRun,
+  AppendAgentRunMessageInput,
+  ContinueAgentRunInput,
+  CreateAgentRunInput,
   CreateLlmEndpointInput,
   GitHubToolTestResult,
   LlmChatRequest,
   LlmEndpoint,
   LlmEndpointTestResult,
   PublicToolSettings,
+  SandboxExecRequest,
+  SandboxExecResult,
+  SandboxSettings,
+  SandboxWorkspace,
+  CreateSandboxWorkspaceInput,
   UpdateGitHubToolSettingsInput,
   UpdateLlmEndpointInput
 } from "@agent-fleet/shared";
@@ -63,16 +72,40 @@ type ChatStreamHandlers = {
   onEvent: (event: ChatStreamEvent) => void;
 };
 
-const streamRequest = async (input: LlmChatRequest, { onEvent, signal }: ChatStreamHandlers) => {
-  const response = await fetch(`${apiBaseUrl}/api/llm/chat/stream`, {
-    body: JSON.stringify(input),
-    headers: {
-      "content-type": "application/json"
-    },
-    method: "POST",
-    signal
-  });
+type AgentRunStreamEvent =
+  | {
+      type: "run";
+      run: AgentRun;
+    }
+  | {
+      type: "assistant_delta";
+      content: string;
+    }
+  | {
+      type: "tool_start";
+      toolName: string;
+    }
+  | {
+      type: "tool_result";
+      toolName: string;
+      content: string;
+    }
+  | {
+      type: "done";
+      run: AgentRun;
+    }
+  | {
+      type: "error";
+      error: string;
+      run?: AgentRun;
+    };
 
+type AgentRunStreamHandlers = {
+  signal?: AbortSignal;
+  onEvent: (event: AgentRunStreamEvent) => void;
+};
+
+const readSseResponse = async <TEvent>(response: Response, onEvent: (event: TEvent) => void) => {
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     throw new Error(payload?.error || `Request failed with ${response.status}`);
@@ -85,6 +118,17 @@ const streamRequest = async (input: LlmChatRequest, { onEvent, signal }: ChatStr
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  const dispatchFrame = (frame: string) => {
+    const data = frame
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+
+    if (data) {
+      onEvent(JSON.parse(data) as TEvent);
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -98,19 +142,28 @@ const streamRequest = async (input: LlmChatRequest, { onEvent, signal }: ChatStr
     buffer = frames.pop() || "";
 
     for (const frame of frames) {
-      const data = frame
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trimStart())
-        .join("\n");
-
-      if (!data) {
-        continue;
-      }
-
-      onEvent(JSON.parse(data) as ChatStreamEvent);
+      dispatchFrame(frame);
     }
   }
+
+  buffer += decoder.decode();
+
+  if (buffer.trim()) {
+    dispatchFrame(buffer);
+  }
+};
+
+const streamRequest = async (input: LlmChatRequest, { onEvent, signal }: ChatStreamHandlers) => {
+  const response = await fetch(`${apiBaseUrl}/api/llm/chat/stream`, {
+    body: JSON.stringify(input),
+    headers: {
+      "content-type": "application/json"
+    },
+    method: "POST",
+    signal
+  });
+
+  await readSseResponse(response, onEvent);
 };
 
 export const api = {
@@ -155,6 +208,67 @@ export const api = {
     return request<{ result: GitHubToolTestResult; settings: PublicToolSettings }>("/api/tools/github/test", {
       method: "POST"
     });
+  },
+  async getSandboxSettings() {
+    return request<{ settings: SandboxSettings }>("/api/sandbox/settings");
+  },
+  async listSandboxWorkspaces() {
+    return request<{ workspaces: SandboxWorkspace[] }>("/api/sandbox/workspaces");
+  },
+  async createSandboxWorkspace(input: CreateSandboxWorkspaceInput) {
+    return request<{ workspace: SandboxWorkspace }>("/api/sandbox/workspaces", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async deleteSandboxWorkspace(id: string) {
+    return request<void>(`/api/sandbox/workspaces/${id}`, {
+      method: "DELETE"
+    });
+  },
+  async executeSandboxCommand(id: string, input: SandboxExecRequest) {
+    return request<{ result: SandboxExecResult }>(`/api/sandbox/workspaces/${id}/exec`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async listAgentRuns() {
+    return request<{ runs: AgentRun[] }>("/api/agent/runs");
+  },
+  async createAgentRun(input: CreateAgentRunInput) {
+    return request<{ run: AgentRun }>("/api/agent/runs", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async appendAgentRunMessage(id: string, input: AppendAgentRunMessageInput) {
+    return request<{ run: AgentRun }>(`/api/agent/runs/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async deleteAgentRun(id: string) {
+    return request<void>(`/api/agent/runs/${id}`, {
+      method: "DELETE"
+    });
+  },
+  async continueAgentRun(id: string, input: ContinueAgentRunInput) {
+    return request<{ run: AgentRun }>(`/api/agent/runs/${id}/continue`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async streamAgentRun(id: string, input: ContinueAgentRunInput, { onEvent, signal }: AgentRunStreamHandlers) {
+    const response = await fetch(`${apiBaseUrl}/api/agent/runs/${id}/continue/stream`, {
+      body: JSON.stringify(input),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST",
+      signal
+    });
+
+    await readSseResponse(response, onEvent);
   },
   async streamChat(input: LlmChatRequest, handlers: ChatStreamHandlers) {
     return streamRequest(input, handlers);

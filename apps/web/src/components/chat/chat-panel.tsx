@@ -173,7 +173,7 @@ export const ChatPanel = ({ endpoint }: ChatPanelProps) => {
   };
 
   return (
-    <section className="flex min-h-[calc(100vh-112px)] flex-col overflow-hidden rounded-lg border bg-background shadow-sm">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden border bg-background">
       <header className="flex flex-col gap-3 border-b bg-card px-4 py-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">

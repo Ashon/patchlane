@@ -51,6 +51,24 @@ GitHub tool settings are stored locally in `apps/api/.data/tool-settings.json`.
 
 The frontend `Tool Settings` tab can register a GitHub personal access token for future agent-side HTTPS git operations. The API keeps the token server-side and only returns masked/configured state to the UI.
 
+## Agent Sandbox
+
+Sandbox workspaces are stored under `apps/api/.data/sandboxes` by default, with workspace metadata in `apps/api/.data/sandbox-workspaces.json`.
+
+The API can create isolated workspaces, clone GitHub repositories into them, and run coding-agent tasks against a selected workspace. The frontend keeps workspace creation, selection, deletion, and sandbox policy in the `Workspaces` tab, while the `Agent Sandbox` tab focuses on agent run history and the coding-agent conversation. Agent runs are stored in `apps/api/.data/agent-runs.json`.
+
+Agent runs communicate with the user through a thread. The backend gives the selected local LLM a constrained tool surface for listing files, reading/writing files, running allowlisted commands, checking git status/diff, and creating a GitHub pull request after the agent has committed and pushed a branch. Paths are constrained to the selected workspace. GitHub PAT credentials are injected into git/GitHub operations server-side and are not returned to the UI.
+
+Default sandbox policy:
+
+```bash
+SANDBOX_ROOT_DIR=.data/sandboxes
+SANDBOX_DEFAULT_TIMEOUT_MS=120000
+SANDBOX_MAX_OUTPUT_BYTES=131072
+SANDBOX_ALLOWED_COMMANDS=git,pnpm,npm,node,tsx,tsc,ls,pwd,cat,rg,sed
+SANDBOX_ENV_ALLOWLIST=PATH,HOME,LANG,LC_ALL
+```
+
 ## API
 
 - `GET /health`
@@ -64,6 +82,18 @@ The frontend `Tool Settings` tab can register a GitHub personal access token for
 - `GET /api/tools/settings`
 - `PATCH /api/tools/settings/github`
 - `POST /api/tools/github/test`
+- `GET /api/sandbox/settings`
+- `GET /api/sandbox/workspaces`
+- `POST /api/sandbox/workspaces`
+- `POST /api/sandbox/workspaces/:id/exec`
+- `DELETE /api/sandbox/workspaces/:id`
+- `GET /api/agent/runs`
+- `POST /api/agent/runs`
+- `GET /api/agent/runs/:id`
+- `DELETE /api/agent/runs/:id`
+- `POST /api/agent/runs/:id/messages`
+- `POST /api/agent/runs/:id/continue`
+- `POST /api/agent/runs/:id/continue/stream`
 
 ## Chat UI
 

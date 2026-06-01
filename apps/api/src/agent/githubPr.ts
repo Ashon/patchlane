@@ -1,0 +1,63 @@
+import type { SandboxWorkspace } from "@agent-fleet/shared";
+
+type CreatePullRequestInput = {
+  workspace: SandboxWorkspace;
+  token: string;
+  title: string;
+  body: string;
+  head: string;
+  base: string;
+};
+
+export const createPullRequest = async ({ workspace, token, title, body, head, base }: CreatePullRequestInput) => {
+  const repository = parseGitHubRepository(workspace.repositoryUrl);
+
+  if (!repository) {
+    throw new Error("Workspace repository is not a GitHub HTTPS repository");
+  }
+
+  const response = await fetch(`https://api.github.com/repos/${repository.owner}/${repository.repo}/pulls`, {
+    method: "POST",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "user-agent": "agent-fleet-local"
+    },
+    body: JSON.stringify({
+      title,
+      body,
+      head,
+      base
+    })
+  });
+
+  const payload = (await response.json().catch(() => null)) as { html_url?: unknown; message?: unknown } | null;
+
+  if (!response.ok) {
+    const message = typeof payload?.message === "string" ? payload.message : response.statusText;
+    throw new Error(`GitHub PR creation failed: ${message}`);
+  }
+
+  if (typeof payload?.html_url !== "string") {
+    throw new Error("GitHub PR creation succeeded without a URL");
+  }
+
+  return payload.html_url;
+};
+
+const parseGitHubRepository = (repositoryUrl?: string) => {
+  if (!repositoryUrl) {
+    return null;
+  }
+
+  const parsed = new URL(repositoryUrl);
+  if (parsed.protocol !== "https:" || parsed.hostname !== "github.com") {
+    return null;
+  }
+
+  const [owner, rawRepo] = parsed.pathname.split("/").filter(Boolean);
+  const repo = rawRepo?.replace(/\.git$/u, "");
+
+  return owner && repo ? { owner, repo } : null;
+};

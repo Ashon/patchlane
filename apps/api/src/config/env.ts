@@ -24,11 +24,45 @@ const readOptional = (name: string) => {
   return value && value.length > 0 ? value : undefined;
 };
 
+const readCsv = (name: string, fallback: string[]) => {
+  const raw = process.env[name]?.trim();
+
+  if (!raw) {
+    return fallback;
+  }
+
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 export const env = {
   port: readInt("PORT", 8787),
   webOrigin: process.env.WEB_ORIGIN?.trim() || "http://localhost:8788",
   llmEndpointsFile: path.resolve(process.cwd(), process.env.LLM_ENDPOINTS_FILE || ".data/llm-endpoints.json"),
   toolSettingsFile: path.resolve(process.cwd(), process.env.TOOL_SETTINGS_FILE || ".data/tool-settings.json"),
+  agentRunsFile: path.resolve(process.cwd(), process.env.AGENT_RUNS_FILE || ".data/agent-runs.json"),
+  sandboxWorkspacesFile: path.resolve(process.cwd(), process.env.SANDBOX_WORKSPACES_FILE || ".data/sandbox-workspaces.json"),
+  sandbox: {
+    rootDir: path.resolve(process.cwd(), process.env.SANDBOX_ROOT_DIR || ".data/sandboxes"),
+    defaultTimeoutMs: readInt("SANDBOX_DEFAULT_TIMEOUT_MS", 120_000),
+    maxOutputBytes: readInt("SANDBOX_MAX_OUTPUT_BYTES", 131_072),
+    allowedCommands: readCsv("SANDBOX_ALLOWED_COMMANDS", [
+      "git",
+      "pnpm",
+      "npm",
+      "node",
+      "tsx",
+      "tsc",
+      "ls",
+      "pwd",
+      "cat",
+      "rg",
+      "sed"
+    ]),
+    envAllowlist: readCsv("SANDBOX_ENV_ALLOWLIST", ["PATH", "HOME", "LANG", "LC_ALL"])
+  },
   defaultEndpoint: {
     name: process.env.DEFAULT_LLM_ENDPOINT_NAME?.trim() || "Ollama Local",
     baseUrl: process.env.DEFAULT_LLM_BASE_URL?.trim() || "http://localhost:11434/v1",
