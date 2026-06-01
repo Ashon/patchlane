@@ -1,4 +1,5 @@
 import { FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AgentRun,
   CreateLlmEndpointInput,
@@ -34,6 +35,8 @@ import {
   Wrench,
   XCircle
 } from "lucide-react";
+import { parseAsString, useQueryState } from "nuqs";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatConversation, type ConversationMessage } from "@/components/chat/chat-conversation";
@@ -48,10 +51,10 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { splitThinking } from "@/lib/chat-format";
+import { queryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 
 type EndpointDraft = {
@@ -75,7 +78,6 @@ type SandboxWorkspaceDraft = {
 };
 
 type AppView = "chat" | "workspaces" | "sandbox" | "settings";
-type SettingsPage = "endpoints" | "tools";
 
 const emptyDraft: EndpointDraft = {
   name: "",
@@ -98,40 +100,38 @@ const emptySandboxWorkspaceDraft: SandboxWorkspaceDraft = {
 };
 
 const navigationItems = [
-  { value: "chat", label: "Chat", icon: MessageSquare },
-  { value: "workspaces", label: "Workspaces", icon: Folder },
-  { value: "sandbox", label: "Agent", icon: Terminal },
-  { value: "settings", label: "Settings", icon: Settings }
-] satisfies Array<{ value: AppView; label: string; icon: typeof MessageSquare }>;
+  { value: "chat", label: "Chat", icon: MessageSquare, path: "/chat" },
+  { value: "workspaces", label: "Workspaces", icon: Folder, path: "/workspaces" },
+  { value: "sandbox", label: "Agent", icon: Terminal, path: "/agent" },
+  { value: "settings", label: "Settings", icon: Settings, path: "/settings/endpoints" }
+] satisfies Array<{ value: AppView; label: string; icon: typeof MessageSquare; path: string }>;
 
 const settingsPages = [
-  { value: "endpoints", label: "Endpoints", icon: Server },
-  { value: "tools", label: "Tools", icon: Wrench }
-] satisfies Array<{ value: SettingsPage; label: string; icon: typeof MessageSquare }>;
+  { value: "endpoints", label: "Endpoints", icon: Server, path: "/settings/endpoints" },
+  { value: "tools", label: "Tools", icon: Wrench, path: "/settings/tools" }
+] satisfies Array<{ value: string; label: string; icon: typeof MessageSquare; path: string }>;
 
 export default function App() {
-  const [activeView, setActiveView] = useState<AppView>("chat");
-  const [settingsPage, setSettingsPage] = useState<SettingsPage>("endpoints");
-  const [endpoints, setEndpoints] = useState<LlmEndpoint[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const fetchingCount = useIsFetching();
+  const [selectedId, setSelectedId] = useQueryState("endpoint", parseAsString.withOptions({ history: "replace", shallow: true }));
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useQueryState(
+    "workspace",
+    parseAsString.withOptions({ history: "replace", shallow: true })
+  );
+  const [selectedAgentRunId, setSelectedAgentRunId] = useQueryState("run", parseAsString.withOptions({ history: "replace", shallow: true }));
   const [draft, setDraft] = useState<EndpointDraft>(emptyDraft);
-  const [toolSettings, setToolSettings] = useState<PublicToolSettings | null>(null);
   const [githubDraft, setGithubDraft] = useState<GitHubToolDraft>(emptyGitHubToolDraft);
-  const [sandboxSettings, setSandboxSettings] = useState<SandboxSettings | null>(null);
-  const [sandboxWorkspaces, setSandboxWorkspaces] = useState<SandboxWorkspace[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [workspaceDraft, setWorkspaceDraft] = useState<SandboxWorkspaceDraft>(emptySandboxWorkspaceDraft);
-  const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
-  const [selectedAgentRunId, setSelectedAgentRunId] = useState<string | null>(null);
   const [agentTaskDraft, setAgentTaskDraft] = useState("");
   const [agentReplyDraft, setAgentReplyDraft] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toolSaving, setToolSaving] = useState(false);
   const [workspaceCreating, setWorkspaceCreating] = useState(false);
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentRunDeletingId, setAgentRunDeletingId] = useState<string | null>(null);
-  const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [githubTesting, setGithubTesting] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, LlmEndpointTestResult>>({});
@@ -139,13 +139,27 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [toolError, setToolError] = useState<string | null>(null);
   const [sandboxError, setSandboxError] = useState<string | null>(null);
-  const selectedIdRef = useRef<string | null>(null);
-  const selectedWorkspaceIdRef = useRef<string | null>(null);
-  const selectedAgentRunIdRef = useRef<string | null>(null);
   const agentStreamAbortRef = useRef<AbortController | null>(null);
+  const healthQuery = useQuery({ queryKey: queryKeys.health, queryFn: api.health });
+  const endpointsQuery = useQuery({ queryKey: queryKeys.endpoints, queryFn: api.listEndpoints });
+  const toolSettingsQuery = useQuery({ queryKey: queryKeys.toolSettings, queryFn: api.getToolSettings });
+  const sandboxSettingsQuery = useQuery({ queryKey: queryKeys.sandboxSettings, queryFn: api.getSandboxSettings });
+  const sandboxWorkspacesQuery = useQuery({ queryKey: queryKeys.sandboxWorkspaces, queryFn: api.listSandboxWorkspaces });
+  const agentRunsQuery = useQuery({ queryKey: queryKeys.agentRuns, queryFn: api.listAgentRuns });
+
+  const endpoints = useMemo(() => endpointsQuery.data?.endpoints ?? [], [endpointsQuery.data?.endpoints]);
+  const toolSettings = toolSettingsQuery.data?.settings ?? null;
+  const sandboxSettings = sandboxSettingsQuery.data?.settings ?? null;
+  const sandboxWorkspaces = useMemo(
+    () => sandboxWorkspacesQuery.data?.workspaces ?? [],
+    [sandboxWorkspacesQuery.data?.workspaces]
+  );
+  const agentRuns = useMemo(() => agentRunsQuery.data?.runs ?? [], [agentRunsQuery.data?.runs]);
+  const loading = fetchingCount > 0;
+  const apiOnline = healthQuery.isError ? false : healthQuery.data?.ok ?? null;
 
   const selectedEndpoint = useMemo(
-    () => endpoints.find((endpoint) => endpoint.id === selectedId) ?? null,
+    () => (selectedId && selectedId !== "new" ? endpoints.find((endpoint) => endpoint.id === selectedId) ?? null : null),
     [endpoints, selectedId]
   );
 
@@ -159,144 +173,168 @@ export default function App() {
     () => agentRuns.find((run) => run.id === selectedAgentRunId) ?? null,
     [agentRuns, selectedAgentRunId]
   );
+  const endpointError = error ?? getQueryErrorMessage(healthQuery.error, endpointsQuery.error);
+  const toolSettingsError = toolError ?? getQueryErrorMessage(toolSettingsQuery.error);
+  const sandboxLoadError = sandboxError ?? getQueryErrorMessage(sandboxSettingsQuery.error, sandboxWorkspacesQuery.error, agentRunsQuery.error);
+  const buildRoute = useCallback(
+    (pathname: string, updates: Record<string, string | null> = {}) => {
+      const params = new URLSearchParams(location.search);
 
-  const selectEndpoint = useCallback((endpoint: LlmEndpoint) => {
-    selectedIdRef.current = endpoint.id;
-    setSelectedId(endpoint.id);
-    setDraft({
-      name: endpoint.name,
-      baseUrl: endpoint.baseUrl,
-      defaultModel: endpoint.defaultModel,
-      apiKeyEnvVar: endpoint.apiKeyEnvVar || "",
-      enabled: endpoint.enabled
-    });
-  }, []);
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) {
+          params.set(key, value);
+        } else {
+          params.delete(key);
+        }
+      }
 
-  const applyToolSettings = useCallback((settings: PublicToolSettings) => {
-    setToolSettings(settings);
-    setGithubDraft({
-      enabled: settings.github.enabled,
-      token: "",
-      clearToken: false
-    });
-  }, []);
+      const search = params.toString();
+      return { pathname, search: search ? `?${search}` : "" };
+    },
+    [location.search]
+  );
 
-  const selectWorkspace = useCallback((workspace: SandboxWorkspace) => {
-    selectedWorkspaceIdRef.current = workspace.id;
-    setSelectedWorkspaceId(workspace.id);
-  }, []);
+  const selectEndpoint = useCallback(
+    (endpoint: LlmEndpoint) => {
+      void setSelectedId(endpoint.id);
+      setDraft({
+        name: endpoint.name,
+        baseUrl: endpoint.baseUrl,
+        defaultModel: endpoint.defaultModel,
+        apiKeyEnvVar: endpoint.apiKeyEnvVar || "",
+        enabled: endpoint.enabled
+      });
+    },
+    [setSelectedId]
+  );
 
-  const selectAgentRun = useCallback((run: AgentRun) => {
-    selectedAgentRunIdRef.current = run.id;
-    setSelectedAgentRunId(run.id);
-  }, []);
+  const applyToolSettings = useCallback(
+    (settings: PublicToolSettings) => {
+      queryClient.setQueryData<{ settings: PublicToolSettings }>(queryKeys.toolSettings, { settings });
+      setGithubDraft({
+        enabled: settings.github.enabled,
+        token: "",
+        clearToken: false
+      });
+    },
+    [queryClient]
+  );
+
+  const selectWorkspace = useCallback(
+    (workspace: SandboxWorkspace) => {
+      void setSelectedWorkspaceId(workspace.id);
+    },
+    [setSelectedWorkspaceId]
+  );
+
+  const selectAgentRun = useCallback(
+    (run: AgentRun) => {
+      navigate(buildRoute("/agent", { run: run.id }));
+    },
+    [buildRoute, navigate]
+  );
 
   const startNewAgentRun = useCallback(() => {
-    selectedAgentRunIdRef.current = null;
-    setSelectedAgentRunId(null);
     setAgentReplyDraft("");
     setAgentTaskDraft("");
     setSandboxError(null);
-  }, []);
-
-  const applySandboxWorkspaces = useCallback(
-    (workspaces: SandboxWorkspace[]) => {
-      setSandboxWorkspaces(workspaces);
-
-      const currentId = selectedWorkspaceIdRef.current;
-      const next = workspaces.find((workspace) => workspace.id === currentId) ?? workspaces[0] ?? null;
-
-      if (next) {
-        selectWorkspace(next);
-        return;
-      }
-
-      selectedWorkspaceIdRef.current = null;
-      setSelectedWorkspaceId(null);
-    },
-    [selectWorkspace]
-  );
-
-  const applyAgentRuns = useCallback(
-    (runs: AgentRun[]) => {
-      setAgentRuns(runs);
-
-      const currentId = selectedAgentRunIdRef.current;
-      const next = runs.find((run) => run.id === currentId) ?? runs[0] ?? null;
-
-      if (next) {
-        selectAgentRun(next);
-        return;
-      }
-
-      selectedAgentRunIdRef.current = null;
-      setSelectedAgentRunId(null);
-    },
-    [selectAgentRun]
-  );
+    navigate(buildRoute("/agent", { run: null }));
+  }, [buildRoute, navigate]);
 
   const upsertAgentRun = useCallback(
     (run: AgentRun) => {
-      setAgentRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
+      queryClient.setQueryData<{ runs: AgentRun[] }>(queryKeys.agentRuns, (current) => ({
+        runs: [run, ...(current?.runs ?? []).filter((item) => item.id !== run.id)]
+      }));
       selectAgentRun(run);
     },
-    [selectAgentRun]
+    [queryClient, selectAgentRun]
   );
 
-  const updateAgentRunInPlace = useCallback((runId: string, updater: (run: AgentRun) => AgentRun) => {
-    setAgentRuns((current) => current.map((run) => (run.id === runId ? updater(run) : run)));
-  }, []);
+  const updateAgentRunInPlace = useCallback(
+    (runId: string, updater: (run: AgentRun) => AgentRun) => {
+      queryClient.setQueryData<{ runs: AgentRun[] }>(queryKeys.agentRuns, (current) => ({
+        runs: (current?.runs ?? []).map((run) => (run.id === runId ? updater(run) : run))
+      }));
+    },
+    [queryClient]
+  );
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const refreshData = useCallback(() => {
     setError(null);
     setToolError(null);
     setSandboxError(null);
-
-    try {
-      const [
-        health,
-        endpointResponse,
-        toolSettingsResponse,
-        sandboxSettingsResponse,
-        sandboxWorkspaceResponse,
-        agentRunsResponse
-      ] = await Promise.all([
-        api.health(),
-        api.listEndpoints(),
-        api.getToolSettings(),
-        api.getSandboxSettings(),
-        api.listSandboxWorkspaces(),
-        api.listAgentRuns()
-      ]);
-
-      setApiOnline(health.ok);
-      setEndpoints(endpointResponse.endpoints);
-      applyToolSettings(toolSettingsResponse.settings);
-      setSandboxSettings(sandboxSettingsResponse.settings);
-      applySandboxWorkspaces(sandboxWorkspaceResponse.workspaces);
-      applyAgentRuns(agentRunsResponse.runs);
-
-      if (!selectedIdRef.current && endpointResponse.endpoints[0]) {
-        selectEndpoint(endpointResponse.endpoints[0]);
-      }
-    } catch (loadError) {
-      setApiOnline(false);
-      setError(getErrorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }, [applyAgentRuns, applySandboxWorkspaces, applyToolSettings, selectEndpoint]);
+    void queryClient.invalidateQueries();
+  }, [queryClient]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (toolSettings) {
+      setGithubDraft((current) => ({
+        enabled: toolSettings.github.enabled,
+        token: current.token,
+        clearToken: current.clearToken
+      }));
+    }
+  }, [toolSettings]);
+
+  useEffect(() => {
+    if (!endpoints.length) {
+      if (selectedId && selectedId !== "new") {
+        void setSelectedId(null);
+      }
+      return;
+    }
+
+    if (!selectedId) {
+      void setSelectedId(endpoints[0]!.id);
+      return;
+    }
+
+    if (selectedId !== "new" && !endpoints.some((endpoint) => endpoint.id === selectedId)) {
+      void setSelectedId(endpoints[0]!.id);
+    }
+  }, [endpoints, selectedId, setSelectedId]);
+
+  useEffect(() => {
+    if (selectedEndpoint) {
+      setDraft({
+        name: selectedEndpoint.name,
+        baseUrl: selectedEndpoint.baseUrl,
+        defaultModel: selectedEndpoint.defaultModel,
+        apiKeyEnvVar: selectedEndpoint.apiKeyEnvVar || "",
+        enabled: selectedEndpoint.enabled
+      });
+      return;
+    }
+
+    if (selectedId === "new" || !selectedId) {
+      setDraft(emptyDraft);
+    }
+  }, [selectedEndpoint, selectedId]);
+
+  useEffect(() => {
+    if (!sandboxWorkspaces.length) {
+      if (selectedWorkspaceId) {
+        void setSelectedWorkspaceId(null);
+      }
+      return;
+    }
+
+    if (!selectedWorkspaceId || !sandboxWorkspaces.some((workspace) => workspace.id === selectedWorkspaceId)) {
+      void setSelectedWorkspaceId(sandboxWorkspaces[0]!.id);
+    }
+  }, [sandboxWorkspaces, selectedWorkspaceId, setSelectedWorkspaceId]);
+
+  useEffect(() => {
+    if (selectedAgentRunId && !agentRuns.some((run) => run.id === selectedAgentRunId)) {
+      void setSelectedAgentRunId(null);
+    }
+  }, [agentRuns, selectedAgentRunId, setSelectedAgentRunId]);
 
   const startNewEndpoint = () => {
-    selectedIdRef.current = null;
-    setSelectedId(null);
     setDraft(emptyDraft);
     setError(null);
+    navigate(buildRoute("/settings/endpoints", { endpoint: "new" }));
   };
 
   const selectEndpointById = (id: string) => {
@@ -314,12 +352,12 @@ export default function App() {
 
     try {
       const input = normalizeDraft(draft);
-      const response = selectedId
-        ? await api.updateEndpoint(selectedId, input)
+      const response = selectedEndpoint
+        ? await api.updateEndpoint(selectedEndpoint.id, input)
         : await api.createEndpoint(input);
 
       const endpointResponse = await api.listEndpoints();
-      setEndpoints(endpointResponse.endpoints);
+      queryClient.setQueryData(queryKeys.endpoints, endpointResponse);
       selectEndpoint(response.endpoint);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -329,7 +367,7 @@ export default function App() {
   };
 
   const deleteEndpoint = async () => {
-    if (!selectedId) {
+    if (!selectedEndpoint) {
       return;
     }
 
@@ -337,9 +375,9 @@ export default function App() {
     setError(null);
 
     try {
-      await api.deleteEndpoint(selectedId);
+      await api.deleteEndpoint(selectedEndpoint.id);
       const response = await api.listEndpoints();
-      setEndpoints(response.endpoints);
+      queryClient.setQueryData(queryKeys.endpoints, response);
 
       if (response.endpoints[0]) {
         selectEndpoint(response.endpoints[0]);
@@ -418,7 +456,7 @@ export default function App() {
     try {
       const response = await api.createSandboxWorkspace(normalizeWorkspaceDraft(workspaceDraft));
       const listResponse = await api.listSandboxWorkspaces();
-      applySandboxWorkspaces(listResponse.workspaces);
+      queryClient.setQueryData(queryKeys.sandboxWorkspaces, listResponse);
       selectWorkspace(response.workspace);
       setWorkspaceDraft(emptySandboxWorkspaceDraft);
     } catch (createError) {
@@ -426,7 +464,7 @@ export default function App() {
 
       try {
         const listResponse = await api.listSandboxWorkspaces();
-        applySandboxWorkspaces(listResponse.workspaces);
+        queryClient.setQueryData(queryKeys.sandboxWorkspaces, listResponse);
       } catch {
         // Keep the original create error visible.
       }
@@ -442,7 +480,7 @@ export default function App() {
     try {
       await api.deleteSandboxWorkspace(workspace.id);
       const response = await api.listSandboxWorkspaces();
-      applySandboxWorkspaces(response.workspaces);
+      queryClient.setQueryData(queryKeys.sandboxWorkspaces, response);
     } catch (deleteError) {
       setSandboxError(getErrorMessage(deleteError));
     } finally {
@@ -484,26 +522,75 @@ export default function App() {
 
   const streamAgentRun = async (run: AgentRun) => {
     const controller = new AbortController();
-    const assistantMessageId = `stream-${crypto.randomUUID()}`;
+    let activeAssistantMessageId: string | null = null;
+    let activeAssistantContent = "";
     let toolMessageId: string | null = null;
-    let assistantContent = "";
 
     agentStreamAbortRef.current = controller;
     setAgentRunning(true);
     setSandboxError(null);
-    updateAgentRunInPlace(run.id, (current) => ({
-      ...current,
-      status: "running",
-      messages: [
-        ...current.messages,
-        {
-          id: assistantMessageId,
-          role: "assistant",
-          content: "",
-          createdAt: new Date().toISOString()
+
+    const createAssistantSegment = () => {
+      const id = `stream-${crypto.randomUUID()}`;
+      activeAssistantMessageId = id;
+      activeAssistantContent = "";
+
+      updateAgentRunInPlace(run.id, (current) => ({
+        ...current,
+        status: "running",
+        messages: [
+          ...current.messages,
+          {
+            id,
+            role: "assistant",
+            content: "",
+            createdAt: new Date().toISOString()
+          }
+        ]
+      }));
+
+      return id;
+    };
+
+    const ensureAssistantSegment = () => activeAssistantMessageId ?? createAssistantSegment();
+
+    const finalizeAssistantSegment = () => {
+      const id = activeAssistantMessageId;
+
+      if (!id) {
+        return;
+      }
+
+      const content = activeAssistantContent;
+      activeAssistantMessageId = null;
+      activeAssistantContent = "";
+
+      updateAgentRunInPlace(run.id, (current) => {
+        if (!content.trim()) {
+          return {
+            ...current,
+            status: "running",
+            messages: current.messages.filter((message) => message.id !== id)
+          };
         }
-      ]
-    }));
+
+        return {
+          ...current,
+          status: "running",
+          messages: current.messages.map((message) =>
+            message.id === id
+              ? {
+                  ...message,
+                  id: id.startsWith("stream-") ? `assistant-${id.slice("stream-".length)}` : id,
+                  content
+                }
+              : message
+          )
+        };
+      });
+    };
+
+    createAssistantSegment();
 
     try {
       await api.streamAgentRun(
@@ -524,7 +611,8 @@ export default function App() {
             }
 
             if (event.type === "assistant_delta") {
-              assistantContent += event.content;
+              const assistantMessageId = ensureAssistantSegment();
+              activeAssistantContent += event.content;
 
               updateAgentRunInPlace(run.id, (current) => {
                 const existing = current.messages.find((message) => message.id === assistantMessageId);
@@ -534,7 +622,7 @@ export default function App() {
                     ...current,
                     status: "running",
                     messages: current.messages.map((message) =>
-                      message.id === assistantMessageId ? { ...message, content: assistantContent } : message
+                      message.id === assistantMessageId ? { ...message, content: activeAssistantContent } : message
                     )
                   };
                 }
@@ -547,7 +635,7 @@ export default function App() {
                     {
                       id: assistantMessageId,
                       role: "assistant",
-                      content: assistantContent,
+                      content: activeAssistantContent,
                       createdAt: new Date().toISOString()
                     }
                   ]
@@ -559,6 +647,7 @@ export default function App() {
             if (event.type === "tool_start") {
               const now = new Date().toISOString();
               toolMessageId = `tool-${crypto.randomUUID()}`;
+              finalizeAssistantSegment();
 
               updateAgentRunInPlace(run.id, (current) => ({
                 ...current,
@@ -646,7 +735,7 @@ export default function App() {
     try {
       await api.deleteAgentRun(run.id);
       const runsResponse = await api.listAgentRuns();
-      applyAgentRuns(runsResponse.runs);
+      queryClient.setQueryData(queryKeys.agentRuns, runsResponse);
     } catch (deleteError) {
       setSandboxError(getErrorMessage(deleteError));
     } finally {
@@ -656,7 +745,7 @@ export default function App() {
 
   return (
     <main className="h-screen overflow-hidden bg-background">
-      <Tabs className="flex h-full min-h-0 flex-col" onValueChange={(value) => setActiveView(value as AppView)} value={activeView}>
+      <div className="flex h-full min-h-0 flex-col">
         <header className="shrink-0 border-b bg-background">
           <div className="flex min-h-12 flex-col gap-2 px-3 py-2 lg:flex-row lg:items-center">
             <div className="flex min-w-0 shrink-0 items-center gap-2">
@@ -672,28 +761,28 @@ export default function App() {
             <nav className="flex h-8 max-w-full shrink-0 items-center gap-1 overflow-x-auto border-l pl-2 lg:ml-2" aria-label="Primary">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
-                const active = activeView === item.value;
+                const active = item.value === "settings" ? location.pathname.startsWith("/settings") : location.pathname === item.path;
 
                 return (
-                  <button
+                  <NavLink
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex h-8 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
                       active && "border-primary text-foreground"
                     )}
+                    end={item.value !== "settings"}
                     key={item.value}
-                    onClick={() => setActiveView(item.value)}
-                    type="button"
+                    to={buildRoute(item.path)}
                   >
                     <Icon className="h-4 w-4" />
                     {item.label}
-                  </button>
+                  </NavLink>
                 );
               })}
             </nav>
 
             <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-              <Select disabled={!endpoints.length || loading} onValueChange={selectEndpointById} value={selectedId ?? undefined}>
+              <Select disabled={!endpoints.length || loading} onValueChange={selectEndpointById} value={selectedEndpoint?.id ?? undefined}>
                 <SelectTrigger className="h-8 w-full bg-background text-xs sm:w-[360px] 2xl:w-[460px]">
                   <SelectValue placeholder={loading ? "Loading endpoints..." : "Select endpoint"} />
                 </SelectTrigger>
@@ -714,7 +803,7 @@ export default function App() {
                 <Badge variant="secondary">{sandboxWorkspaces.length} workspaces</Badge>
               </div>
 
-              <Button className="h-8 w-8" variant="outline" size="icon" onClick={load} disabled={loading} type="button">
+              <Button className="h-8 w-8" variant="outline" size="icon" onClick={refreshData} disabled={loading} type="button">
                 {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               </Button>
             </div>
@@ -722,41 +811,14 @@ export default function App() {
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col">
-
-        <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col" value="chat">
-          <ChatPanel endpoint={selectedEndpoint} />
-        </TabsContent>
-
-        <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:block" value="settings">
-          <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[180px_minmax(0,1fr)] lg:overflow-hidden">
-            <aside className="border-b bg-muted/20 p-2 lg:border-b-0 lg:border-r">
-              <div className="px-2 py-1.5 text-xs font-medium uppercase text-muted-foreground">Settings</div>
-              <div className="grid gap-1">
-                {settingsPages.map((item) => {
-                  const Icon = item.icon;
-                  const active = settingsPage === item.value;
-
-                  return (
-                    <button
-                      className={cn(
-                        "flex h-8 items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground",
-                        active && "bg-background text-foreground shadow-sm"
-                      )}
-                      key={item.value}
-                      onClick={() => setSettingsPage(item.value)}
-                      type="button"
-                    >
-                      <Icon className="h-4 w-4" />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </aside>
-
-            <div className="min-h-0 overflow-hidden">
-              {settingsPage === "endpoints" ? (
-                <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
+          <Routes>
+            <Route element={<Navigate replace to={buildRoute("/chat")} />} path="/" />
+            <Route element={<ChatPanel endpoint={selectedEndpoint} />} path="/chat" />
+            <Route element={<Navigate replace to={buildRoute("/settings/endpoints")} />} path="/settings" />
+            <Route
+              element={
+                <SettingsShell>
+                  <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
                   <div className="flex min-h-[320px] flex-col lg:min-h-0">
                     <div className="flex items-center justify-between border-b px-3 py-2">
                       <h2 className="text-base font-semibold">Endpoints</h2>
@@ -767,9 +829,9 @@ export default function App() {
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       <div className="space-y-2 p-2">
-                        {error ? (
+                        {endpointError ? (
                           <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                            {error}
+                            {endpointError}
                           </div>
                         ) : null}
 
@@ -865,10 +927,16 @@ export default function App() {
                     </form>
                   </aside>
                 </section>
-              ) : (
+                </SettingsShell>
+              }
+              path="/settings/endpoints"
+            />
+            <Route
+              element={
+                <SettingsShell>
                 <ToolSettingsPanel
                   draft={githubDraft}
-                  error={toolError}
+                  error={toolSettingsError}
                   onChange={setGithubDraft}
                   onSubmit={saveGitHubToolSettings}
                   onTest={() => void testGitHubTool()}
@@ -877,53 +945,97 @@ export default function App() {
                   testResult={githubTestResult}
                   testing={githubTesting}
                 />
-              )}
-            </div>
-          </section>
-        </TabsContent>
-
-        <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:block" value="workspaces">
-          <WorkspaceManagementPanel
-            error={sandboxError}
-            onCreateWorkspace={createWorkspace}
-            onDeleteWorkspace={(workspace) => void deleteWorkspace(workspace)}
-            onSelectWorkspace={selectWorkspace}
-            onWorkspaceDraftChange={setWorkspaceDraft}
-            selectedWorkspace={selectedWorkspace}
-            settings={sandboxSettings}
-            workspaceCreating={workspaceCreating}
-            workspaceDraft={workspaceDraft}
-            workspaces={sandboxWorkspaces}
-          />
-        </TabsContent>
-
-        <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:block" value="sandbox">
-          <SandboxPanel
-            agentReplyDraft={agentReplyDraft}
-            agentRunning={agentRunning}
-            agentTaskDraft={agentTaskDraft}
-            endpoint={selectedEndpoint}
-            error={sandboxError}
-            onAgentReplyChange={setAgentReplyDraft}
-            onAgentTaskChange={setAgentTaskDraft}
-            onContinueAgentRun={(run) => void continueAgentRun(run)}
-            onDeleteAgentRun={(run) => void deleteAgentRun(run)}
-            onCreateAgentRun={createAgentRun}
-            onSendAgentMessage={() => void sendAgentMessage()}
-            onSelectAgentRun={selectAgentRun}
-            onStartNewAgentRun={startNewAgentRun}
-            onStopAgentRun={stopAgentRun}
-            runs={agentRuns}
-            runDeletingId={agentRunDeletingId}
-            selectedRun={selectedAgentRun}
-            selectedWorkspace={selectedWorkspace}
-          />
-        </TabsContent>
+                </SettingsShell>
+              }
+              path="/settings/tools"
+            />
+            <Route
+              element={
+                <WorkspaceManagementPanel
+                  error={sandboxLoadError}
+                  onCreateWorkspace={createWorkspace}
+                  onDeleteWorkspace={(workspace) => void deleteWorkspace(workspace)}
+                  onSelectWorkspace={selectWorkspace}
+                  onWorkspaceDraftChange={setWorkspaceDraft}
+                  selectedWorkspace={selectedWorkspace}
+                  settings={sandboxSettings}
+                  workspaceCreating={workspaceCreating}
+                  workspaceDraft={workspaceDraft}
+                  workspaces={sandboxWorkspaces}
+                />
+              }
+              path="/workspaces"
+            />
+            <Route
+              element={
+                <SandboxPanel
+                  agentReplyDraft={agentReplyDraft}
+                  agentRunning={agentRunning}
+                  agentTaskDraft={agentTaskDraft}
+                  endpoint={selectedEndpoint}
+                  error={sandboxLoadError}
+                  onAgentReplyChange={setAgentReplyDraft}
+                  onAgentTaskChange={setAgentTaskDraft}
+                  onContinueAgentRun={(run) => void continueAgentRun(run)}
+                  onDeleteAgentRun={(run) => void deleteAgentRun(run)}
+                  onCreateAgentRun={createAgentRun}
+                  onSendAgentMessage={() => void sendAgentMessage()}
+                  onSelectAgentRun={selectAgentRun}
+                  onStartNewAgentRun={startNewAgentRun}
+                  onStopAgentRun={stopAgentRun}
+                  runs={agentRuns}
+                  runDeletingId={agentRunDeletingId}
+                  selectedRun={selectedAgentRun}
+                  selectedWorkspace={selectedWorkspace}
+                />
+              }
+              path="/agent"
+            />
+            <Route element={<Navigate replace to={buildRoute("/chat")} />} path="*" />
+          </Routes>
         </div>
-      </Tabs>
+      </div>
     </main>
   );
 }
+
+const SettingsShell = ({ children }: { children: ReactNode }) => {
+  const location = useLocation();
+  const buildSettingsRoute = (pathname: string) => {
+    return { pathname, search: location.search };
+  };
+
+  return (
+    <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[180px_minmax(0,1fr)] lg:overflow-hidden">
+      <aside className="border-b bg-muted/20 p-2 lg:border-b-0 lg:border-r">
+        <div className="px-2 py-1.5 text-xs font-medium uppercase text-muted-foreground">Settings</div>
+        <div className="grid gap-1">
+          {settingsPages.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <NavLink
+                className={({ isActive }) =>
+                  cn(
+                    "flex h-8 items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground",
+                    isActive && "bg-background text-foreground shadow-sm"
+                  )
+                }
+                key={item.value}
+                to={buildSettingsRoute(item.path)}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </NavLink>
+            );
+          })}
+        </div>
+      </aside>
+
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </section>
+  );
+};
 
 type SandboxPanelProps = {
   agentReplyDraft: string;
@@ -1655,6 +1767,11 @@ const normalizeWorkspaceDraft = (draft: SandboxWorkspaceDraft): CreateSandboxWor
 
 const getAgentRunTitle = (task: string) => {
   return task.split("\n").find(Boolean)?.slice(0, 80) || "Agent task";
+};
+
+const getQueryErrorMessage = (...errors: Array<unknown | null>) => {
+  const error = errors.find(Boolean);
+  return error ? getErrorMessage(error) : null;
 };
 
 const isAbortError = (error: unknown) => {

@@ -17,31 +17,34 @@ import type {
   UpdateGitHubToolSettingsInput,
   UpdateLlmEndpointInput
 } from "@agent-fleet/shared";
+import axios, { AxiosError, type AxiosRequestConfig } from "axios";
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:8787" : "")).replace(
   /\/+$/,
   ""
 );
 
+const apiClient = axios.create({
+  baseURL: apiBaseUrl,
+  headers: {
+    "content-type": "application/json"
+  }
+});
+
 const request = async <T>(path: string, options?: RequestInit): Promise<T> => {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...options?.headers
-    }
-  });
+  const config: AxiosRequestConfig = {
+    url: path,
+    method: options?.method || "GET",
+    headers: options?.headers as AxiosRequestConfig["headers"],
+    data: typeof options?.body === "string" ? JSON.parse(options.body) : options?.body
+  };
 
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error || `Request failed with ${response.status}`);
+  try {
+    const response = await apiClient.request<T>(config);
+    return response.data;
+  } catch (requestError) {
+    throw normalizeApiError(requestError);
   }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
 };
 
 type ChatStreamEvent =
@@ -164,6 +167,15 @@ const streamRequest = async (input: LlmChatRequest, { onEvent, signal }: ChatStr
   });
 
   await readSseResponse(response, onEvent);
+};
+
+const normalizeApiError = (error: unknown) => {
+  if (error instanceof AxiosError) {
+    const payload = error.response?.data as { error?: string } | undefined;
+    return new Error(payload?.error || error.message || `Request failed with ${error.response?.status || "unknown status"}`);
+  }
+
+  return error;
 };
 
 export const api = {
