@@ -12,6 +12,16 @@ export const agentRunMessageSchema = z.object({
   createdAt: isoDateSchema
 });
 
+export const agentRunContextSchema = z.object({
+  strategy: z.enum(["full", "compacted"]),
+  tokenBudget: z.number().int().positive(),
+  estimatedTokens: z.number().int().nonnegative(),
+  retainedMessages: z.number().int().nonnegative(),
+  summarizedMessages: z.number().int().nonnegative(),
+  summary: z.string().optional(),
+  updatedAt: isoDateSchema
+});
+
 export const agentRunSchema = z.object({
   id: z.string().min(1),
   workspaceId: z.string().min(1),
@@ -20,6 +30,7 @@ export const agentRunSchema = z.object({
   title: z.string().trim().min(1).max(120),
   status: agentRunStatusSchema,
   messages: z.array(agentRunMessageSchema),
+  context: agentRunContextSchema.optional(),
   error: z.string().optional(),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema
@@ -46,6 +57,7 @@ export const continueAgentRunSchema = z.object({
 
 export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>;
 export type AgentRunMessage = z.infer<typeof agentRunMessageSchema>;
+export type AgentRunContext = z.infer<typeof agentRunContextSchema>;
 export type AgentRun = z.infer<typeof agentRunSchema>;
 export type CreateAgentRunInput = z.infer<typeof createAgentRunSchema>;
 export type AppendAgentRunMessageInput = z.infer<typeof appendAgentRunMessageSchema>;

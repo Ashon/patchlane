@@ -51,6 +51,7 @@ app.use(
 app.use(
   "/api/agent",
   createAgentRouter({
+    contextTokenBudget: env.agent.contextTokenBudget,
     endpointStore: llmStore,
     runStore: agentRunStore,
     sandboxSettings: env.sandbox,

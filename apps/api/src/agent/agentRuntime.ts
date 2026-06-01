@@ -4,12 +4,14 @@ import { createOpenAIClient } from "../llm/openaiClient";
 import { executeSandboxCommand } from "../sandbox/sandboxExecutor";
 import { getGitAuthEnv } from "../sandbox/gitSandbox";
 import { listWorkspaceFiles, readWorkspaceFile, writeWorkspaceFile } from "../sandbox/workspaceFiles";
+import { prepareAgentContext } from "./agentContext";
 import type { AgentRunStore } from "./agentRunStore";
 import { createPullRequest } from "./githubPr";
 
 type AgentRuntimeOptions = {
   runStore: AgentRunStore;
   settings: SandboxSettings;
+  contextTokenBudget?: number;
   getEndpoint: (id?: string) => Promise<LlmEndpoint>;
   getWorkspace: (id: string) => Promise<SandboxWorkspace>;
   getGitHubToken: () => Promise<string | undefined>;
@@ -72,13 +74,13 @@ export class AgentRuntime {
 
     try {
       const client = createOpenAIClient(endpoint);
-      const messages: Array<Record<string, unknown>> = [
-        {
-          role: "system",
-          content: getSystemPrompt(workspace)
-        },
-        ...toChatMessages(run.messages)
-      ];
+      const preparedContext = prepareAgentContext({
+        messages: run.messages,
+        systemPrompt: getSystemPrompt(workspace),
+        tokenBudget: this.options.contextTokenBudget
+      });
+      run = await this.options.runStore.setContext(run.id, preparedContext.context);
+      const messages = [...preparedContext.messages];
 
       const pendingMessages: Array<Omit<AgentRunMessage, "id" | "createdAt">> = [];
       let completed = false;
@@ -190,13 +192,14 @@ export class AgentRuntime {
 
     try {
       const client = createOpenAIClient(endpoint);
-      const messages: Array<Record<string, unknown>> = [
-        {
-          role: "system",
-          content: getSystemPrompt(workspace)
-        },
-        ...toChatMessages(run.messages)
-      ];
+      const preparedContext = prepareAgentContext({
+        messages: run.messages,
+        systemPrompt: getSystemPrompt(workspace),
+        tokenBudget: this.options.contextTokenBudget
+      });
+      run = await this.options.runStore.setContext(run.id, preparedContext.context);
+      emit({ type: "run", run });
+      const messages = [...preparedContext.messages];
 
       let completed = false;
       let awaitingUser = false;
@@ -372,13 +375,6 @@ const mergeToolCallDelta = (toolCallsByIndex: Map<number, PendingToolCall>, delt
   }
 
   toolCallsByIndex.set(index, current);
-};
-
-const toChatMessages = (messages: AgentRunMessage[]) => {
-  return messages.map((message) => ({
-    role: message.role === "user" ? "user" : "assistant",
-    content: message.role === "tool" ? `[tool:${message.toolName || "unknown"}]\n${message.content}` : message.content
-  }));
 };
 
 const agentTools = [

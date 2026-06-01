@@ -165,8 +165,9 @@ const UserMessageBubble = ({ message, showMeta }: { message: ConversationMessage
         {showMeta ? <MessageMeta message={message} /> : null}
         {content ? (
           <MessageContent
-            className="max-w-[min(960px,100%)] rounded-lg bg-primary px-3 py-2.5 text-sm leading-6 text-primary-foreground prose-invert"
+            className="max-w-[min(960px,100%)] rounded-lg bg-primary px-3 py-2.5 text-sm leading-6 text-primary-foreground prose-invert prose-p:my-0 prose-pre:my-2 prose-ol:my-1.5 prose-ul:my-1.5 prose-li:my-0 prose-blockquote:my-2 prose-table:my-2"
             id={message.id}
+            markdown
           >
             {content}
           </MessageContent>

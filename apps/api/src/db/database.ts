@@ -75,6 +75,7 @@ export class AppDatabase {
         model TEXT,
         title TEXT NOT NULL,
         status TEXT NOT NULL CHECK (status IN ('idle', 'running', 'awaiting_user', 'completed', 'failed')),
+        context_json TEXT,
         error TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -156,6 +157,7 @@ export class AppDatabase {
       CREATE INDEX IF NOT EXISTS idx_issue_events_issue_created_at
         ON issue_events (issue_id, created_at ASC);
     `);
+    this.ensureColumn("agent_runs", "context_json", "TEXT");
     this.ensureColumn("agent_projects", "repository_url", "TEXT");
     this.ensureColumn("agent_projects", "repository_ref", "TEXT");
     this.ensureColumn("agent_projects", "workspace_id", "TEXT");

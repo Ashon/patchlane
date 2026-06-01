@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
   agentRunListSchema,
+  agentRunContextSchema,
   agentRunMessageSchema,
   agentRunSchema,
   createAgentRunSchema,
   type AgentRun,
+  type AgentRunContext,
   type AgentRunMessage,
   type AgentRunStatus,
   type CreateAgentRunInput
@@ -20,6 +22,7 @@ type AgentRunRow = {
   model: string | null;
   title: string;
   status: AgentRunStatus;
+  context_json: string | null;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -115,6 +118,14 @@ export class AgentRunStore {
     }));
   }
 
+  async setContext(id: string, context: AgentRunContext) {
+    return this.update(id, (run) => ({
+      ...run,
+      context,
+      updatedAt: new Date().toISOString()
+    }));
+  }
+
   async remove(id: string) {
     const result = this.database.sqlite.prepare("DELETE FROM agent_runs WHERE id = ?").run(id);
 
@@ -137,7 +148,7 @@ export class AgentRunStore {
         .prepare(
           `
           UPDATE agent_runs
-          SET workspace_id = ?, endpoint_id = ?, model = ?, title = ?, status = ?, error = ?, updated_at = ?
+          SET workspace_id = ?, endpoint_id = ?, model = ?, title = ?, status = ?, context_json = ?, error = ?, updated_at = ?
           WHERE id = ?
         `
         )
@@ -147,6 +158,7 @@ export class AgentRunStore {
           updated.model ?? null,
           updated.title,
           updated.status,
+          updated.context ? JSON.stringify(updated.context) : null,
           updated.error ?? null,
           updated.updatedAt,
           updated.id
@@ -177,6 +189,7 @@ export class AgentRunStore {
       title: row.title,
       status: row.status,
       messages: messageRows.map(toMessage),
+      context: parseContext(row.context_json),
       error: optionalString(row.error),
       createdAt: row.created_at,
       updatedAt: row.updated_at
@@ -208,8 +221,8 @@ export class AgentRunStore {
       .prepare(
         `
         INSERT INTO agent_runs (
-          id, workspace_id, endpoint_id, model, title, status, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, workspace_id, endpoint_id, model, title, status, context_json, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
@@ -219,6 +232,7 @@ export class AgentRunStore {
         run.model ?? null,
         run.title,
         run.status,
+        run.context ? JSON.stringify(run.context) : null,
         run.error ?? null,
         run.createdAt,
         run.updatedAt
@@ -250,6 +264,18 @@ const toMessage = (row: AgentRunMessageRow) => {
     toolName: optionalString(row.tool_name),
     createdAt: row.created_at
   });
+};
+
+const parseContext = (value: string | null) => {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return agentRunContextSchema.parse(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
 };
 
 const createMessage = (message: Omit<AgentRunMessage, "id" | "createdAt"> & { createdAt?: string }) => {

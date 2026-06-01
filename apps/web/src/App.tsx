@@ -1333,6 +1333,7 @@ const SandboxPanel = ({
             {endpoint ? <Badge variant="secondary">{endpoint.defaultModel}</Badge> : null}
             {selectedWorkspace ? <Badge variant="outline">{selectedWorkspace.name}</Badge> : <StateBadge tone="warning">No workspace</StateBadge>}
             {selectedRun ? <AgentRunStatusBadge status={selectedRun.status} /> : null}
+            {selectedRun?.context ? <AgentRunContextBadge context={selectedRun.context} /> : null}
           </div>
         </div>
         <div className="min-h-0 flex-1">
@@ -1505,7 +1506,10 @@ const AgentRunCard = ({
             <h3 className="truncate text-sm font-semibold">{run.title}</h3>
             <AgentRunStatusBadge status={run.status} />
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(run.updatedAt)}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>{formatDateTime(run.updatedAt)}</span>
+            {run.context ? <span>{formatAgentRunContext(run.context)}</span> : null}
+          </div>
         </button>
         <Button disabled={deleting} onClick={onDelete} size="icon" type="button" variant="ghost">
           {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -1529,6 +1533,37 @@ const AgentRunStatusBadge = ({ status }: { status: AgentRun["status"] }) => {
   }
 
   return <StateBadge tone="warning">{status}</StateBadge>;
+};
+
+const AgentRunContextBadge = ({ context }: { context: NonNullable<AgentRun["context"]> }) => {
+  const usage = getAgentRunContextUsage(context);
+
+  return (
+    <Badge
+      className={cn(
+        "gap-1",
+        context.strategy === "compacted" && "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50"
+      )}
+      variant={context.strategy === "compacted" ? "outline" : "secondary"}
+    >
+      Context {usage}%
+      {context.strategy === "compacted" ? ` · compacted ${context.summarizedMessages}` : ""}
+    </Badge>
+  );
+};
+
+const formatAgentRunContext = (context: NonNullable<AgentRun["context"]>) => {
+  const usage = getAgentRunContextUsage(context);
+
+  if (context.strategy === "compacted") {
+    return `context ${usage}% · compacted ${context.summarizedMessages}`;
+  }
+
+  return `context ${usage}%`;
+};
+
+const getAgentRunContextUsage = (context: NonNullable<AgentRun["context"]>) => {
+  return Math.min(100, Math.round((context.estimatedTokens / context.tokenBudget) * 100));
 };
 
 const SandboxWorkspaceCard = ({
