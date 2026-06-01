@@ -45,17 +45,17 @@ LOCAL_LLM_API_KEY=local-llm
 
 Endpoint metadata is stored in `apps/api/.data/llm-endpoints.json`. API keys are not stored there; only the environment variable name is stored.
 
-## Tool Settings
+## Tools
 
 GitHub tool settings are stored locally in `apps/api/.data/tool-settings.json`.
 
-The frontend `Tool Settings` tab can register a GitHub personal access token for future agent-side HTTPS git operations. The API keeps the token server-side and only returns masked/configured state to the UI.
+The frontend `Tools` tab can register a GitHub personal access token for future agent-side HTTPS git operations. The API keeps the token server-side and only returns masked/configured state to the UI.
 
-## Agent Sandbox
+## Workspaces And Agent
 
 Sandbox workspaces are stored under `apps/api/.data/sandboxes` by default, with workspace metadata in `apps/api/.data/sandbox-workspaces.json`.
 
-The API can create isolated workspaces, clone GitHub repositories into them, and run coding-agent tasks against a selected workspace. The frontend keeps workspace creation, selection, deletion, and sandbox policy in the `Workspaces` tab, while the `Agent Sandbox` tab focuses on agent run history and the coding-agent conversation. Agent runs are stored in `apps/api/.data/agent-runs.json`.
+The API can create isolated workspaces, clone GitHub repositories into them, and run coding-agent tasks against a selected workspace. The frontend keeps workspace creation, selection, deletion, and sandbox policy in the `Workspaces` tab, while the `Agent` tab focuses on agent run history and the coding-agent conversation. Agent runs are stored in `apps/api/.data/agent-runs.json`.
 
 Agent runs communicate with the user through a thread. The backend gives the selected local LLM a constrained tool surface for listing files, reading/writing files, running allowlisted commands, checking git status/diff, and creating a GitHub pull request after the agent has committed and pushed a branch. Paths are constrained to the selected workspace. GitHub PAT credentials are injected into git/GitHub operations server-side and are not returned to the UI.
 

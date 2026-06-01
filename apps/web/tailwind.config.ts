@@ -41,6 +41,19 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)"
+      },
+      animation: {
+        shimmer: "shimmer 4s infinite linear"
+      },
+      keyframes: {
+        shimmer: {
+          "0%": {
+            backgroundPosition: "200% 50%"
+          },
+          "100%": {
+            backgroundPosition: "-200% 50%"
+          }
+        }
       }
     }
   },

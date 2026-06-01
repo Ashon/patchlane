@@ -1,7 +1,6 @@
 import { FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentRun,
-  AgentRunMessage,
   CreateLlmEndpointInput,
   CreateSandboxWorkspaceInput,
   GitHubToolTestResult,
@@ -14,11 +13,8 @@ import type {
 } from "@agent-fleet/shared";
 import {
   Bot,
-  Check,
   CheckCircle2,
-  Copy,
   Folder,
-  GitPullRequest,
   Github,
   KeyRound,
   Loader2,
@@ -40,14 +36,11 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ChatConversation, type ConversationMessage } from "@/components/chat/chat-conversation";
 import { ChatPanel } from "@/components/chat/chat-panel";
-import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Message, MessageAction, MessageActions, MessageAvatar, MessageContent } from "@/components/ui/message";
-import { PromptInput, PromptInputAction, PromptInputActions, PromptInputTextarea } from "@/components/ui/prompt-input";
-import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ui/reasoning";
-import { ScrollButton } from "@/components/ui/scroll-button";
+import { PromptInputAction } from "@/components/ui/prompt-input";
 import {
   Select,
   SelectContent,
@@ -55,10 +48,10 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { SystemMessage } from "@/components/ui/system-message";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { splitThinking } from "@/lib/chat-format";
 import { cn } from "@/lib/utils";
 
 type EndpointDraft = {
@@ -81,6 +74,9 @@ type SandboxWorkspaceDraft = {
   ref: string;
 };
 
+type AppView = "chat" | "workspaces" | "sandbox" | "settings";
+type SettingsPage = "endpoints" | "tools";
+
 const emptyDraft: EndpointDraft = {
   name: "",
   baseUrl: "http://localhost:11434/v1",
@@ -101,7 +97,21 @@ const emptySandboxWorkspaceDraft: SandboxWorkspaceDraft = {
   ref: ""
 };
 
+const navigationItems = [
+  { value: "chat", label: "Chat", icon: MessageSquare },
+  { value: "workspaces", label: "Workspaces", icon: Folder },
+  { value: "sandbox", label: "Agent", icon: Terminal },
+  { value: "settings", label: "Settings", icon: Settings }
+] satisfies Array<{ value: AppView; label: string; icon: typeof MessageSquare }>;
+
+const settingsPages = [
+  { value: "endpoints", label: "Endpoints", icon: Server },
+  { value: "tools", label: "Tools", icon: Wrench }
+] satisfies Array<{ value: SettingsPage; label: string; icon: typeof MessageSquare }>;
+
 export default function App() {
+  const [activeView, setActiveView] = useState<AppView>("chat");
+  const [settingsPage, setSettingsPage] = useState<SettingsPage>("endpoints");
   const [endpoints, setEndpoints] = useState<LlmEndpoint[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EndpointDraft>(emptyDraft);
@@ -645,203 +655,231 @@ export default function App() {
   };
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-background">
-      <section className="shrink-0 border-b bg-background">
-        <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Network className="h-5 w-5" />
+    <main className="h-screen overflow-hidden bg-background">
+      <Tabs className="flex h-full min-h-0 flex-col" onValueChange={(value) => setActiveView(value as AppView)} value={activeView}>
+        <header className="shrink-0 border-b bg-background">
+          <div className="flex min-h-12 flex-col gap-2 px-3 py-2 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 shrink-0 items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Network className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-sm font-semibold tracking-normal">Agent Fleet</h1>
+                <p className="hidden truncate text-xs text-muted-foreground sm:block">IDE-grade local coding agents</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-normal">Agent Fleet Control Plane</h1>
-              <p className="text-sm text-muted-foreground">LLM endpoints</p>
+
+            <nav className="flex h-8 max-w-full shrink-0 items-center gap-1 overflow-x-auto border-l pl-2 lg:ml-2" aria-label="Primary">
+              {navigationItems.map((item) => {
+                const Icon = item.icon;
+                const active = activeView === item.value;
+
+                return (
+                  <button
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex h-8 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
+                      active && "border-primary text-foreground"
+                    )}
+                    key={item.value}
+                    onClick={() => setActiveView(item.value)}
+                    type="button"
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
+              <Select disabled={!endpoints.length || loading} onValueChange={selectEndpointById} value={selectedId ?? undefined}>
+                <SelectTrigger className="h-8 w-full bg-background text-xs sm:w-[360px] 2xl:w-[460px]">
+                  <SelectValue placeholder={loading ? "Loading endpoints..." : "Select endpoint"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {endpoints.map((endpoint) => (
+                    <SelectItem key={endpoint.id} value={endpoint.id}>
+                      {endpoint.name} / {endpoint.defaultModel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div className="hidden items-center gap-1 2xl:flex">
+                <StatusBadge online={apiOnline} />
+                <Badge variant="secondary">{endpoints.length} endpoints</Badge>
+                <StateBadge tone={enabledCount > 0 ? "success" : "warning"}>{enabledCount} enabled</StateBadge>
+                <StateBadge tone={githubReady ? "success" : "warning"}>{githubReady ? "GitHub ready" : "GitHub missing"}</StateBadge>
+                <Badge variant="secondary">{sandboxWorkspaces.length} workspaces</Badge>
+              </div>
+
+              <Button className="h-8 w-8" variant="outline" size="icon" onClick={load} disabled={loading} type="button">
+                {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              </Button>
             </div>
           </div>
+        </header>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge online={apiOnline} />
-            <Badge variant="secondary">{endpoints.length} endpoints</Badge>
-            <StateBadge tone={enabledCount > 0 ? "success" : "warning"}>{enabledCount} enabled</StateBadge>
-            <StateBadge tone={githubReady ? "success" : "warning"}>{githubReady ? "GitHub ready" : "GitHub missing"}</StateBadge>
-            <Badge variant="secondary">{sandboxWorkspaces.length} sandboxes</Badge>
-            <Button variant="outline" onClick={load} disabled={loading}>
-              {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-              Refresh
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <Tabs className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col gap-3 overflow-hidden px-4 py-3 sm:px-6 lg:px-8" defaultValue="chat">
-        <div className="flex shrink-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <TabsList className="max-w-full justify-start overflow-x-auto">
-            <TabsTrigger className="gap-2" value="chat">
-              <MessageSquare className="h-4 w-4" />
-              Chat
-            </TabsTrigger>
-            <TabsTrigger className="gap-2" value="settings">
-              <Settings className="h-4 w-4" />
-              Endpoint Settings
-            </TabsTrigger>
-            <TabsTrigger className="gap-2" value="tools">
-              <Wrench className="h-4 w-4" />
-              Tool Settings
-            </TabsTrigger>
-            <TabsTrigger className="gap-2" value="workspaces">
-              <Folder className="h-4 w-4" />
-              Workspaces
-            </TabsTrigger>
-            <TabsTrigger className="gap-2" value="sandbox">
-              <Terminal className="h-4 w-4" />
-              Agent Sandbox
-            </TabsTrigger>
-          </TabsList>
-
-          <div className="flex flex-col gap-2 md:w-[420px]">
-            <Label className="text-xs text-muted-foreground">Active endpoint</Label>
-            <Select disabled={!endpoints.length || loading} onValueChange={selectEndpointById} value={selectedId ?? undefined}>
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder={loading ? "Loading endpoints..." : "Select endpoint"} />
-              </SelectTrigger>
-              <SelectContent>
-                {endpoints.map((endpoint) => (
-                  <SelectItem key={endpoint.id} value={endpoint.id}>
-                    {endpoint.name} / {endpoint.defaultModel}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <div className="flex min-h-0 flex-1 flex-col">
 
         <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col" value="chat">
           <ChatPanel endpoint={selectedEndpoint} />
         </TabsContent>
 
         <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:block" value="settings">
-          <section className="grid h-full min-h-0 overflow-y-auto border bg-background lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
-            <div className="flex min-h-[320px] flex-col lg:min-h-0">
-              <div className="flex items-center justify-between border-b p-4">
-                <h2 className="text-base font-semibold">Endpoints</h2>
-                <Button variant="secondary" onClick={startNewEndpoint} size="sm">
-                  <Plus />
-                  New
-                </Button>
+          <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[180px_minmax(0,1fr)] lg:overflow-hidden">
+            <aside className="border-b bg-muted/20 p-2 lg:border-b-0 lg:border-r">
+              <div className="px-2 py-1.5 text-xs font-medium uppercase text-muted-foreground">Settings</div>
+              <div className="grid gap-1">
+                {settingsPages.map((item) => {
+                  const Icon = item.icon;
+                  const active = settingsPage === item.value;
+
+                  return (
+                    <button
+                      className={cn(
+                        "flex h-8 items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground",
+                        active && "bg-background text-foreground shadow-sm"
+                      )}
+                      key={item.value}
+                      onClick={() => setSettingsPage(item.value)}
+                      type="button"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="space-y-2 p-3">
-                  {error ? (
-                    <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      {error}
-                    </div>
-                  ) : null}
-
-                  {loading ? (
-                    <div className="grid gap-2">
-                      {[0, 1, 2].map((item) => (
-                        <div key={item} className="h-24 animate-pulse rounded-md border bg-muted/40" />
-                      ))}
-                    </div>
-                  ) : endpoints.length > 0 ? (
-                    <div className="grid gap-2">
-                      {endpoints.map((endpoint) => (
-                        <EndpointCard
-                          endpoint={endpoint}
-                          key={endpoint.id}
-                          selected={endpoint.id === selectedId}
-                          testResult={testResults[endpoint.id]}
-                          testing={testingId === endpoint.id}
-                          onSelect={() => selectEndpoint(endpoint)}
-                          onTest={() => void testEndpoint(endpoint)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState>No endpoints</EmptyState>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
-              <div className="mb-4">
-                <h2 className="text-base font-semibold">{selectedEndpoint ? "Endpoint settings" : "New endpoint"}</h2>
-              </div>
-                <form className="space-y-4" onSubmit={saveEndpoint}>
-                  <Field label="Name">
-                    <Input
-                      value={draft.name}
-                      onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-                      placeholder="Ollama Local"
-                      required
-                    />
-                  </Field>
-
-                  <Field label="Base URL">
-                    <Input
-                      value={draft.baseUrl}
-                      onChange={(event) => setDraft((current) => ({ ...current, baseUrl: event.target.value }))}
-                      placeholder="http://localhost:11434/v1"
-                      required
-                    />
-                  </Field>
-
-                  <Field label="Default model">
-                    <Input
-                      value={draft.defaultModel}
-                      onChange={(event) => setDraft((current) => ({ ...current, defaultModel: event.target.value }))}
-                      placeholder="llama3.1"
-                      required
-                    />
-                  </Field>
-
-                  <Field label="API key env">
-                    <Input
-                      value={draft.apiKeyEnvVar || ""}
-                      onChange={(event) => setDraft((current) => ({ ...current, apiKeyEnvVar: event.target.value }))}
-                      placeholder="LOCAL_LLM_API_KEY"
-                    />
-                  </Field>
-
-                  <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                    <span className="font-medium">Enabled</span>
-                    <input
-                      checked={draft.enabled}
-                      className="h-4 w-4 accent-primary"
-                      onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
-                      type="checkbox"
-                    />
-                  </label>
-
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button className="flex-1" disabled={saving} type="submit">
-                      {saving ? <Loader2 className="animate-spin" /> : <Save />}
-                      Save
-                    </Button>
-                    {selectedEndpoint ? (
-                      <Button disabled={saving} onClick={() => void deleteEndpoint()} type="button" variant="destructive">
-                        <Trash2 />
-                        Delete
-                      </Button>
-                    ) : null}
-                  </div>
-                </form>
             </aside>
-          </section>
-        </TabsContent>
 
-        <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:block" value="tools">
-          <ToolSettingsPanel
-            draft={githubDraft}
-            error={toolError}
-            onChange={setGithubDraft}
-            onSubmit={saveGitHubToolSettings}
-            onTest={() => void testGitHubTool()}
-            saving={toolSaving}
-            settings={toolSettings}
-            testResult={githubTestResult}
-            testing={githubTesting}
-          />
+            <div className="min-h-0 overflow-hidden">
+              {settingsPage === "endpoints" ? (
+                <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
+                  <div className="flex min-h-[320px] flex-col lg:min-h-0">
+                    <div className="flex items-center justify-between border-b px-3 py-2">
+                      <h2 className="text-base font-semibold">Endpoints</h2>
+                      <Button variant="secondary" onClick={startNewEndpoint} size="sm">
+                        <Plus />
+                        New
+                      </Button>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      <div className="space-y-2 p-2">
+                        {error ? (
+                          <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                            {error}
+                          </div>
+                        ) : null}
+
+                        {loading ? (
+                          <div className="grid gap-2">
+                            {[0, 1, 2].map((item) => (
+                              <div key={item} className="h-24 animate-pulse rounded-md border bg-muted/40" />
+                            ))}
+                          </div>
+                        ) : endpoints.length > 0 ? (
+                          <div className="grid gap-2">
+                            {endpoints.map((endpoint) => (
+                              <EndpointCard
+                                endpoint={endpoint}
+                                key={endpoint.id}
+                                selected={endpoint.id === selectedId}
+                                testResult={testResults[endpoint.id]}
+                                testing={testingId === endpoint.id}
+                                onSelect={() => selectEndpoint(endpoint)}
+                                onTest={() => void testEndpoint(endpoint)}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <EmptyState>No endpoints</EmptyState>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 p-3 lg:border-l lg:border-t-0">
+                    <div className="mb-3">
+                      <h2 className="text-base font-semibold">{selectedEndpoint ? "Endpoint settings" : "New endpoint"}</h2>
+                    </div>
+                    <form className="space-y-3" onSubmit={saveEndpoint}>
+                      <Field label="Name">
+                        <Input
+                          value={draft.name}
+                          onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                          placeholder="Ollama Local"
+                          required
+                        />
+                      </Field>
+
+                      <Field label="Base URL">
+                        <Input
+                          value={draft.baseUrl}
+                          onChange={(event) => setDraft((current) => ({ ...current, baseUrl: event.target.value }))}
+                          placeholder="http://localhost:11434/v1"
+                          required
+                        />
+                      </Field>
+
+                      <Field label="Default model">
+                        <Input
+                          value={draft.defaultModel}
+                          onChange={(event) => setDraft((current) => ({ ...current, defaultModel: event.target.value }))}
+                          placeholder="llama3.1"
+                          required
+                        />
+                      </Field>
+
+                      <Field label="API key env">
+                        <Input
+                          value={draft.apiKeyEnvVar || ""}
+                          onChange={(event) => setDraft((current) => ({ ...current, apiKeyEnvVar: event.target.value }))}
+                          placeholder="LOCAL_LLM_API_KEY"
+                        />
+                      </Field>
+
+                      <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                        <span className="font-medium">Enabled</span>
+                        <input
+                          checked={draft.enabled}
+                          className="h-4 w-4 accent-primary"
+                          onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
+                          type="checkbox"
+                        />
+                      </label>
+
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button className="flex-1" disabled={saving} type="submit">
+                          {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                          Save
+                        </Button>
+                        {selectedEndpoint ? (
+                          <Button disabled={saving} onClick={() => void deleteEndpoint()} type="button" variant="destructive">
+                            <Trash2 />
+                            Delete
+                          </Button>
+                        ) : null}
+                      </div>
+                    </form>
+                  </aside>
+                </section>
+              ) : (
+                <ToolSettingsPanel
+                  draft={githubDraft}
+                  error={toolError}
+                  onChange={setGithubDraft}
+                  onSubmit={saveGitHubToolSettings}
+                  onTest={() => void testGitHubTool()}
+                  saving={toolSaving}
+                  settings={toolSettings}
+                  testResult={githubTestResult}
+                  testing={githubTesting}
+                />
+              )}
+            </div>
+          </section>
         </TabsContent>
 
         <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden data-[state=active]:block" value="workspaces">
@@ -881,6 +919,7 @@ export default function App() {
             selectedWorkspace={selectedWorkspace}
           />
         </TabsContent>
+        </div>
       </Tabs>
     </main>
   );
@@ -933,9 +972,9 @@ const WorkspaceManagementPanel = ({
   workspaces
 }: WorkspaceManagementPanelProps) => {
   return (
-    <section className="grid h-full min-h-0 overflow-y-auto border bg-background lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
+    <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
       <div className="flex min-h-[320px] flex-col lg:min-h-0">
-        <div className="flex items-center justify-between border-b p-4">
+        <div className="flex items-center justify-between border-b px-3 py-2">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Folder className="h-4 w-4" />
             Workspaces
@@ -943,7 +982,7 @@ const WorkspaceManagementPanel = ({
           <Badge variant="secondary">{workspaces.length} total</Badge>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="space-y-2 p-3">
+          <div className="space-y-2 p-2">
             {error ? (
               <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {error}
@@ -968,9 +1007,9 @@ const WorkspaceManagementPanel = ({
       </div>
 
       <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 lg:border-l lg:border-t-0">
-        <section className="border-b p-4">
-          <h2 className="mb-4 text-base font-semibold">New workspace</h2>
-          <form className="space-y-4" onSubmit={onCreateWorkspace}>
+        <section className="border-b p-3">
+          <h2 className="mb-3 text-base font-semibold">New workspace</h2>
+          <form className="space-y-3" onSubmit={onCreateWorkspace}>
             <Field label="Name">
               <Input
                 onChange={(event) => onWorkspaceDraftChange({ ...workspaceDraft, name: event.target.value })}
@@ -999,9 +1038,9 @@ const WorkspaceManagementPanel = ({
           </form>
         </section>
 
-        <section className="border-b p-4">
-          <h2 className="mb-4 text-base font-semibold">Selected workspace</h2>
-          <div className="space-y-3">
+        <section className="border-b p-3">
+          <h2 className="mb-3 text-base font-semibold">Selected workspace</h2>
+          <div className="space-y-0">
             {selectedWorkspace ? (
               <>
                 <ToolStatusRow label="Name" value={selectedWorkspace.name} />
@@ -1015,9 +1054,9 @@ const WorkspaceManagementPanel = ({
           </div>
         </section>
 
-        <section className="p-4">
-          <h2 className="mb-4 text-base font-semibold">Sandbox policy</h2>
-          <div className="grid gap-3">
+        <section className="p-3">
+          <h2 className="mb-3 text-base font-semibold">Sandbox policy</h2>
+          <div className="grid gap-0">
             <ToolStatusRow label="Root" value={settings?.rootDir || "Loading"} />
             <ToolStatusRow label="Timeout" value={settings ? `${settings.defaultTimeoutMs} ms` : "Loading"} />
             <ToolStatusRow label="Tools" value={settings?.allowedCommands.join(", ") || "Loading"} />
@@ -1050,9 +1089,9 @@ const SandboxPanel = ({
   selectedWorkspace
 }: SandboxPanelProps) => {
   return (
-    <section className="grid h-full min-h-0 overflow-y-auto border bg-background xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)] xl:overflow-hidden">
+    <section className="grid h-full min-h-0 overflow-y-auto bg-background xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:overflow-hidden">
       <div className="flex min-h-[260px] flex-col border-b xl:min-h-0 xl:border-b-0 xl:border-r">
-        <div className="flex items-center justify-between border-b p-4">
+        <div className="flex items-center justify-between border-b px-3 py-2">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Bot className="h-4 w-4" />
             Agent runs
@@ -1063,7 +1102,7 @@ const SandboxPanel = ({
           </Button>
         </div>
         <div className="min-h-[220px] flex-1 overflow-y-auto">
-          <div className="space-y-2 p-3">
+          <div className="space-y-2 p-2">
             {runs.length ? (
               runs.map((run) => (
                 <AgentRunCard
@@ -1083,7 +1122,7 @@ const SandboxPanel = ({
       </div>
 
       <div className="flex min-h-[560px] flex-col xl:min-h-0">
-        <div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Bot className="h-4 w-4" />
             Coding agent
@@ -1108,10 +1147,10 @@ const SandboxPanel = ({
               run={selectedRun}
             />
           ) : (
-            <form className="space-y-4 p-4" onSubmit={onCreateAgentRun}>
+            <form className="space-y-3 p-3" onSubmit={onCreateAgentRun}>
               <Field label="New task">
                 <Textarea
-                  className="min-h-[180px] bg-background"
+                  className="min-h-[160px] bg-background"
                   onChange={(event) => onAgentTaskChange(event.target.value)}
                   placeholder="Implement the requested change, run verification, commit to a branch, push, and open a PR."
                   required
@@ -1161,89 +1200,84 @@ const AgentConversation = ({
   const canUseEndpoint = Boolean(endpoint?.enabled);
   const canContinue = canUseEndpoint && !isStreaming && run.status !== "completed";
   const canSend = canUseEndpoint && !isStreaming && Boolean(draft.trim()) && run.status !== "completed";
+  const messages = useMemo<ConversationMessage[]>(
+    () =>
+      run.messages.map((message) => {
+        const isAssistantLike = message.role === "assistant" || message.role === "system";
+        const parsed = isAssistantLike ? splitThinking(message.content) : { content: message.content, reasoning: "" };
+        const isStreamingAssistant = message.id.startsWith("stream-");
+        const isRunningTool =
+          message.role === "tool" && message.content === `Running ${message.toolName || "tool"}...`;
+
+        return {
+          id: message.id,
+          role: message.role,
+          content: parsed.content,
+          reasoning: parsed.reasoning,
+          status: isStreamingAssistant || isRunningTool ? "streaming" : message.role === "tool" ? "done" : undefined,
+          createdAt: message.createdAt,
+          toolName: message.toolName,
+          toolCallId: message.role === "tool" ? message.id : undefined
+        };
+      }),
+    [run.messages]
+  );
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {error ? (
-        <SystemMessage className="mx-4 mt-4" fill variant="error">
-          {error}
-        </SystemMessage>
-      ) : null}
-
-      <div className="min-h-0 flex-1">
-        <ChatContainerRoot className="relative h-full">
-          <ChatContainerContent className="mx-auto w-full max-w-4xl gap-4 px-4 py-5">
-            {run.messages.length === 0 ? (
-              <div className="flex min-h-[42vh] flex-col items-center justify-center gap-4 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg border bg-card text-primary shadow-sm">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold">Start the coding thread</h3>
-                  <p className="max-w-md text-sm text-muted-foreground">
-                    The agent can inspect files, edit code, run checks, and report progress in this conversation.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              run.messages.map((message) => <AgentMessageBubble key={message.id} message={message} />)
-            )}
-            <ChatContainerScrollAnchor />
-          </ChatContainerContent>
-          <div className="absolute bottom-4 right-4">
-            <ScrollButton className="shadow-md" />
+    <ChatConversation
+      detectPullRequestLinks
+      emptyState={
+        <div className="flex min-h-[36vh] flex-col items-center justify-center gap-3 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg border bg-card text-primary shadow-sm">
+            <Sparkles className="h-5 w-5" />
           </div>
-        </ChatContainerRoot>
-      </div>
-
-      <div className="border-t bg-card p-3">
-        <PromptInput
-          className="rounded-xl"
-          disabled={!canUseEndpoint || run.status === "completed"}
-          isLoading={isStreaming}
-          onSubmit={() => {
-            if (canSend) {
-              onSend();
-            }
-          }}
-          onValueChange={onChange}
-          value={draft}
-        >
-          <PromptInputTextarea
-            placeholder={
-              canUseEndpoint
-                ? "Reply to the coding agent or add constraints..."
-                : "Select an enabled endpoint before continuing"
-            }
-          />
-          <div className="flex min-h-10 items-center justify-between gap-3 px-2 pb-1">
-            <div className="truncate text-xs text-muted-foreground">
-              {endpoint ? `${endpoint.baseUrl} · ${endpoint.defaultModel}` : "Select an enabled endpoint"}
-            </div>
-            <PromptInputActions>
-              <PromptInputAction tooltip="Continue run">
-                <Button disabled={!canContinue} onClick={onContinue} size="icon" type="button" variant="outline">
-                  <RefreshCw />
-                </Button>
-              </PromptInputAction>
-              {isStreaming ? (
-                <PromptInputAction tooltip="Stop response">
-                  <Button onClick={onStop} size="icon" type="button" variant="outline">
-                    <Square />
-                  </Button>
-                </PromptInputAction>
-              ) : (
-                <PromptInputAction tooltip="Send message">
-                  <Button disabled={!canSend} onClick={onSend} size="icon" type="button">
-                    <Send />
-                  </Button>
-                </PromptInputAction>
-              )}
-            </PromptInputActions>
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold">Start the coding thread</h3>
+            <p className="max-w-md text-sm text-muted-foreground">
+              The agent can inspect files, edit code, run checks, and report progress in this conversation.
+            </p>
           </div>
-        </PromptInput>
-      </div>
-    </div>
+        </div>
+      }
+      error={error}
+      inputActions={
+        <>
+          <PromptInputAction tooltip="Continue run">
+            <Button disabled={!canContinue} onClick={onContinue} size="icon" type="button" variant="outline">
+              <RefreshCw />
+            </Button>
+          </PromptInputAction>
+          {isStreaming ? (
+            <PromptInputAction tooltip="Stop response">
+              <Button onClick={onStop} size="icon" type="button" variant="outline">
+                <Square />
+              </Button>
+            </PromptInputAction>
+          ) : (
+            <PromptInputAction tooltip="Send message">
+              <Button disabled={!canSend} onClick={onSend} size="icon" type="button">
+                <Send />
+              </Button>
+            </PromptInputAction>
+          )}
+        </>
+      }
+      inputDisabled={!canUseEndpoint || run.status === "completed"}
+      inputFooter={endpoint ? `${endpoint.baseUrl} · ${endpoint.defaultModel}` : "Select an enabled endpoint"}
+      inputLoading={isStreaming}
+      inputPlaceholder={
+        canUseEndpoint ? "Reply to the coding agent or add constraints..." : "Select an enabled endpoint before continuing"
+      }
+      inputValue={draft}
+      messages={messages}
+      onInputChange={onChange}
+      onInputSubmit={() => {
+        if (canSend) {
+          onSend();
+        }
+      }}
+      showMessageMeta
+    />
   );
 };
 
@@ -1261,7 +1295,7 @@ const AgentRunCard = ({
   selected: boolean;
 }) => {
   return (
-    <div className={cn("rounded-md border bg-background p-3 transition-colors", selected && "border-primary ring-1 ring-primary")}>
+    <div className={cn("rounded-md border bg-background p-2.5 transition-colors", selected && "border-primary ring-1 ring-primary")}>
       <div className="flex items-start justify-between gap-3">
         <button className="min-w-0 flex-1 text-left" onClick={onSelect} type="button">
           <div className="flex flex-wrap items-center gap-2">
@@ -1269,7 +1303,7 @@ const AgentRunCard = ({
             <h3 className="truncate text-sm font-semibold">{run.title}</h3>
             <AgentRunStatusBadge status={run.status} />
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">{formatDateTime(run.updatedAt)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(run.updatedAt)}</p>
         </button>
         <Button disabled={deleting} onClick={onDelete} size="icon" type="button" variant="ghost">
           {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -1295,105 +1329,6 @@ const AgentRunStatusBadge = ({ status }: { status: AgentRun["status"] }) => {
   return <StateBadge tone="warning">{status}</StateBadge>;
 };
 
-const AgentMessageBubble = ({ message }: { message: AgentRunMessage }) => {
-  const isUser = message.role === "user";
-  const isTool = message.role === "tool";
-  const isSystem = message.role === "system";
-  const isAssistant = message.role === "assistant" || isSystem;
-  const isStreamingPlaceholder = message.id.startsWith("stream-");
-  const parsed = isAssistant ? splitThinking(message.content, "") : { content: message.content, reasoning: "" };
-  const content = parsed.content;
-
-  return (
-    <Message className={cn("group", isUser && "justify-end")}>
-      {!isUser ? <MessageAvatar alt={isTool ? "Tool" : "Assistant"} fallback={isTool ? "TL" : "AI"} src="" /> : null}
-      <div className={cn("min-w-0 space-y-2", isUser && "flex max-w-[760px] flex-col items-end")}>
-        <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", isUser && "justify-end")}>
-          {isTool ? (
-            <Wrench className="h-3.5 w-3.5" />
-          ) : isUser ? (
-            <MessageSquare className="h-3.5 w-3.5" />
-          ) : (
-            <Bot className="h-3.5 w-3.5" />
-          )}
-          <span>{isTool ? message.toolName || "tool" : isSystem ? "system" : message.role}</span>
-          <span>{formatDateTime(message.createdAt)}</span>
-        </div>
-
-        {isAssistant && parsed.reasoning ? (
-          <Reasoning isStreaming={isStreamingPlaceholder} {...(isStreamingPlaceholder ? { open: true } : {})}>
-            <ReasoningTrigger className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-              {isStreamingPlaceholder ? "Thinking" : "Thinking trace"}
-            </ReasoningTrigger>
-            <ReasoningContent className="rounded-md border border-t-0 bg-muted/20 px-3" contentClassName="py-3" markdown>
-              {parsed.reasoning}
-            </ReasoningContent>
-          </Reasoning>
-        ) : null}
-
-        {isAssistant && isStreamingPlaceholder && !content ? (
-          <SystemMessage fill icon={<Loader2 className="size-4 animate-spin" />}>
-            Thinking
-          </SystemMessage>
-        ) : null}
-
-        {content ? (
-          <MessageContent
-            className={cn(
-              "max-w-[min(760px,100%)] rounded-lg px-4 py-3 text-sm leading-6",
-              isUser && "bg-primary text-primary-foreground prose-invert",
-              isTool && "bg-muted font-mono text-xs leading-5 whitespace-pre-wrap",
-              isSystem && "border-destructive/25 bg-destructive/10 text-destructive"
-            )}
-            id={message.id}
-            markdown={isAssistant}
-          >
-            {content}
-          </MessageContent>
-        ) : null}
-
-        {content.includes("https://github.com/") ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <GitPullRequest className="h-3.5 w-3.5" />
-            PR/reference detected
-          </div>
-        ) : null}
-
-        <MessageActions className={cn("opacity-0 transition-opacity group-hover:opacity-100", isUser && "justify-end")}>
-          {isStreamingPlaceholder ? <Badge variant="secondary">streaming</Badge> : null}
-          {content ? <CopyAction value={content} /> : null}
-        </MessageActions>
-      </div>
-      {isUser ? <MessageAvatar alt="You" fallback="ME" src="" /> : null}
-    </Message>
-  );
-};
-
-const CopyAction = ({ value }: { value: string }) => {
-  const { copied, copy } = useCopyState();
-
-  return (
-    <MessageAction tooltip={copied ? "Copied" : "Copy message"}>
-      <Button className="h-7 px-2 text-xs" onClick={() => void copy(value)} size="sm" type="button" variant="ghost">
-        {copied ? <Check /> : <Copy />}
-        Copy
-      </Button>
-    </MessageAction>
-  );
-};
-
-const useCopyState = () => {
-  const [copied, setCopied] = useState(false);
-
-  const copy = async (value: string) => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  };
-
-  return { copied, copy };
-};
-
 const SandboxWorkspaceCard = ({
   onDelete,
   onSelect,
@@ -1406,15 +1341,15 @@ const SandboxWorkspaceCard = ({
   workspace: SandboxWorkspace;
 }) => {
   return (
-    <div className={cn("rounded-md border bg-background p-3 transition-colors", selected && "border-primary ring-1 ring-primary")}>
+    <div className={cn("rounded-md border bg-background p-2.5 transition-colors", selected && "border-primary ring-1 ring-primary")}>
       <div className="flex items-start justify-between gap-3">
         <button className="min-w-0 flex-1 text-left" onClick={onSelect} type="button">
           <div className="flex flex-wrap items-center gap-2">
             <Folder className="h-4 w-4 text-primary" />
-            <h3 className="truncate text-base font-semibold">{workspace.name}</h3>
+            <h3 className="truncate text-sm font-semibold">{workspace.name}</h3>
             <StateBadge tone={workspace.status === "ready" ? "success" : "warning"}>{workspace.status}</StateBadge>
           </div>
-          <div className="mt-2 grid gap-1 text-sm text-muted-foreground">
+          <div className="mt-1 grid gap-1 text-xs text-muted-foreground">
             <span className="truncate">{workspace.repositoryUrl || workspace.path}</span>
             {workspace.ref ? <span className="truncate">{workspace.ref}</span> : null}
           </div>
@@ -1423,7 +1358,7 @@ const SandboxWorkspaceCard = ({
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-      {workspace.error ? <p className="mt-3 text-sm text-destructive">{workspace.error}</p> : null}
+      {workspace.error ? <p className="mt-2 text-sm text-destructive">{workspace.error}</p> : null}
     </div>
   );
 };
@@ -1456,9 +1391,9 @@ const ToolSettingsPanel = ({
   const ready = Boolean(github?.enabled && github.tokenConfigured);
 
   return (
-    <section className="grid h-full min-h-0 overflow-y-auto border bg-background lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
+    <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
       <div className="min-h-0 overflow-y-auto">
-        <div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Github className="h-4 w-4" />
             GitHub
@@ -1471,8 +1406,8 @@ const ToolSettingsPanel = ({
             {testResult ? <GitHubTestBadge result={testResult} /> : null}
           </div>
         </div>
-        <div className="p-4">
-          <form className="space-y-4" onSubmit={onSubmit}>
+        <div className="p-3">
+          <form className="space-y-3" onSubmit={onSubmit}>
             <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
               <span className="font-medium">Enabled</span>
               <input
@@ -1530,12 +1465,12 @@ const ToolSettingsPanel = ({
         </div>
       </div>
 
-      <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
-        <h2 className="mb-4 flex items-center gap-2 text-base font-semibold">
+      <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 p-3 lg:border-l lg:border-t-0">
+        <h2 className="mb-3 flex items-center gap-2 text-base font-semibold">
           <ShieldCheck className="h-4 w-4" />
           Git clone readiness
         </h2>
-        <div className="space-y-3">
+        <div className="space-y-0">
           <ToolStatusRow label="Status" value={ready ? "Ready" : "Not ready"} />
           <ToolStatusRow icon={<KeyRound className="h-4 w-4" />} label="Credential" value={github?.tokenPreview || "Missing"} />
           <ToolStatusRow label="Account" value={github?.username || "Not validated"} />
@@ -1558,15 +1493,15 @@ type EndpointCardProps = {
 
 const EndpointCard = ({ endpoint, selected, testResult, testing, onSelect, onTest }: EndpointCardProps) => {
   return (
-    <div className={cn("rounded-md border bg-background p-3 transition-colors", selected && "border-primary ring-1 ring-primary")}>
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+    <div className={cn("rounded-md border bg-background p-2.5 transition-colors", selected && "border-primary ring-1 ring-primary")}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <button className="min-w-0 flex-1 text-left" onClick={onSelect} type="button">
           <div className="flex flex-wrap items-center gap-2">
             <Server className="h-4 w-4 text-primary" />
-            <h3 className="truncate text-base font-semibold">{endpoint.name}</h3>
+            <h3 className="truncate text-sm font-semibold">{endpoint.name}</h3>
             <StateBadge tone={endpoint.enabled ? "success" : "warning"}>{endpoint.enabled ? "Enabled" : "Disabled"}</StateBadge>
           </div>
-          <div className="mt-2 grid gap-1 text-sm text-muted-foreground">
+          <div className="mt-1 grid gap-1 text-xs text-muted-foreground">
             <span className="truncate">{endpoint.baseUrl}</span>
             <span className="truncate">{endpoint.defaultModel}</span>
           </div>
@@ -1582,7 +1517,7 @@ const EndpointCard = ({ endpoint, selected, testResult, testing, onSelect, onTes
       </div>
 
       {testResult?.models.length ? (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           {testResult.models.slice(0, 8).map((model) => (
             <Badge key={model} variant="secondary">
               {model}
@@ -1591,7 +1526,7 @@ const EndpointCard = ({ endpoint, selected, testResult, testing, onSelect, onTes
         </div>
       ) : null}
 
-      {testResult?.error ? <p className="mt-3 text-sm text-destructive">{testResult.error}</p> : null}
+      {testResult?.error ? <p className="mt-2 text-sm text-destructive">{testResult.error}</p> : null}
     </div>
   );
 };
@@ -1607,7 +1542,7 @@ const Field = ({ children, label }: { children: ReactNode; label: string }) => {
 
 const EmptyState = ({ children }: { children: ReactNode }) => {
   return (
-    <div className="rounded-md border border-dashed bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+    <div className="rounded-md border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
       {children}
     </div>
   );
@@ -1676,7 +1611,7 @@ const GitHubTestBadge = ({ result }: { result: GitHubToolTestResult }) => {
 
 const ToolStatusRow = ({ icon, label, value }: { icon?: ReactNode; label: string; value: string }) => {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+    <div className="flex items-start justify-between gap-3 border-b py-2 text-sm last:border-b-0">
       <span className="flex shrink-0 items-center gap-2 font-medium">
         {icon}
         {label}
@@ -1720,40 +1655,6 @@ const normalizeWorkspaceDraft = (draft: SandboxWorkspaceDraft): CreateSandboxWor
 
 const getAgentRunTitle = (task: string) => {
   return task.split("\n").find(Boolean)?.slice(0, 80) || "Agent task";
-};
-
-const splitThinking = (rawContent: string, rawReasoning: string) => {
-  let content = rawContent;
-  let reasoning = rawReasoning;
-
-  while (content.includes("<think>")) {
-    const openIndex = content.indexOf("<think>");
-    const before = content.slice(0, openIndex);
-    const afterOpen = content.slice(openIndex + "<think>".length);
-    const closeIndex = afterOpen.indexOf("</think>");
-
-    if (closeIndex < 0) {
-      reasoning = joinReasoning(reasoning, afterOpen);
-      content = before;
-      break;
-    }
-
-    reasoning = joinReasoning(reasoning, afterOpen.slice(0, closeIndex));
-    content = `${before}${afterOpen.slice(closeIndex + "</think>".length)}`;
-  }
-
-  return {
-    content: content.trimStart(),
-    reasoning: reasoning.trim()
-  };
-};
-
-const joinReasoning = (current: string, next: string) => {
-  if (!next.trim()) {
-    return current;
-  }
-
-  return current ? `${current}${next}` : next;
 };
 
 const isAbortError = (error: unknown) => {
