@@ -34,7 +34,7 @@ export function TextShimmer({
       <span
         className="pointer-events-none absolute inset-0 block animate-shimmer whitespace-nowrap bg-[length:200%_auto] bg-clip-text text-transparent motion-reduce:animate-none"
         style={{
-          backgroundImage: `linear-gradient(to right, hsl(var(--muted-foreground)) ${50 - dynamicSpread}%, hsl(var(--foreground)) 50%, hsl(var(--muted-foreground)) ${50 + dynamicSpread}%)`,
+          backgroundImage: `linear-gradient(to right, var(--muted-foreground) ${50 - dynamicSpread}%, var(--foreground) 50%, var(--muted-foreground) ${50 + dynamicSpread}%)`,
           animationDuration: `${duration}s`
         }}
       >

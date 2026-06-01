@@ -14,6 +14,8 @@ export const queryKeys = {
   agentRuns: ["agent-runs"] as const,
   endpoints: ["llm-endpoints"] as const,
   health: ["health"] as const,
+  issues: ["issues"] as const,
+  projects: ["projects"] as const,
   sandboxSettings: ["sandbox-settings"] as const,
   sandboxWorkspaces: ["sandbox-workspaces"] as const,
   toolSettings: ["tool-settings"] as const

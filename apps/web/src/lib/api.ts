@@ -1,9 +1,13 @@
 import type {
   AgentRun,
   AppendAgentRunMessageInput,
+  AgentProject,
+  CreateAgentProjectInput,
+  CreateIssueInput,
   ContinueAgentRunInput,
   CreateAgentRunInput,
   CreateLlmEndpointInput,
+  Issue,
   GitHubToolTestResult,
   LlmChatRequest,
   LlmEndpoint,
@@ -14,8 +18,11 @@ import type {
   SandboxSettings,
   SandboxWorkspace,
   CreateSandboxWorkspaceInput,
+  StartIssueInput,
+  UpdateAgentProjectInput,
   UpdateGitHubToolSettingsInput,
-  UpdateLlmEndpointInput
+  UpdateLlmEndpointInput,
+  UpdateIssueInput
 } from "@agent-fleet/shared";
 import axios, { AxiosError, type AxiosRequestConfig } from "axios";
 
@@ -219,6 +226,53 @@ export const api = {
   async testGitHubTool() {
     return request<{ result: GitHubToolTestResult; settings: PublicToolSettings }>("/api/tools/github/test", {
       method: "POST"
+    });
+  },
+  async listProjects() {
+    return request<{ projects: AgentProject[] }>("/api/issues/projects");
+  },
+  async createProject(input: CreateAgentProjectInput) {
+    return request<{ project: AgentProject }>("/api/issues/projects", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async updateProject(id: string, input: UpdateAgentProjectInput) {
+    return request<{ project: AgentProject }>(`/api/issues/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+  async deleteProject(id: string) {
+    return request<void>(`/api/issues/projects/${id}`, {
+      method: "DELETE"
+    });
+  },
+  async listIssues() {
+    return request<{ issues: Issue[] }>("/api/issues");
+  },
+  async createIssue(input: CreateIssueInput) {
+    return request<{ issue: Issue }>("/api/issues", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async updateIssue(id: string, input: UpdateIssueInput) {
+    return request<{ issue: Issue }>(`/api/issues/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+  async analyzeIssue(id: string, input: { endpointId?: string }) {
+    return request<{ issue: Issue }>(`/api/issues/${id}/analyze`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async startIssue(id: string, input: StartIssueInput) {
+    return request<{ run: AgentRun; issue: Issue }>(`/api/issues/${id}/start`, {
+      method: "POST",
+      body: JSON.stringify(input)
     });
   },
   async getSandboxSettings() {

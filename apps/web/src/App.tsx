@@ -5,6 +5,8 @@ import type {
   CreateLlmEndpointInput,
   CreateSandboxWorkspaceInput,
   GitHubToolTestResult,
+  Issue,
+  IssueStatus,
   LlmEndpoint,
   LlmEndpointTestResult,
   PublicToolSettings,
@@ -18,6 +20,7 @@ import {
   Folder,
   Github,
   KeyRound,
+  ClipboardList,
   Loader2,
   MessageSquare,
   Network,
@@ -41,6 +44,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatConversation, type ConversationMessage } from "@/components/chat/chat-conversation";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { ProjectsPanel } from "@/components/issues/issues-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PromptInputAction } from "@/components/ui/prompt-input";
@@ -77,7 +81,7 @@ type SandboxWorkspaceDraft = {
   ref: string;
 };
 
-type AppView = "chat" | "workspaces" | "sandbox" | "settings";
+type AppView = "chat" | "projects" | "workspaces" | "sandbox" | "settings";
 
 const emptyDraft: EndpointDraft = {
   name: "",
@@ -101,7 +105,7 @@ const emptySandboxWorkspaceDraft: SandboxWorkspaceDraft = {
 
 const navigationItems = [
   { value: "chat", label: "Chat", icon: MessageSquare, path: "/chat" },
-  { value: "workspaces", label: "Workspaces", icon: Folder, path: "/workspaces" },
+  { value: "projects", label: "Projects", icon: ClipboardList, path: "/projects" },
   { value: "sandbox", label: "Agent", icon: Terminal, path: "/agent" },
   { value: "settings", label: "Settings", icon: Settings, path: "/settings/endpoints" }
 ] satisfies Array<{ value: AppView; label: string; icon: typeof MessageSquare; path: string }>;
@@ -122,6 +126,8 @@ export default function App() {
     parseAsString.withOptions({ history: "replace", shallow: true })
   );
   const [selectedAgentRunId, setSelectedAgentRunId] = useQueryState("run", parseAsString.withOptions({ history: "replace", shallow: true }));
+  const [selectedProjectId, setSelectedProjectId] = useQueryState("project", parseAsString.withOptions({ history: "replace", shallow: true }));
+  const [selectedIssueId, setSelectedIssueId] = useQueryState("issue", parseAsString.withOptions({ history: "replace", shallow: true }));
   const [draft, setDraft] = useState<EndpointDraft>(emptyDraft);
   const [githubDraft, setGithubDraft] = useState<GitHubToolDraft>(emptyGitHubToolDraft);
   const [workspaceDraft, setWorkspaceDraft] = useState<SandboxWorkspaceDraft>(emptySandboxWorkspaceDraft);
@@ -146,6 +152,8 @@ export default function App() {
   const sandboxSettingsQuery = useQuery({ queryKey: queryKeys.sandboxSettings, queryFn: api.getSandboxSettings });
   const sandboxWorkspacesQuery = useQuery({ queryKey: queryKeys.sandboxWorkspaces, queryFn: api.listSandboxWorkspaces });
   const agentRunsQuery = useQuery({ queryKey: queryKeys.agentRuns, queryFn: api.listAgentRuns });
+  const projectsQuery = useQuery({ queryKey: queryKeys.projects, queryFn: api.listProjects });
+  const issuesQuery = useQuery({ queryKey: queryKeys.issues, queryFn: api.listIssues });
 
   const endpoints = useMemo(() => endpointsQuery.data?.endpoints ?? [], [endpointsQuery.data?.endpoints]);
   const toolSettings = toolSettingsQuery.data?.settings ?? null;
@@ -155,6 +163,8 @@ export default function App() {
     [sandboxWorkspacesQuery.data?.workspaces]
   );
   const agentRuns = useMemo(() => agentRunsQuery.data?.runs ?? [], [agentRunsQuery.data?.runs]);
+  const projects = useMemo(() => projectsQuery.data?.projects ?? [], [projectsQuery.data?.projects]);
+  const issues = useMemo(() => issuesQuery.data?.issues ?? [], [issuesQuery.data?.issues]);
   const loading = fetchingCount > 0;
   const apiOnline = healthQuery.isError ? false : healthQuery.data?.ok ?? null;
 
@@ -176,6 +186,7 @@ export default function App() {
   const endpointError = error ?? getQueryErrorMessage(healthQuery.error, endpointsQuery.error);
   const toolSettingsError = toolError ?? getQueryErrorMessage(toolSettingsQuery.error);
   const sandboxLoadError = sandboxError ?? getQueryErrorMessage(sandboxSettingsQuery.error, sandboxWorkspacesQuery.error, agentRunsQuery.error);
+  const issuesLoadError = getQueryErrorMessage(projectsQuery.error, issuesQuery.error);
   const buildRoute = useCallback(
     (pathname: string, updates: Record<string, string | null> = {}) => {
       const params = new URLSearchParams(location.search);
@@ -249,6 +260,25 @@ export default function App() {
       selectAgentRun(run);
     },
     [queryClient, selectAgentRun]
+  );
+
+  const upsertIssue = useCallback(
+    (issue: Issue) => {
+      queryClient.setQueryData<{ issues: Issue[] }>(queryKeys.issues, (current) => ({
+        issues: [issue, ...(current?.issues ?? []).filter((item) => item.id !== issue.id)]
+      }));
+      void setSelectedIssueId(issue.id);
+    },
+    [queryClient, setSelectedIssueId]
+  );
+
+  const syncIssueFromRun = useCallback(
+    async (issueId: string, run: AgentRun) => {
+      const status = getIssueStatusFromRun(run.status);
+      const response = await api.updateIssue(issueId, { status });
+      upsertIssue(response.issue);
+    },
+    [upsertIssue]
   );
 
   const updateAgentRunInPlace = useCallback(
@@ -330,6 +360,18 @@ export default function App() {
       void setSelectedAgentRunId(null);
     }
   }, [agentRuns, selectedAgentRunId, setSelectedAgentRunId]);
+
+  useEffect(() => {
+    if (selectedProjectId && !projects.some((project) => project.id === selectedProjectId)) {
+      void setSelectedProjectId(null);
+    }
+  }, [projects, selectedProjectId, setSelectedProjectId]);
+
+  useEffect(() => {
+    if (selectedIssueId && !issues.some((issue) => issue.id === selectedIssueId)) {
+      void setSelectedIssueId(null);
+    }
+  }, [issues, selectedIssueId, setSelectedIssueId]);
 
   const startNewEndpoint = () => {
     setDraft(emptyDraft);
@@ -520,11 +562,12 @@ export default function App() {
     await streamAgentRun(run);
   };
 
-  const streamAgentRun = async (run: AgentRun) => {
+  const streamAgentRun = async (run: AgentRun, trackedIssueId?: string) => {
     const controller = new AbortController();
     let activeAssistantMessageId: string | null = null;
     let activeAssistantContent = "";
     let toolMessageId: string | null = null;
+    let finalRun: AgentRun | null = null;
 
     agentStreamAbortRef.current = controller;
     setAgentRunning(true);
@@ -606,6 +649,7 @@ export default function App() {
             }
 
             if (event.type === "done") {
+              finalRun = event.run;
               upsertAgentRun(event.run);
               return;
             }
@@ -684,6 +728,7 @@ export default function App() {
 
             if (event.type === "error") {
               if (event.run) {
+                finalRun = event.run;
                 upsertAgentRun(event.run);
               }
 
@@ -692,9 +737,16 @@ export default function App() {
           }
         }
       );
+
+      if (trackedIssueId && finalRun) {
+        await syncIssueFromRun(trackedIssueId, finalRun);
+      }
     } catch (runError) {
       if (!isAbortError(runError)) {
         setSandboxError(getErrorMessage(runError));
+        if (trackedIssueId && finalRun) {
+          await syncIssueFromRun(trackedIssueId, finalRun);
+        }
       }
     } finally {
       agentStreamAbortRef.current = null;
@@ -741,6 +793,22 @@ export default function App() {
     } finally {
       setAgentRunDeletingId(null);
     }
+  };
+
+  const startIssueRun = async (issue: Issue) => {
+    setSandboxError(null);
+
+    const project = projects.find((item) => item.id === issue.projectId);
+    const response = await api.startIssue(issue.id, {
+      endpointId: issue.endpointId ?? project?.defaultEndpointId ?? selectedEndpoint?.id
+    });
+    upsertIssue(response.issue);
+    upsertAgentRun({ ...response.run, status: "running" });
+    await streamAgentRun(response.run, response.issue.id);
+  };
+
+  const openAgentRun = (runId: string) => {
+    navigate(buildRoute("/agent", { run: runId }));
   };
 
   return (
@@ -800,7 +868,7 @@ export default function App() {
                 <Badge variant="secondary">{endpoints.length} endpoints</Badge>
                 <StateBadge tone={enabledCount > 0 ? "success" : "warning"}>{enabledCount} enabled</StateBadge>
                 <StateBadge tone={githubReady ? "success" : "warning"}>{githubReady ? "GitHub ready" : "GitHub missing"}</StateBadge>
-                <Badge variant="secondary">{sandboxWorkspaces.length} workspaces</Badge>
+                <Badge variant="secondary">{projects.length} projects</Badge>
               </div>
 
               <Button className="h-8 w-8" variant="outline" size="icon" onClick={refreshData} disabled={loading} type="button">
@@ -814,6 +882,28 @@ export default function App() {
           <Routes>
             <Route element={<Navigate replace to={buildRoute("/chat")} />} path="/" />
             <Route element={<ChatPanel endpoint={selectedEndpoint} />} path="/chat" />
+            <Route
+              element={
+                <ProjectsPanel
+                  agentRuns={agentRuns}
+                  endpoints={endpoints}
+                  error={issuesLoadError}
+                  issues={issues}
+                  loading={loading}
+                  onOpenRun={openAgentRun}
+                  onSelectIssue={(id) => void setSelectedIssueId(id)}
+                  onSelectProject={(id) => void setSelectedProjectId(id)}
+                  onStartIssueRun={startIssueRun}
+                  projects={projects}
+                  selectedEndpoint={selectedEndpoint}
+                  selectedIssueId={selectedIssueId}
+                  selectedProjectId={selectedProjectId}
+                  workspaces={sandboxWorkspaces}
+                />
+              }
+              path="/projects"
+            />
+            <Route element={<Navigate replace to={buildRoute("/projects")} />} path="/issues" />
             <Route element={<Navigate replace to={buildRoute("/settings/endpoints")} />} path="/settings" />
             <Route
               element={
@@ -1767,6 +1857,22 @@ const normalizeWorkspaceDraft = (draft: SandboxWorkspaceDraft): CreateSandboxWor
 
 const getAgentRunTitle = (task: string) => {
   return task.split("\n").find(Boolean)?.slice(0, 80) || "Agent task";
+};
+
+const getIssueStatusFromRun = (status: AgentRun["status"]): IssueStatus => {
+  if (status === "completed") {
+    return "completed";
+  }
+
+  if (status === "failed") {
+    return "failed";
+  }
+
+  if (status === "awaiting_user") {
+    return "review";
+  }
+
+  return "running";
 };
 
 const getQueryErrorMessage = (...errors: Array<unknown | null>) => {

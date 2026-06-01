@@ -99,7 +99,108 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_agent_run_messages_run_id_sequence
         ON agent_run_messages (run_id, sequence);
+
+      CREATE TABLE IF NOT EXISTS agent_projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        repository_url TEXT,
+        repository_ref TEXT,
+        workspace_id TEXT,
+        default_endpoint_id TEXT,
+        branch_prefix TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_agent_projects_name
+        ON agent_projects (name);
+
+      CREATE TABLE IF NOT EXISTS agent_project_workspaces (
+        project_id TEXT NOT NULL REFERENCES agent_projects (id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        PRIMARY KEY (project_id, workspace_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS issues (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        project_id TEXT NOT NULL REFERENCES agent_projects (id),
+        workspace_id TEXT,
+        endpoint_id TEXT,
+        agent_run_id TEXT,
+        status TEXT NOT NULL CHECK (status IN ('backlog', 'ready', 'running', 'review', 'completed', 'blocked', 'failed')),
+        priority TEXT NOT NULL CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+        analysis TEXT,
+        branch_name TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_issues_project_status
+        ON issues (project_id, status);
+
+      CREATE INDEX IF NOT EXISTS idx_issues_updated_at
+        ON issues (updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS issue_events (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues (id) ON DELETE CASCADE,
+        type TEXT NOT NULL CHECK (type IN ('created', 'updated', 'analyzed', 'run_started', 'status_changed')),
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_issue_events_issue_created_at
+        ON issue_events (issue_id, created_at ASC);
     `);
+    this.ensureColumn("agent_projects", "repository_url", "TEXT");
+    this.ensureColumn("agent_projects", "repository_ref", "TEXT");
+    this.ensureColumn("agent_projects", "workspace_id", "TEXT");
+    this.sqlite.exec(`
+      UPDATE agent_projects
+      SET workspace_id = (
+        SELECT workspace_id
+        FROM agent_project_workspaces
+        WHERE project_id = agent_projects.id
+        ORDER BY sequence ASC
+        LIMIT 1
+      )
+      WHERE workspace_id IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM agent_project_workspaces
+          WHERE project_id = agent_projects.id
+        );
+
+      UPDATE agent_projects
+      SET repository_url = (
+        SELECT repository_url
+        FROM sandbox_workspaces
+        WHERE id = agent_projects.workspace_id
+      )
+      WHERE repository_url IS NULL
+        AND workspace_id IS NOT NULL;
+
+      UPDATE agent_projects
+      SET repository_ref = (
+        SELECT workspace_ref
+        FROM sandbox_workspaces
+        WHERE id = agent_projects.workspace_id
+      )
+      WHERE repository_ref IS NULL
+        AND workspace_id IS NOT NULL;
+    `);
+  }
+
+  private ensureColumn(tableName: string, columnName: string, definition: string) {
+    const columns = this.sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+
+    if (!columns.some((column) => column.name === columnName)) {
+      this.sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+    }
   }
 }
 

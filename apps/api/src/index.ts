@@ -5,8 +5,10 @@ import { AgentRunStore } from "./agent/agentRunStore";
 import { env } from "./config/env";
 import { AppDatabase } from "./db/database";
 import { HttpError } from "./http/errors";
+import { IssueStore } from "./issues/issueStore";
 import { LlmEndpointStore } from "./llm/endpointStore";
 import { createAgentRouter } from "./routes/agent";
+import { createIssuesRouter } from "./routes/issues";
 import { createLlmRouter } from "./routes/llm";
 import { createSandboxRouter } from "./routes/sandbox";
 import { createToolsRouter } from "./routes/tools";
@@ -19,6 +21,7 @@ const llmStore = new LlmEndpointStore(database, env.defaultEndpoint, env.llmEndp
 const toolSettingsStore = new ToolSettingsStore(database, env.toolSettingsFile);
 const sandboxWorkspaceStore = new SandboxWorkspaceStore(database, env.sandbox.rootDir, env.sandboxWorkspacesFile);
 const agentRunStore = new AgentRunStore(database, env.agentRunsFile);
+const issueStore = new IssueStore(database);
 
 app.use(
   cors({
@@ -34,6 +37,17 @@ app.get("/health", (_request, response) => {
 
 app.use("/api/llm", createLlmRouter({ store: llmStore }));
 app.use("/api/tools", createToolsRouter({ store: toolSettingsStore }));
+app.use(
+  "/api/issues",
+  createIssuesRouter({
+    endpointStore: llmStore,
+    issueStore,
+    runStore: agentRunStore,
+    sandboxSettings: env.sandbox,
+    toolSettingsStore,
+    workspaceStore: sandboxWorkspaceStore
+  })
+);
 app.use(
   "/api/agent",
   createAgentRouter({
