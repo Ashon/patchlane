@@ -1,8 +1,11 @@
 import type {
   CreateLlmEndpointInput,
+  GitHubToolTestResult,
   LlmChatRequest,
   LlmEndpoint,
   LlmEndpointTestResult,
+  PublicToolSettings,
+  UpdateGitHubToolSettingsInput,
   UpdateLlmEndpointInput
 } from "@agent-fleet/shared";
 
@@ -136,6 +139,20 @@ export const api = {
   },
   async testEndpoint(id: string) {
     return request<{ result: LlmEndpointTestResult }>(`/api/llm/endpoints/${id}/test`, {
+      method: "POST"
+    });
+  },
+  async getToolSettings() {
+    return request<{ settings: PublicToolSettings }>("/api/tools/settings");
+  },
+  async updateGitHubToolSettings(input: UpdateGitHubToolSettingsInput) {
+    return request<{ settings: PublicToolSettings }>("/api/tools/settings/github", {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+  async testGitHubTool() {
+    return request<{ result: GitHubToolTestResult; settings: PublicToolSettings }>("/api/tools/github/test", {
       method: "POST"
     });
   },

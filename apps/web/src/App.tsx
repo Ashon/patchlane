@@ -1,7 +1,16 @@
 import { FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CreateLlmEndpointInput, LlmEndpoint, LlmEndpointTestResult } from "@agent-fleet/shared";
+import type {
+  CreateLlmEndpointInput,
+  GitHubToolTestResult,
+  LlmEndpoint,
+  LlmEndpointTestResult,
+  PublicToolSettings,
+  UpdateGitHubToolSettingsInput
+} from "@agent-fleet/shared";
 import {
   CheckCircle2,
+  Github,
+  KeyRound,
   Loader2,
   MessageSquare,
   Network,
@@ -10,7 +19,9 @@ import {
   Save,
   Server,
   Settings,
+  ShieldCheck,
   Trash2,
+  Wrench,
   XCircle
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +51,12 @@ type EndpointDraft = {
   enabled: boolean;
 };
 
+type GitHubToolDraft = {
+  enabled: boolean;
+  token: string;
+  clearToken: boolean;
+};
+
 const emptyDraft: EndpointDraft = {
   name: "",
   baseUrl: "http://localhost:11434/v1",
@@ -48,16 +65,28 @@ const emptyDraft: EndpointDraft = {
   enabled: true
 };
 
+const emptyGitHubToolDraft: GitHubToolDraft = {
+  enabled: false,
+  token: "",
+  clearToken: false
+};
+
 export default function App() {
   const [endpoints, setEndpoints] = useState<LlmEndpoint[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EndpointDraft>(emptyDraft);
+  const [toolSettings, setToolSettings] = useState<PublicToolSettings | null>(null);
+  const [githubDraft, setGithubDraft] = useState<GitHubToolDraft>(emptyGitHubToolDraft);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [toolSaving, setToolSaving] = useState(false);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [githubTesting, setGithubTesting] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, LlmEndpointTestResult>>({});
+  const [githubTestResult, setGithubTestResult] = useState<GitHubToolTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toolError, setToolError] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
 
   const selectedEndpoint = useMemo(
@@ -66,6 +95,7 @@ export default function App() {
   );
 
   const enabledCount = endpoints.filter((endpoint) => endpoint.enabled).length;
+  const githubReady = Boolean(toolSettings?.github.enabled && toolSettings.github.tokenConfigured);
 
   const selectEndpoint = useCallback((endpoint: LlmEndpoint) => {
     selectedIdRef.current = endpoint.id;
@@ -79,14 +109,30 @@ export default function App() {
     });
   }, []);
 
+  const applyToolSettings = useCallback((settings: PublicToolSettings) => {
+    setToolSettings(settings);
+    setGithubDraft({
+      enabled: settings.github.enabled,
+      token: "",
+      clearToken: false
+    });
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setToolError(null);
 
     try {
-      const [health, endpointResponse] = await Promise.all([api.health(), api.listEndpoints()]);
+      const [health, endpointResponse, toolSettingsResponse] = await Promise.all([
+        api.health(),
+        api.listEndpoints(),
+        api.getToolSettings()
+      ]);
+
       setApiOnline(health.ok);
       setEndpoints(endpointResponse.endpoints);
+      applyToolSettings(toolSettingsResponse.settings);
 
       if (!selectedIdRef.current && endpointResponse.endpoints[0]) {
         selectEndpoint(endpointResponse.endpoints[0]);
@@ -97,7 +143,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [selectEndpoint]);
+  }, [applyToolSettings, selectEndpoint]);
 
   useEffect(() => {
     void load();
@@ -189,6 +235,38 @@ export default function App() {
     }
   };
 
+  const saveGitHubToolSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setToolSaving(true);
+    setToolError(null);
+
+    try {
+      const response = await api.updateGitHubToolSettings(normalizeGitHubToolDraft(githubDraft));
+      applyToolSettings(response.settings);
+      setGithubTestResult(null);
+    } catch (saveError) {
+      setToolError(getErrorMessage(saveError));
+    } finally {
+      setToolSaving(false);
+    }
+  };
+
+  const testGitHubTool = async () => {
+    setGithubTesting(true);
+    setToolError(null);
+
+    try {
+      const response = await api.testGitHubTool();
+      setGithubTestResult(response.result);
+      applyToolSettings(response.settings);
+    } catch (testError) {
+      setGithubTestResult(null);
+      setToolError(getErrorMessage(testError));
+    } finally {
+      setGithubTesting(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-muted/30">
       <section className="border-b bg-background">
@@ -207,6 +285,7 @@ export default function App() {
             <StatusBadge online={apiOnline} />
             <Badge variant="secondary">{endpoints.length} endpoints</Badge>
             <StateBadge tone={enabledCount > 0 ? "success" : "warning"}>{enabledCount} enabled</StateBadge>
+            <StateBadge tone={githubReady ? "success" : "warning"}>{githubReady ? "GitHub ready" : "GitHub missing"}</StateBadge>
             <Button variant="outline" onClick={load} disabled={loading}>
               {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               Refresh
@@ -225,6 +304,10 @@ export default function App() {
             <TabsTrigger className="gap-2" value="settings">
               <Settings className="h-4 w-4" />
               Endpoint Settings
+            </TabsTrigger>
+            <TabsTrigger className="gap-2" value="tools">
+              <Wrench className="h-4 w-4" />
+              Tool Settings
             </TabsTrigger>
           </TabsList>
 
@@ -367,10 +450,147 @@ export default function App() {
             </Card>
           </section>
         </TabsContent>
+
+        <TabsContent className="mt-0" value="tools">
+          <ToolSettingsPanel
+            draft={githubDraft}
+            error={toolError}
+            onChange={setGithubDraft}
+            onSubmit={saveGitHubToolSettings}
+            onTest={() => void testGitHubTool()}
+            saving={toolSaving}
+            settings={toolSettings}
+            testResult={githubTestResult}
+            testing={githubTesting}
+          />
+        </TabsContent>
       </Tabs>
     </main>
   );
 }
+
+type ToolSettingsPanelProps = {
+  draft: GitHubToolDraft;
+  error: string | null;
+  onChange: (draft: GitHubToolDraft) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onTest: () => void;
+  saving: boolean;
+  settings: PublicToolSettings | null;
+  testResult: GitHubToolTestResult | null;
+  testing: boolean;
+};
+
+const ToolSettingsPanel = ({
+  draft,
+  error,
+  onChange,
+  onSubmit,
+  onTest,
+  saving,
+  settings,
+  testResult,
+  testing
+}: ToolSettingsPanelProps) => {
+  const github = settings?.github;
+  const tokenInputDisabled = draft.clearToken && !draft.token;
+  const ready = Boolean(github?.enabled && github.tokenConfigured);
+
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card className="h-fit">
+        <CardHeader className="flex-row items-center justify-between space-y-0 p-4">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Github className="h-4 w-4" />
+            GitHub
+          </CardTitle>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <StateBadge tone={draft.enabled ? "success" : "warning"}>{draft.enabled ? "Enabled" : "Disabled"}</StateBadge>
+            <StateBadge tone={github?.tokenConfigured ? "success" : "warning"}>
+              {github?.tokenConfigured ? "PAT configured" : "PAT missing"}
+            </StateBadge>
+            {testResult ? <GitHubTestBadge result={testResult} /> : null}
+          </div>
+        </CardHeader>
+        <Separator />
+        <CardContent className="p-4">
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <span className="font-medium">Enabled</span>
+              <input
+                checked={draft.enabled}
+                className="h-4 w-4 accent-primary"
+                onChange={(event) => onChange({ ...draft, enabled: event.target.checked })}
+                type="checkbox"
+              />
+            </label>
+
+            <Field label="Personal access token">
+              <Input
+                autoComplete="off"
+                disabled={tokenInputDisabled}
+                onChange={(event) => onChange({ ...draft, clearToken: false, token: event.target.value })}
+                placeholder={github?.tokenConfigured ? "Stored token configured" : "github_pat_..."}
+                spellCheck={false}
+                type="password"
+                value={draft.token}
+              />
+            </Field>
+
+            {github?.tokenConfigured ? (
+              <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <span className="font-medium">Clear stored PAT</span>
+                <input
+                  checked={draft.clearToken}
+                  className="h-4 w-4 accent-primary"
+                  disabled={Boolean(draft.token.trim())}
+                  onChange={(event) => onChange({ ...draft, clearToken: event.target.checked })}
+                  type="checkbox"
+                />
+              </label>
+            ) : null}
+
+            {error ? (
+              <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            ) : null}
+
+            {testResult?.error ? <p className="text-sm text-destructive">{testResult.error}</p> : null}
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button className="flex-1" disabled={saving} type="submit">
+                {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                Save
+              </Button>
+              <Button disabled={testing || !github?.tokenConfigured || !draft.enabled} onClick={onTest} type="button" variant="outline">
+                {testing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                Test
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="h-fit">
+        <CardHeader className="p-4">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldCheck className="h-4 w-4" />
+            Git clone readiness
+          </CardTitle>
+        </CardHeader>
+        <Separator />
+        <CardContent className="space-y-3 p-4">
+          <ToolStatusRow label="Status" value={ready ? "Ready" : "Not ready"} />
+          <ToolStatusRow icon={<KeyRound className="h-4 w-4" />} label="Credential" value={github?.tokenPreview || "Missing"} />
+          <ToolStatusRow label="Account" value={github?.username || "Not validated"} />
+          <ToolStatusRow label="Scopes" value={github?.scopes.length ? github.scopes.join(", ") : "Not reported"} />
+          <ToolStatusRow label="Last validation" value={formatDateTime(github?.validatedAt)} />
+        </CardContent>
+      </Card>
+    </section>
+  );
+};
 
 type EndpointCardProps = {
   endpoint: LlmEndpoint;
@@ -479,6 +699,32 @@ const TestBadge = ({ result }: { result: LlmEndpointTestResult }) => {
   );
 };
 
+const GitHubTestBadge = ({ result }: { result: GitHubToolTestResult }) => {
+  return result.ok ? (
+    <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50" variant="outline">
+      <CheckCircle2 className="h-3.5 w-3.5" />
+      {result.latencyMs} ms
+    </Badge>
+  ) : (
+    <Badge className="gap-1" variant="destructive">
+      <XCircle className="h-3.5 w-3.5" />
+      Failed
+    </Badge>
+  );
+};
+
+const ToolStatusRow = ({ icon, label, value }: { icon?: ReactNode; label: string; value: string }) => {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+      <span className="flex shrink-0 items-center gap-2 font-medium">
+        {icon}
+        {label}
+      </span>
+      <span className="min-w-0 break-words text-right text-muted-foreground">{value}</span>
+    </div>
+  );
+};
+
 const normalizeDraft = (draft: EndpointDraft): CreateLlmEndpointInput => ({
   ...draft,
   apiKeyEnvVar: draft.apiKeyEnvVar?.trim() || undefined,
@@ -486,6 +732,32 @@ const normalizeDraft = (draft: EndpointDraft): CreateLlmEndpointInput => ({
   defaultModel: draft.defaultModel.trim(),
   name: draft.name.trim()
 });
+
+const normalizeGitHubToolDraft = (draft: GitHubToolDraft): UpdateGitHubToolSettingsInput => {
+  const token = draft.token.trim();
+  const input: UpdateGitHubToolSettingsInput = {
+    enabled: draft.enabled
+  };
+
+  if (token) {
+    input.token = token;
+    return input;
+  }
+
+  if (draft.clearToken) {
+    input.clearToken = true;
+  }
+
+  return input;
+};
+
+const formatDateTime = (value?: string) => {
+  if (!value) {
+    return "Never";
+  }
+
+  return new Date(value).toLocaleString();
+};
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) {

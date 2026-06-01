@@ -45,6 +45,12 @@ LOCAL_LLM_API_KEY=local-llm
 
 Endpoint metadata is stored in `apps/api/.data/llm-endpoints.json`. API keys are not stored there; only the environment variable name is stored.
 
+## Tool Settings
+
+GitHub tool settings are stored locally in `apps/api/.data/tool-settings.json`.
+
+The frontend `Tool Settings` tab can register a GitHub personal access token for future agent-side HTTPS git operations. The API keeps the token server-side and only returns masked/configured state to the UI.
+
 ## API
 
 - `GET /health`
@@ -55,6 +61,9 @@ Endpoint metadata is stored in `apps/api/.data/llm-endpoints.json`. API keys are
 - `POST /api/llm/endpoints/:id/test`
 - `POST /api/llm/chat`
 - `POST /api/llm/chat/stream`
+- `GET /api/tools/settings`
+- `PATCH /api/tools/settings/github`
+- `POST /api/tools/github/test`
 
 ## Chat UI
 

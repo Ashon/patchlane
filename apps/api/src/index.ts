@@ -5,9 +5,12 @@ import { env } from "./config/env";
 import { HttpError } from "./http/errors";
 import { LlmEndpointStore } from "./llm/endpointStore";
 import { createLlmRouter } from "./routes/llm";
+import { createToolsRouter } from "./routes/tools";
+import { ToolSettingsStore } from "./tools/toolSettingsStore";
 
 const app = express();
-const store = new LlmEndpointStore(env.llmEndpointsFile, env.defaultEndpoint);
+const llmStore = new LlmEndpointStore(env.llmEndpointsFile, env.defaultEndpoint);
+const toolSettingsStore = new ToolSettingsStore(env.toolSettingsFile);
 
 app.use(
   cors({
@@ -21,7 +24,8 @@ app.get("/health", (_request, response) => {
   response.json({ ok: true });
 });
 
-app.use("/api/llm", createLlmRouter({ store }));
+app.use("/api/llm", createLlmRouter({ store: llmStore }));
+app.use("/api/tools", createToolsRouter({ store: toolSettingsStore }));
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   if (error instanceof ZodError) {
@@ -47,4 +51,3 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 app.listen(env.port, () => {
   console.log(`API listening on http://localhost:${env.port}`);
 });
-

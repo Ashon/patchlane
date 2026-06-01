@@ -28,6 +28,7 @@ export const env = {
   port: readInt("PORT", 8787),
   webOrigin: process.env.WEB_ORIGIN?.trim() || "http://localhost:8788",
   llmEndpointsFile: path.resolve(process.cwd(), process.env.LLM_ENDPOINTS_FILE || ".data/llm-endpoints.json"),
+  toolSettingsFile: path.resolve(process.cwd(), process.env.TOOL_SETTINGS_FILE || ".data/tool-settings.json"),
   defaultEndpoint: {
     name: process.env.DEFAULT_LLM_ENDPOINT_NAME?.trim() || "Ollama Local",
     baseUrl: process.env.DEFAULT_LLM_BASE_URL?.trim() || "http://localhost:11434/v1",
