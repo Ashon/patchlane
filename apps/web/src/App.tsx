@@ -683,6 +683,23 @@ export default function App() {
       return { id, content };
     };
 
+    const discardAssistantSegment = () => {
+      const id = activeAssistantMessageId;
+
+      if (!id) {
+        return;
+      }
+
+      activeAssistantMessageId = null;
+      activeAssistantContent = "";
+
+      updateAgentRunInPlace(run.id, (current) => ({
+        ...current,
+        status: "running",
+        messages: current.messages.filter((message) => message.id !== id)
+      }));
+    };
+
     const finalizeAssistantSegment = (serverMessages: AgentRun["messages"] = []) => {
       const assistantSegment = consumeAssistantSegment();
 
@@ -767,6 +784,11 @@ export default function App() {
                   ]
                 };
               });
+              return;
+            }
+
+            if (event.type === "assistant_reset") {
+              discardAssistantSegment();
               return;
             }
 

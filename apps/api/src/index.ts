@@ -52,6 +52,7 @@ app.use(
   "/api/agent",
   createAgentRouter({
     contextTokenBudget: env.agent.contextTokenBudget,
+    durabilityMaxRetries: env.agent.durabilityMaxRetries,
     outputTokenBudget: env.agent.outputTokenBudget,
     endpointStore: llmStore,
     issueStore,

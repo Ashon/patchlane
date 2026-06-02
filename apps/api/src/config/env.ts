@@ -78,6 +78,7 @@ export const env = {
   },
   agent: {
     contextTokenBudget: readInt("AGENT_CONTEXT_TOKEN_BUDGET", 24_000),
+    durabilityMaxRetries: readInt("AGENT_DURABILITY_MAX_RETRIES", 2),
     outputTokenBudget: readInt("AGENT_OUTPUT_TOKEN_BUDGET", 8_192)
   },
   defaultEndpoint: {

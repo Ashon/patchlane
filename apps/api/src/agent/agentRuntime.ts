@@ -19,6 +19,7 @@ type AgentRuntimeOptions = {
   runStore: AgentRunStore;
   settings: SandboxSettings;
   contextTokenBudget?: number;
+  durabilityMaxRetries?: number;
   outputTokenBudget?: number;
   getEndpoint: (id?: string) => Promise<LlmEndpoint>;
   getWorkspace: (id: string) => Promise<SandboxWorkspace>;
@@ -50,6 +51,9 @@ type AgentRuntimeStreamEvent =
       content: string;
     }
   | {
+      type: "assistant_reset";
+    }
+  | {
       type: "tool_start";
       toolName: string;
     }
@@ -73,6 +77,7 @@ type AgentRuntimeStreamEmit = (event: AgentRuntimeStreamEvent) => void;
 const maxToolIterations = 8;
 const retryToolIterations = 4;
 const totalToolIterations = maxToolIterations + retryToolIterations;
+const defaultDurabilityMaxRetries = 2;
 const toolPromptContentMaxChars = 6_000;
 const defaultReadFileMaxLines = 240;
 const maxReadFileMaxLines = 500;
@@ -110,141 +115,155 @@ export class AgentRuntime {
 
     try {
       const client = createOpenAIClient(endpoint);
-      const preparedContext = prepareAgentContext({
-        messages: run.messages,
-        systemPrompt: getSystemPrompt(workspace, this.options.settings),
-        tokenBudget: this.options.contextTokenBudget
-      });
-      run = await this.options.runStore.setContext(run.id, preparedContext.context);
-      const messages = [...preparedContext.messages];
-      const replayRecovery = getReplayRecoveryPrompt(run);
-
-      if (replayRecovery) {
-        messages.push({
-          role: "system",
-          content: replayRecovery
-        });
-      }
-
-      const pendingMessages: Array<Omit<AgentRunMessage, "id" | "createdAt">> = [];
+      const durabilityMaxRetries = getDurabilityMaxRetries(this.options.durabilityMaxRetries);
       let completed = false;
       let awaitingUser = false;
 
-      for (let iteration = 0; iteration < totalToolIterations; iteration += 1) {
-        if (iteration === maxToolIterations) {
+      for (let durabilityAttempt = 0; durabilityAttempt <= durabilityMaxRetries; durabilityAttempt += 1) {
+        const preparedContext = prepareAgentContext({
+          messages: run.messages,
+          systemPrompt: getSystemPrompt(workspace, this.options.settings),
+          tokenBudget: this.options.contextTokenBudget
+        });
+        run = await this.options.runStore.setContext(run.id, preparedContext.context);
+        const messages = [...preparedContext.messages];
+        const recoveryPrompt =
+          durabilityAttempt > 0 ? getDurabilityRetryPrompt(durabilityAttempt, durabilityMaxRetries) : getReplayRecoveryPrompt(run);
+
+        if (recoveryPrompt) {
           messages.push({
             role: "system",
-            content: toolIterationRetryPrompt
+            content: recoveryPrompt
           });
         }
 
-        const completion = await client.chat.completions.create({
-          model: model || run.model || endpoint.defaultModel,
-          messages: messages as never,
-          tools: agentTools as never,
-          tool_choice: "auto",
-          temperature: 0.2,
-          max_tokens: this.options.outputTokenBudget
-        });
+        const pendingMessages: Array<Omit<AgentRunMessage, "id" | "createdAt">> = [];
 
-        const message = completion.choices[0]?.message as {
-          content?: string | null;
-          tool_calls?: Array<{
-            id: string;
-            function: {
-              name: string;
-              arguments: string;
-            };
-          }>;
-        } | null;
-
-        if (!message) {
-          throw new Error("LLM returned an empty response");
-        }
-
-        messages.push({
-          role: "assistant",
-          content: message.content || "",
-          tool_calls: message.tool_calls
-        });
-
-        if (!message.tool_calls?.length) {
-          if (isContinuationOnlyContent(message.content || "")) {
+        for (let iteration = 0; iteration < totalToolIterations; iteration += 1) {
+          if (iteration === maxToolIterations) {
             messages.push({
               role: "system",
-              content: thinkingOnlyContinuationPrompt
+              content: toolIterationRetryPrompt
             });
-            continue;
           }
 
-          pendingMessages.push({
-            role: "assistant",
-            content: message.content || ""
+          const completion = await client.chat.completions.create({
+            model: model || run.model || endpoint.defaultModel,
+            messages: messages as never,
+            tools: agentTools as never,
+            tool_choice: "auto",
+            temperature: 0.2,
+            max_tokens: this.options.outputTokenBudget
           });
-          awaitingUser = true;
-          break;
-        }
 
-        const toolAdjacentAssistantContent = getToolAdjacentAssistantContent(message.content || "");
+          const message = completion.choices[0]?.message as {
+            content?: string | null;
+            tool_calls?: Array<{
+              id: string;
+              function: {
+                name: string;
+                arguments: string;
+              };
+            }>;
+          } | null;
 
-        if (toolAdjacentAssistantContent) {
-          pendingMessages.push({
-            role: "assistant",
-            content: toolAdjacentAssistantContent
-          });
-        }
-
-        for (const toolCall of message.tool_calls) {
-          const result = await executeAgentTool(toolCall.function.name, toolCall.function.arguments, {
-            settings: this.options.settings,
-            workspace,
-            githubToken
-          });
+          if (!message) {
+            throw new Error("LLM returned an empty response");
+          }
 
           messages.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: toToolPromptContent(result.content)
+            role: "assistant",
+            content: message.content || "",
+            tool_calls: message.tool_calls
           });
 
-          pendingMessages.push({
-            role: "tool",
-            toolName: toolCall.function.name,
-            content: result.content
-          });
+          if (!message.tool_calls?.length) {
+            if (isToolIterationLimitContent(message.content || "")) {
+              break;
+            }
 
-          if (result.prUrl) {
-            run = await this.options.runStore.setPullRequest(run.id, result.prUrl);
-          }
+            if (isContinuationOnlyContent(message.content || "")) {
+              messages.push({
+                role: "system",
+                content: thinkingOnlyContinuationPrompt
+              });
+              continue;
+            }
 
-          if (result.resultSummary) {
-            run = await this.options.runStore.setResultSummary(run.id, result.resultSummary);
-          }
-
-          if (result.completed) {
-            completed = true;
-          }
-
-          if (result.awaitingUser) {
+            pendingMessages.push({
+              role: "assistant",
+              content: message.content || ""
+            });
             awaitingUser = true;
+            break;
           }
+
+          const toolAdjacentAssistantContent = getToolAdjacentAssistantContent(message.content || "");
+
+          if (toolAdjacentAssistantContent) {
+            pendingMessages.push({
+              role: "assistant",
+              content: toolAdjacentAssistantContent
+            });
+          }
+
+          for (const toolCall of message.tool_calls) {
+            const result = await executeAgentTool(toolCall.function.name, toolCall.function.arguments, {
+              settings: this.options.settings,
+              workspace,
+              githubToken
+            });
+
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: toToolPromptContent(result.content)
+            });
+
+            pendingMessages.push({
+              role: "tool",
+              toolName: toolCall.function.name,
+              content: result.content
+            });
+
+            if (result.prUrl) {
+              run = await this.options.runStore.setPullRequest(run.id, result.prUrl);
+            }
+
+            if (result.resultSummary) {
+              run = await this.options.runStore.setResultSummary(run.id, result.resultSummary);
+            }
+
+            if (result.completed) {
+              completed = true;
+            }
+
+            if (result.awaitingUser) {
+              awaitingUser = true;
+            }
+          }
+
+          if (completed || awaitingUser) {
+            break;
+          }
+        }
+
+        if (pendingMessages.length > 0) {
+          run = await this.options.runStore.appendMessages(run.id, pendingMessages);
         }
 
         if (completed || awaitingUser) {
           break;
         }
-      }
 
-      if (!completed && !awaitingUser) {
-        pendingMessages.push({
-          role: "assistant",
-          content: toolIterationLimitMessage
-        });
-        awaitingUser = true;
-      }
-
-      if (pendingMessages.length > 0) {
-        await this.options.runStore.appendMessages(run.id, pendingMessages);
+        if (durabilityAttempt >= durabilityMaxRetries) {
+          run = await this.options.runStore.appendMessage(run.id, {
+            role: "assistant",
+            content: toolIterationLimitMessage
+          });
+          awaitingUser = true;
+          break;
+        }
       }
 
       run = await this.options.runStore.setStatus(run.id, completed ? "completed" : "awaiting_user");
@@ -271,168 +290,182 @@ export class AgentRuntime {
 
     try {
       const client = createOpenAIClient(endpoint);
-      const preparedContext = prepareAgentContext({
-        messages: run.messages,
-        systemPrompt: getSystemPrompt(workspace, this.options.settings),
-        tokenBudget: this.options.contextTokenBudget
-      });
-      run = await this.options.runStore.setContext(run.id, preparedContext.context);
-      emit({ type: "run", run });
-      const messages = [...preparedContext.messages];
-      const replayRecovery = getReplayRecoveryPrompt(run);
-
-      if (replayRecovery) {
-        messages.push({
-          role: "system",
-          content: replayRecovery
-        });
-      }
-
+      const durabilityMaxRetries = getDurabilityMaxRetries(this.options.durabilityMaxRetries);
       let completed = false;
       let awaitingUser = false;
 
-      for (let iteration = 0; iteration < totalToolIterations; iteration += 1) {
-        if (iteration === maxToolIterations) {
+      for (let durabilityAttempt = 0; durabilityAttempt <= durabilityMaxRetries; durabilityAttempt += 1) {
+        const preparedContext = prepareAgentContext({
+          messages: run.messages,
+          systemPrompt: getSystemPrompt(workspace, this.options.settings),
+          tokenBudget: this.options.contextTokenBudget
+        });
+        run = await this.options.runStore.setContext(run.id, preparedContext.context);
+        emit({ type: "run", run });
+        const messages = [...preparedContext.messages];
+        const recoveryPrompt =
+          durabilityAttempt > 0 ? getDurabilityRetryPrompt(durabilityAttempt, durabilityMaxRetries) : getReplayRecoveryPrompt(run);
+
+        if (recoveryPrompt) {
           messages.push({
             role: "system",
-            content: toolIterationRetryPrompt
+            content: recoveryPrompt
           });
         }
 
-        let assistantContent = "";
-        const toolCallsByIndex = new Map<number, PendingToolCall>();
-        const stream = await client.chat.completions.create({
-          model: model || run.model || endpoint.defaultModel,
-          messages: messages as never,
-          tools: agentTools as never,
-          tool_choice: "auto",
-          temperature: 0.2,
-          max_tokens: this.options.outputTokenBudget,
-          stream: true
-        });
-
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta as StreamDelta | undefined;
-          const content = typeof delta?.content === "string" ? delta.content : "";
-
-          if (content) {
-            assistantContent += content;
-            emit({ type: "assistant_delta", content });
-          }
-
-          for (const toolCallDelta of delta?.tool_calls || []) {
-            mergeToolCallDelta(toolCallsByIndex, toolCallDelta);
-          }
-        }
-
-        const toolCalls = Array.from(toolCallsByIndex.entries())
-          .sort(([left], [right]) => left - right)
-          .map(([, toolCall]) => ({
-            id: toolCall.id || `call_${randomUUID().replace(/-/gu, "")}`,
-            type: "function",
-            function: {
-              name: toolCall.function.name || "",
-              arguments: toolCall.function.arguments
-            }
-          }));
-
-        messages.push({
-          role: "assistant",
-          content: assistantContent,
-          tool_calls: toolCalls.length ? toolCalls : undefined
-        });
-
-        if (!toolCalls.length) {
-          if (isContinuationOnlyContent(assistantContent)) {
+        for (let iteration = 0; iteration < totalToolIterations; iteration += 1) {
+          if (iteration === maxToolIterations) {
             messages.push({
               role: "system",
-              content: thinkingOnlyContinuationPrompt
+              content: toolIterationRetryPrompt
             });
-            continue;
           }
 
-          if (!assistantContent.trim()) {
-            run = await this.options.runStore.appendMessage(run.id, {
-              role: "assistant",
-              content: "I need more context before I can continue."
-            });
-            emit({ type: "run", run });
-          } else {
-            run = await this.options.runStore.appendMessage(run.id, {
-              role: "assistant",
-              content: assistantContent
-            });
-            emit({ type: "run", run });
+          let assistantContent = "";
+          const toolCallsByIndex = new Map<number, PendingToolCall>();
+          const stream = await client.chat.completions.create({
+            model: model || run.model || endpoint.defaultModel,
+            messages: messages as never,
+            tools: agentTools as never,
+            tool_choice: "auto",
+            temperature: 0.2,
+            max_tokens: this.options.outputTokenBudget,
+            stream: true
+          });
+
+          for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta as StreamDelta | undefined;
+            const content = typeof delta?.content === "string" ? delta.content : "";
+
+            if (content) {
+              assistantContent += content;
+              emit({ type: "assistant_delta", content });
+            }
+
+            for (const toolCallDelta of delta?.tool_calls || []) {
+              mergeToolCallDelta(toolCallsByIndex, toolCallDelta);
+            }
           }
 
-          awaitingUser = true;
-          break;
-        }
-
-        const userFacingAssistantContent = getToolAdjacentAssistantContent(assistantContent);
-
-        if (userFacingAssistantContent) {
-          run = await this.options.runStore.appendMessage(run.id, {
-            role: "assistant",
-            content: userFacingAssistantContent
-          });
-          emit({ type: "run", run });
-        }
-
-        for (const toolCall of toolCalls) {
-          const toolName = toolCall.function.name;
-          emit({ type: "tool_start", toolName });
-
-          const result = await executeAgentTool(toolName, toolCall.function.arguments, {
-            settings: this.options.settings,
-            workspace,
-            githubToken
-          });
+          const toolCalls = Array.from(toolCallsByIndex.entries())
+            .sort(([left], [right]) => left - right)
+            .map(([, toolCall]) => ({
+              id: toolCall.id || `call_${randomUUID().replace(/-/gu, "")}`,
+              type: "function",
+              function: {
+                name: toolCall.function.name || "",
+                arguments: toolCall.function.arguments
+              }
+            }));
 
           messages.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: toToolPromptContent(result.content)
+            role: "assistant",
+            content: assistantContent,
+            tool_calls: toolCalls.length ? toolCalls : undefined
           });
 
-          run = await this.options.runStore.appendMessage(run.id, {
-            role: "tool",
-            toolName,
-            content: result.content
-          });
+          if (!toolCalls.length) {
+            if (isToolIterationLimitContent(assistantContent)) {
+              emit({ type: "assistant_reset" });
+              break;
+            }
 
-          if (result.prUrl) {
-            run = await this.options.runStore.setPullRequest(run.id, result.prUrl);
-          }
+            if (isContinuationOnlyContent(assistantContent)) {
+              messages.push({
+                role: "system",
+                content: thinkingOnlyContinuationPrompt
+              });
+              continue;
+            }
 
-          if (result.resultSummary) {
-            run = await this.options.runStore.setResultSummary(run.id, result.resultSummary);
-          }
+            if (!assistantContent.trim()) {
+              run = await this.options.runStore.appendMessage(run.id, {
+                role: "assistant",
+                content: "I need more context before I can continue."
+              });
+              emit({ type: "run", run });
+            } else {
+              run = await this.options.runStore.appendMessage(run.id, {
+                role: "assistant",
+                content: assistantContent
+              });
+              emit({ type: "run", run });
+            }
 
-          emit({ type: "tool_result", toolName, content: result.content });
-          emit({ type: "run", run });
-
-          if (result.completed) {
-            completed = true;
-          }
-
-          if (result.awaitingUser) {
             awaitingUser = true;
+            break;
+          }
+
+          const userFacingAssistantContent = getToolAdjacentAssistantContent(assistantContent);
+
+          if (userFacingAssistantContent) {
+            run = await this.options.runStore.appendMessage(run.id, {
+              role: "assistant",
+              content: userFacingAssistantContent
+            });
+            emit({ type: "run", run });
+          }
+
+          for (const toolCall of toolCalls) {
+            const toolName = toolCall.function.name;
+            emit({ type: "tool_start", toolName });
+
+            const result = await executeAgentTool(toolName, toolCall.function.arguments, {
+              settings: this.options.settings,
+              workspace,
+              githubToken
+            });
+
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: toToolPromptContent(result.content)
+            });
+
+            run = await this.options.runStore.appendMessage(run.id, {
+              role: "tool",
+              toolName,
+              content: result.content
+            });
+
+            if (result.prUrl) {
+              run = await this.options.runStore.setPullRequest(run.id, result.prUrl);
+            }
+
+            if (result.resultSummary) {
+              run = await this.options.runStore.setResultSummary(run.id, result.resultSummary);
+            }
+
+            emit({ type: "tool_result", toolName, content: result.content });
+            emit({ type: "run", run });
+
+            if (result.completed) {
+              completed = true;
+            }
+
+            if (result.awaitingUser) {
+              awaitingUser = true;
+            }
+          }
+
+          if (completed || awaitingUser) {
+            break;
           }
         }
 
         if (completed || awaitingUser) {
           break;
         }
-      }
 
-      if (!completed && !awaitingUser) {
-        run = await this.options.runStore.appendMessage(run.id, {
-          role: "assistant",
-          content: toolIterationLimitMessage
-        });
-        emit({ type: "run", run });
-        awaitingUser = true;
+        if (durabilityAttempt >= durabilityMaxRetries) {
+          run = await this.options.runStore.appendMessage(run.id, {
+            role: "assistant",
+            content: toolIterationLimitMessage
+          });
+          emit({ type: "run", run });
+          awaitingUser = true;
+          break;
+        }
       }
 
       run = await this.options.runStore.setStatus(run.id, completed ? "completed" : "awaiting_user");
@@ -781,7 +814,7 @@ const getPositiveInteger = (value: unknown, fallback: number, max: number) => {
 const getReplayRecoveryPrompt = (run: AgentRun) => {
   const recentMessages = run.messages.slice(-6);
   const recentText = recentMessages.map((message) => message.content).join("\n");
-  const hasToolLimit = recentText.includes(toolIterationLimitMessage);
+  const hasToolLimit = isToolIterationLimitContent(recentText);
   const assistantTail = recentMessages
     .filter((message) => message.role === "assistant")
     .slice(-3);
@@ -790,8 +823,33 @@ const getReplayRecoveryPrompt = (run: AgentRun) => {
   return hasToolLimit || thinkingOnlyTail ? replayRecoveryPrompt : undefined;
 };
 
+const getDurabilityMaxRetries = (value: number | undefined) => {
+  const parsed = value ?? defaultDurabilityMaxRetries;
+
+  if (!Number.isFinite(parsed)) {
+    return defaultDurabilityMaxRetries;
+  }
+
+  return Math.max(0, Math.floor(parsed));
+};
+
+const getDurabilityRetryPrompt = (attempt: number, maxRetries: number) => {
+  return [
+    "Durability auto-retry mode:",
+    `- The previous tool pass exhausted its ${totalToolIterations} tool-call budget without finishing.`,
+    `- This is automatic retry ${attempt} of ${maxRetries}.`,
+    "- Continue from the persisted tool results and compacted context.",
+    "- Do not repeat broad file listing or generic exploration.",
+    "- Prefer targeted reads, concrete edits, focused verification, finish, or request_user_input if truly blocked."
+  ].join("\n");
+};
+
 const isContinuationOnlyContent = (content: string) => {
   return isThinkingOnlyContent(content) || isAgentProgressOnlyContent(stripThinking(content));
+};
+
+const isToolIterationLimitContent = (content: string) => {
+  return content.includes(toolIterationLimitMessage);
 };
 
 const isThinkingOnlyContent = (content: string) => {

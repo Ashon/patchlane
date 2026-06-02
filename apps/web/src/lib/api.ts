@@ -93,6 +93,9 @@ type AgentRunStreamEvent =
       content: string;
     }
   | {
+      type: "assistant_reset";
+    }
+  | {
       type: "tool_start";
       toolName: string;
     }

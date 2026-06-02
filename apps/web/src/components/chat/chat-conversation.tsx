@@ -419,14 +419,15 @@ const RewindAction = ({ disabled, onClick }: { disabled?: boolean; onClick: () =
     <MessageAction tooltip="Rewind to here">
       <Button
         aria-label="Rewind to this message"
-        className="size-6 rounded-md bg-background/75 text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+        className="h-6 gap-1 rounded-md bg-background/80 px-2 text-[11px] text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3"
         disabled={disabled}
         onClick={onClick}
-        size="icon-xs"
+        size="xs"
         type="button"
         variant="ghost"
       >
         <RotateCcw />
+        <span>Rewind</span>
       </Button>
     </MessageAction>
   );
@@ -439,13 +440,14 @@ const CopyAction = ({ value }: { value: string }) => {
     <MessageAction tooltip={copied ? "Copied" : "Copy message"}>
       <Button
         aria-label={copied ? "Copied" : "Copy message"}
-        className="size-6 rounded-md bg-background/75 text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+        className="h-6 gap-1 rounded-md bg-background/80 px-2 text-[11px] text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3"
         onClick={() => void copy(value)}
-        size="icon-xs"
+        size="xs"
         type="button"
         variant="ghost"
       >
         {copied ? <Check /> : <Copy />}
+        <span>{copied ? "Copied" : "Copy"}</span>
       </Button>
     </MessageAction>
   );

@@ -20,11 +20,13 @@ type AgentRouterOptions = {
   toolSettingsStore: ToolSettingsStore;
   sandboxSettings: SandboxSettings;
   contextTokenBudget: number;
+  durabilityMaxRetries: number;
   outputTokenBudget: number;
 };
 
 export const createAgentRouter = ({
   contextTokenBudget,
+  durabilityMaxRetries,
   endpointStore,
   issueStore,
   runStore,
@@ -37,6 +39,7 @@ export const createAgentRouter = ({
     runStore,
     settings: sandboxSettings,
     contextTokenBudget,
+    durabilityMaxRetries,
     outputTokenBudget,
     getEndpoint: async (id) => (id ? endpointStore.get(id) : endpointStore.getDefault()),
     getWorkspace: (id) => workspaceStore.get(id),
