@@ -66,7 +66,13 @@ export const env = {
       "awk",
       "find",
       "rg",
-      "sed"
+      "sed",
+      "mkdir",
+      "cp",
+      "mv",
+      "rm",
+      "touch",
+      "chmod"
     ]),
     envAllowlist: readCsv("SANDBOX_ENV_ALLOWLIST", ["PATH", "HOME", "LANG", "LC_ALL"])
   },

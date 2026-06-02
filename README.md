@@ -65,7 +65,7 @@ Default sandbox policy:
 SANDBOX_ROOT_DIR=.data/sandboxes
 SANDBOX_DEFAULT_TIMEOUT_MS=120000
 SANDBOX_MAX_OUTPUT_BYTES=131072
-SANDBOX_ALLOWED_COMMANDS=git,pnpm,npm,node,tsx,tsc,ls,pwd,cat,rg,sed
+SANDBOX_ALLOWED_COMMANDS=git,pnpm,npm,node,tsx,tsc,ls,pwd,cat,head,tail,wc,grep,awk,find,rg,sed,mkdir,cp,mv,rm,touch,chmod
 SANDBOX_ENV_ALLOWLIST=PATH,HOME,LANG,LC_ALL
 ```
 

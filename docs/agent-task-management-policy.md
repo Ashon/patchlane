@@ -369,6 +369,9 @@ Tool policy:
 
 - File and command tools must be scoped to the task workspace path.
 - Git commands are allowed only through allowlisted command execution.
+- Basic file-operation commands (`mkdir`, `cp`, `mv`, `rm`, `touch`, `chmod`) are allowlisted so coding tasks can edit worktree files without needing a container yet.
+- File-operation path arguments must stay inside the task workspace.
+- Recursive `rm`, destructive git subcommands, and dangerous `find` actions such as `-delete` and `-exec` are blocked by the sandbox executor.
 - GitHub credentials are injected server-side and are never exposed to the UI.
 - Raw tool JSON should be rendered as Tool UI, not copied into assistant messages.
 
