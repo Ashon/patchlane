@@ -19,7 +19,9 @@ export const splitThinking = (rawContent: string, rawReasoning = '') => {
   }
 
   return {
-    content: removeToolTranscripts(content).trimStart(),
+    content: trimTrailingOpeningThinkFragment(
+      removeToolTranscripts(content),
+    ).trimStart(),
     reasoning: dedupeRepeatedLines(removeToolTranscripts(reasoning).trim()),
   }
 }
@@ -80,6 +82,21 @@ const agentProgressPatterns = [
 ]
 
 const normalizeText = (value: string) => value.replace(/\s+/gu, ' ').trim()
+
+const trimTrailingOpeningThinkFragment = (value: string) => {
+  const marker = '<think>'
+  const maxFragmentLength = Math.min(value.length, marker.length - 1)
+
+  for (let length = maxFragmentLength; length > 0; length -= 1) {
+    const fragment = value.slice(-length).toLowerCase()
+
+    if (marker.startsWith(fragment)) {
+      return value.slice(0, -length)
+    }
+  }
+
+  return value
+}
 
 const isDuplicateText = (left: string, right: string) => {
   const normalizedLeft = normalizeText(left)

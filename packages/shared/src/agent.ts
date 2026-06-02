@@ -67,6 +67,7 @@ export const agentRunMessageSchema = z.object({
   role: z.enum(['user', 'assistant', 'tool', 'system']),
   content: z.string(),
   toolName: z.string().optional(),
+  toolInput: z.record(z.unknown()).optional(),
   metadata: agentRunMessageMetadataSchema.optional(),
   createdAt: isoDateSchema,
 })

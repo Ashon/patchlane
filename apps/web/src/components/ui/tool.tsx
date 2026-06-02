@@ -67,8 +67,10 @@ const Tool = ({
 
   const getStateBadge = () => {
     const baseClasses = cn(
-      'rounded-full font-medium',
-      isCompact ? 'px-1.5 py-0 text-[11px] leading-4' : 'px-2 py-0.5 text-xs',
+      'inline-flex justify-center rounded-full font-medium',
+      isCompact
+        ? 'min-w-[4.75rem] px-1.5 py-0 text-[11px] leading-4'
+        : 'min-w-[5.25rem] px-2 py-0.5 text-xs',
     )
     switch (state) {
       case 'input-streaming':

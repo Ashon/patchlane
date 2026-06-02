@@ -103,6 +103,7 @@ type AgentRunStreamEvent =
   | {
       type: 'tool_start'
       toolName: string
+      toolInput?: string
       metadata?: AgentRunMessageMetadata
     }
   | {

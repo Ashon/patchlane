@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import type { AgentRunMessageMetadata } from '@agent-fleet/shared'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Bot, Check, Copy, Info, MessageSquare, RotateCcw } from 'lucide-react'
+import { Bot, Check, Copy, MessageSquare, RotateCcw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -83,6 +83,7 @@ type ChatConversationProps = {
   onInputChange: (value: string) => void
   onInputSubmit: () => void
   onRewindMessage?: (message: ConversationMessage) => void
+  preserveEmptyMessages?: boolean
   showAssistantAvatar?: boolean
   showInlineActivity?: boolean
   showMessageMeta?: boolean
@@ -103,6 +104,7 @@ export const ChatConversation = ({
   onInputChange,
   onInputSubmit,
   onRewindMessage,
+  preserveEmptyMessages = false,
   showAssistantAvatar = true,
   showInlineActivity = true,
   showMessageMeta = false,
@@ -114,8 +116,13 @@ export const ChatConversation = ({
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
   const groups = useMemo(() => groupMessages(messages), [messages])
   const renderItems = useMemo(
-    () => createConversationRenderItems(groups, showStreamingPlaceholder),
-    [groups, showStreamingPlaceholder],
+    () =>
+      createConversationRenderItems(
+        groups,
+        showStreamingPlaceholder,
+        preserveEmptyMessages,
+      ),
+    [groups, preserveEmptyMessages, showStreamingPlaceholder],
   )
   const hasInlineActivity = useMemo(
     () => messages.some((message) => message.status === 'streaming'),
@@ -202,6 +209,7 @@ export const ChatConversation = ({
                           metaMessage={item.metaMessage}
                           onReasoningOpenChange={setReasoningVisibility}
                           onRewind={onRewindMessage}
+                          preserveEmpty={preserveEmptyMessages}
                           reasoningOpen={reasoningOpen[item.message.id]}
                           rewindDisabled={inputLoading}
                           showAvatar={showAssistantAvatar}
@@ -299,6 +307,7 @@ const groupMessages = (messages: ConversationMessage[]) => {
 const createConversationRenderItems = (
   groups: ConversationMessageGroup[],
   showStreamingPlaceholder: boolean,
+  preserveEmptyMessages: boolean,
 ) => {
   return groups.flatMap<ConversationRenderItem>((group) => {
     if (group.role === 'user') {
@@ -306,9 +315,11 @@ const createConversationRenderItems = (
       return message ? [{ id: group.id, role: 'user', message }] : []
     }
 
-    const visibleMessages = group.messages.filter((message) =>
-      shouldRenderAssistantPart(message, showStreamingPlaceholder),
-    )
+    const visibleMessages = preserveEmptyMessages
+      ? group.messages
+      : group.messages.filter((message) =>
+          shouldRenderAssistantPart(message, showStreamingPlaceholder),
+        )
     const metaMessage =
       group.messages.find(
         (message) => message.role === 'assistant' || message.role === 'system',
@@ -372,12 +383,14 @@ const getEstimatedRenderItemSize = (item?: ConversationRenderItem) => {
 }
 
 const MessageBlockFrame = ({
+  accessory,
   children,
   className,
   overlay,
   overlayClassName,
   overlaySide = 'right',
 }: {
+  accessory?: ReactNode
   children: ReactNode
   className?: string
   overlay?: ReactNode
@@ -387,16 +400,23 @@ const MessageBlockFrame = ({
   return (
     <div className={cn('group/block relative min-w-0 max-w-full', className)}>
       {children}
-      {overlay ? (
-        <MessageBlockOverlay className={overlayClassName} side={overlaySide}>
-          {overlay}
-        </MessageBlockOverlay>
+      {accessory || overlay ? (
+        <MessageBlockSideRail className={overlayClassName} side={overlaySide}>
+          {accessory ? (
+            <div className="pointer-events-auto shrink-0">{accessory}</div>
+          ) : null}
+          {overlay ? (
+            <MessageActions className="pointer-events-none gap-1 opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100">
+              {overlay}
+            </MessageActions>
+          ) : null}
+        </MessageBlockSideRail>
       ) : null}
     </div>
   )
 }
 
-const MessageBlockOverlay = ({
+const MessageBlockSideRail = ({
   children,
   className,
   side,
@@ -408,10 +428,10 @@ const MessageBlockOverlay = ({
   return (
     <MessageActions
       className={cn(
-        'pointer-events-none absolute bottom-0.5 right-0.5 z-20 gap-1 text-foreground opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100',
+        'pointer-events-none absolute bottom-0 z-20 gap-1 whitespace-nowrap text-foreground',
         side === 'right'
-          ? 'bottom-0 left-full right-auto pl-1'
-          : 'bottom-0 left-auto right-full pr-1',
+          ? 'left-full pl-1'
+          : 'right-full flex-row-reverse pr-1',
         className,
       )}
     >
@@ -432,6 +452,7 @@ const UserMessageBubble = ({
   showMeta: boolean
 }) => {
   const content = message.content
+  const metadataAccessory = getMetadataAccessory(message.metadata)
 
   return (
     <Message className="group w-full min-w-0 justify-end">
@@ -439,6 +460,7 @@ const UserMessageBubble = ({
         {showMeta ? <MessageMeta message={message} /> : null}
         {content ? (
           <MessageBlockFrame
+            accessory={metadataAccessory}
             className="w-fit max-w-[calc(100%_-_10rem)]"
             overlay={
               <MessageStatusActions
@@ -468,6 +490,7 @@ const AssistantMessageRow = ({
   metaMessage,
   onReasoningOpenChange,
   onRewind,
+  preserveEmpty,
   reasoningOpen,
   rewindDisabled,
   showAvatar,
@@ -478,6 +501,7 @@ const AssistantMessageRow = ({
   metaMessage?: ConversationMessage
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
   onRewind?: (message: ConversationMessage) => void
+  preserveEmpty: boolean
   reasoningOpen?: boolean
   rewindDisabled?: boolean
   showAvatar: boolean
@@ -504,6 +528,7 @@ const AssistantMessageRow = ({
           message={message}
           onReasoningOpenChange={onReasoningOpenChange}
           onRewind={onRewind}
+          preserveEmpty={preserveEmpty}
           reasoningOpen={reasoningOpen}
           rewindDisabled={rewindDisabled}
           showStreamingPlaceholder={showStreamingPlaceholder}
@@ -517,6 +542,7 @@ const AssistantMessagePart = ({
   message,
   onReasoningOpenChange,
   onRewind,
+  preserveEmpty,
   reasoningOpen,
   rewindDisabled,
   showStreamingPlaceholder,
@@ -524,6 +550,7 @@ const AssistantMessagePart = ({
   message: ConversationMessage
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
   onRewind?: (message: ConversationMessage) => void
+  preserveEmpty: boolean
   reasoningOpen?: boolean
   rewindDisabled?: boolean
   showStreamingPlaceholder: boolean
@@ -542,15 +569,37 @@ const AssistantMessagePart = ({
     isStreaming &&
     !content &&
     !reasoning
+  const showPreservedPlaceholder =
+    preserveEmpty && isAssistant && isStreaming && !content && !reasoning
   const showContent = Boolean(content)
-  const showContextMetadata =
-    Boolean(message.metadata?.context) &&
-    (isTool || showThinkingPlaceholder || (showReasoning && !showContent))
-  const contextOverlay = showContextMetadata ? (
-    <MetadataAction metadata={message.metadata} />
-  ) : null
+  const metadataAccessory = getMetadataAccessory(message.metadata)
+  const useStableAssistantStreamBlock =
+    preserveEmpty && isAssistant && message.id.startsWith('stream-')
 
-  if (!showReasoning && !showThinkingPlaceholder && !isTool && !showContent) {
+  if (useStableAssistantStreamBlock) {
+    return (
+      <StableAssistantStreamBlock
+        content={content}
+        isReasoningOpen={isReasoningOpen}
+        isStreaming={isStreaming}
+        isSystem={isSystem}
+        metadataAccessory={metadataAccessory}
+        message={message}
+        onReasoningOpenChange={onReasoningOpenChange}
+        onRewind={onRewind}
+        reasoning={reasoning}
+        rewindDisabled={rewindDisabled}
+      />
+    )
+  }
+
+  if (
+    !showReasoning &&
+    !showThinkingPlaceholder &&
+    !showPreservedPlaceholder &&
+    !isTool &&
+    !showContent
+  ) {
     return null
   }
 
@@ -558,15 +607,15 @@ const AssistantMessagePart = ({
     <div className="group/message w-full min-w-0 space-y-0.5 overflow-visible">
       {showReasoning ? (
         <MessageBlockFrame
-          className="w-fit max-w-[min(920px,calc(100%_-_5.5rem))]"
-          overlay={contextOverlay}
+          accessory={metadataAccessory}
+          className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
         >
           <Reasoning
             className="w-fit max-w-full min-w-0 overflow-hidden"
             onOpenChange={(open) => onReasoningOpenChange(message, open)}
             open={isReasoningOpen}
           >
-            <ReasoningTrigger className="max-w-full">
+            <ReasoningTrigger className="max-w-full" streaming={isStreaming}>
               Reasoning
             </ReasoningTrigger>
             <ReasoningContent
@@ -581,6 +630,7 @@ const AssistantMessagePart = ({
                 !isReasoningOpen && 'w-0 p-0',
               )}
               markdown
+              streaming={isStreaming}
             >
               {reasoning}
             </ReasoningContent>
@@ -590,17 +640,29 @@ const AssistantMessagePart = ({
 
       {showThinkingPlaceholder ? (
         <MessageBlockFrame
-          className="w-fit max-w-[min(920px,calc(100%_-_5.5rem))]"
-          overlay={contextOverlay}
+          accessory={metadataAccessory}
+          className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
         >
           <ThinkingBar className="h-7 w-fit max-w-full py-0 text-xs" />
         </MessageBlockFrame>
       ) : null}
 
+      {showPreservedPlaceholder && !showThinkingPlaceholder ? (
+        <MessageBlockFrame
+          accessory={metadataAccessory}
+          className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
+        >
+          <ThinkingBar
+            className="h-7 w-fit max-w-full py-0 text-xs"
+            text="Thinking"
+          />
+        </MessageBlockFrame>
+      ) : null}
+
       {isTool ? (
         <MessageBlockFrame
-          className="w-fit max-w-[min(720px,calc(100%_-_5.5rem))]"
-          overlay={contextOverlay}
+          accessory={metadataAccessory}
+          className="w-fit max-w-[min(720px,calc(100%_-_10rem))]"
         >
           <Tool
             className="border-muted-foreground/20 bg-muted/20 shadow-none"
@@ -611,6 +673,7 @@ const AssistantMessagePart = ({
         </MessageBlockFrame>
       ) : showContent ? (
         <MessageBlockFrame
+          accessory={metadataAccessory}
           className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
           overlay={
             <MessageStatusActions
@@ -637,12 +700,117 @@ const AssistantMessagePart = ({
   )
 }
 
+const StableAssistantStreamBlock = ({
+  content,
+  isReasoningOpen,
+  isStreaming,
+  isSystem,
+  metadataAccessory,
+  message,
+  onReasoningOpenChange,
+  onRewind,
+  reasoning,
+  rewindDisabled,
+}: {
+  content: string
+  isReasoningOpen: boolean
+  isStreaming: boolean
+  isSystem: boolean
+  metadataAccessory: ReactNode
+  message: ConversationMessage
+  onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
+  onRewind?: (message: ConversationMessage) => void
+  reasoning: string
+  rewindDisabled?: boolean
+}) => {
+  const showReasoning = Boolean(reasoning)
+  const showContent = Boolean(content)
+  const showThinkingPlaceholder = isStreaming && !showReasoning && !showContent
+
+  if (!showReasoning && !showThinkingPlaceholder && !showContent) {
+    return null
+  }
+
+  return (
+    <div className="group/message w-full min-w-0 overflow-visible">
+      <MessageBlockFrame
+        accessory={metadataAccessory}
+        className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
+        overlay={
+          showContent ? (
+            <MessageStatusActions
+              message={message}
+              onRewind={onRewind}
+              rewindDisabled={rewindDisabled}
+            />
+          ) : null
+        }
+      >
+        <div className="w-fit max-w-full min-w-0 space-y-0.5 overflow-visible">
+          {showReasoning ? (
+            <Reasoning
+              className="w-fit max-w-full min-w-0 overflow-visible"
+              onOpenChange={(open) => onReasoningOpenChange(message, open)}
+              open={isReasoningOpen}
+            >
+              <ReasoningTrigger className="max-w-full" streaming={isStreaming}>
+                Reasoning
+              </ReasoningTrigger>
+              <ReasoningContent
+                className={cn(
+                  'min-w-0',
+                  isReasoningOpen
+                    ? 'ml-1 mt-0.5 max-w-full border-l pl-2'
+                    : 'm-0 h-0 w-0 border-0 p-0',
+                )}
+                contentClassName={cn(
+                  'max-w-full overflow-hidden py-0.5 text-xs leading-5 break-words prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+                  !isReasoningOpen && 'w-0 p-0',
+                )}
+                markdown
+                streaming={isStreaming}
+              >
+                {reasoning}
+              </ReasoningContent>
+            </Reasoning>
+          ) : null}
+
+          {showThinkingPlaceholder ? (
+            <ThinkingBar className="h-7 w-fit max-w-full py-0 text-xs" />
+          ) : null}
+
+          {showContent ? (
+            <MessageContent
+              className={cn(
+                'max-w-full overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+                isSystem &&
+                  'border-destructive/25 bg-destructive/10 text-destructive',
+              )}
+              id={message.id}
+              markdown
+            >
+              {content}
+            </MessageContent>
+          ) : null}
+        </div>
+      </MessageBlockFrame>
+    </div>
+  )
+}
+
 const getMessageMetadataItems = (metadata?: AgentRunMessageMetadata) => {
   if (!metadata) {
     return []
   }
 
   const items: Array<{ label: string; title?: string }> = []
+
+  if (metadata.durationMs !== undefined) {
+    items.push({
+      label: `duration ${formatDurationMs(metadata.durationMs)}`,
+      title: `duration: ${metadata.durationMs.toLocaleString()} ms`,
+    })
+  }
 
   if (metadata.context) {
     const usage = Math.min(
@@ -806,10 +974,8 @@ const MessageStatusActions = ({
   const hasStatus = message.status === 'error' || message.status === 'stopped'
   const canCopy = allowCopy && hasContent
   const canRewind = message.role === 'user' && Boolean(onRewind)
-  const hasMetadata =
-    hasContent && getMessageMetadataItems(message.metadata).length > 0
 
-  if (!canCopy && !canRewind && !hasStatus && !hasMetadata) {
+  if (!canCopy && !canRewind && !hasStatus) {
     return null
   }
 
@@ -826,7 +992,6 @@ const MessageStatusActions = ({
           stopped
         </Badge>
       ) : null}
-      <MetadataAction metadata={message.metadata} />
       {canRewind ? (
         <RewindAction
           disabled={rewindDisabled}
@@ -841,17 +1006,23 @@ const MessageStatusActions = ({
 const overlayActionButtonClass =
   'h-6 gap-1 rounded-md bg-background/80 px-2 text-[11px] text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3'
 
-const MetadataAction = ({
-  metadata,
-}: {
-  metadata?: AgentRunMessageMetadata
-}) => {
+const getMetadataAccessory = (metadata?: AgentRunMessageMetadata) => {
   const items = getMessageMetadataItems(metadata)
 
   if (!items.length) {
     return null
   }
 
+  return <MetadataChip items={items} label={getMetadataActionLabel(metadata)} />
+}
+
+const MetadataChip = ({
+  items,
+  label,
+}: {
+  items: Array<{ label: string; title?: string }>
+  label: string
+}) => {
   return (
     <MessageAction
       className="max-w-[360px]"
@@ -864,8 +1035,7 @@ const MetadataAction = ({
         type="button"
         variant="ghost"
       >
-        <Info />
-        <span>{getMetadataActionLabel(metadata)}</span>
+        <span>{label}</span>
       </Button>
     </MessageAction>
   )
@@ -894,6 +1064,24 @@ const MetadataTooltip = ({
 }
 
 const getMetadataActionLabel = (metadata?: AgentRunMessageMetadata) => {
+  const durationLabel =
+    metadata?.durationMs !== undefined
+      ? formatDurationMs(metadata.durationMs)
+      : null
+  const tokenLabel = getEventTokenLabel(metadata)
+
+  if (durationLabel && tokenLabel) {
+    return `${durationLabel} · ${tokenLabel}`
+  }
+
+  if (durationLabel) {
+    return durationLabel
+  }
+
+  if (tokenLabel) {
+    return tokenLabel
+  }
+
   if (metadata?.context) {
     const usage = Math.min(
       100,
@@ -906,6 +1094,50 @@ const getMetadataActionLabel = (metadata?: AgentRunMessageMetadata) => {
   }
 
   return 'Meta'
+}
+
+const getEventTokenLabel = (metadata?: AgentRunMessageMetadata) => {
+  if (!metadata) {
+    return null
+  }
+
+  const contentTokens = metadata.content?.estimatedTokens
+
+  if (contentTokens !== undefined) {
+    return `${formatCompactNumber(contentTokens)} tok`
+  }
+
+  const toolInputTokens = metadata.tool?.input?.estimatedTokens
+  const toolOutputTokens = metadata.tool?.output?.estimatedTokens
+
+  if (toolInputTokens !== undefined && toolOutputTokens !== undefined) {
+    return `${formatCompactNumber(toolInputTokens + toolOutputTokens)} tok`
+  }
+
+  if (toolOutputTokens !== undefined) {
+    return `${formatCompactNumber(toolOutputTokens)} tok`
+  }
+
+  if (toolInputTokens !== undefined) {
+    return `${formatCompactNumber(toolInputTokens)} tok`
+  }
+
+  return null
+}
+
+const formatDurationMs = (durationMs: number) => {
+  if (durationMs < 1_000) {
+    return `${durationMs}ms`
+  }
+
+  if (durationMs < 60_000) {
+    return `${trimTrailingZero((durationMs / 1_000).toFixed(1))}s`
+  }
+
+  const minutes = Math.floor(durationMs / 60_000)
+  const seconds = Math.round((durationMs % 60_000) / 1_000)
+
+  return `${minutes}m ${seconds}s`
 }
 
 const RewindAction = ({

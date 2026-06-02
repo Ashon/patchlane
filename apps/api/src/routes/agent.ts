@@ -227,6 +227,11 @@ const getRouteParam = (value: string | string[] | undefined, name: string) => {
 
 const sendSse = (response: Response, payload: unknown) => {
   response.write(`data: ${JSON.stringify(payload)}\n\n`)
+  const flush = (response as Response & { flush?: () => void }).flush
+
+  if (flush) {
+    flush.call(response)
+  }
 }
 
 const getErrorMessage = (error: unknown) => {

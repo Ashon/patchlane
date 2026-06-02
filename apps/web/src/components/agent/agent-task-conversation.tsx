@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 import {
   ChatConversation,
-  type ConversationMessage,
 } from '@/components/chat/chat-conversation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,10 +20,7 @@ import {
 } from '@/components/ui/collapsible'
 import { Markdown } from '@/components/ui/markdown'
 import { PromptInputAction } from '@/components/ui/prompt-input'
-import {
-  normalizeAgentAssistantDisplay,
-  splitThinking,
-} from '@/lib/chat-format'
+import { getAgentTaskConversationMessages } from '@/lib/agent-task-messages'
 import { cn } from '@/lib/utils'
 
 type AgentTaskConversationProps = {
@@ -64,92 +60,10 @@ export const AgentTaskConversation = ({
     run.context?.strategy === 'compacted' ? (
       <AgentContextMemoryPanel context={run.context} />
     ) : null
-  const messages = useMemo<ConversationMessage[]>(() => {
-    const seenAssistantDisplay = new Set<string>()
-
-    return run.messages.flatMap<ConversationMessage>((message) => {
-      if (message.role === 'tool') {
-        const toolDisplay = getAgentToolDisplay(message)
-
-        if (toolDisplay.role === 'assistant') {
-          const parsed = normalizeAgentAssistantDisplay(
-            splitThinking(toolDisplay.content),
-          )
-
-          if (!parsed.content && !parsed.reasoning) {
-            return []
-          }
-
-          return [
-            {
-              id: message.id,
-              role: 'assistant',
-              content: parsed.content,
-              reasoning: parsed.reasoning,
-              createdAt: message.createdAt,
-              metadata: message.metadata,
-            },
-          ]
-        }
-
-        return [
-          {
-            id: message.id,
-            role: 'tool',
-            content: message.content,
-            status: toolDisplay.status,
-            createdAt: message.createdAt,
-            toolName: message.toolName,
-            toolCallId: message.id,
-            toolOutput: toolDisplay.output,
-            toolError: toolDisplay.error,
-            metadata: message.metadata,
-          },
-        ]
-      }
-
-      const isAssistantLike =
-        message.role === 'assistant' || message.role === 'system'
-      const parsed = isAssistantLike
-        ? normalizeAgentAssistantDisplay(splitThinking(message.content))
-        : { content: message.content, reasoning: '' }
-      const isStreamingAssistant = message.id.startsWith('stream-')
-
-      if (
-        isAssistantLike &&
-        !parsed.content &&
-        !parsed.reasoning &&
-        !isStreamingAssistant
-      ) {
-        return []
-      }
-
-      if (isAssistantLike && !isStreamingAssistant) {
-        const displayKey = `${message.role}:${parsed.reasoning.trim()}:${parsed.content.trim()}`
-
-        if (
-          displayKey.length > message.role.length + 2 &&
-          seenAssistantDisplay.has(displayKey)
-        ) {
-          return []
-        }
-
-        seenAssistantDisplay.add(displayKey)
-      }
-
-      return [
-        {
-          id: message.id,
-          role: message.role,
-          content: parsed.content,
-          reasoning: parsed.reasoning,
-          status: isStreamingAssistant ? 'streaming' : undefined,
-          createdAt: message.createdAt,
-          metadata: message.metadata,
-        },
-      ]
-    })
-  }, [run.messages])
+  const messages = useMemo(
+    () => getAgentTaskConversationMessages(run, isStreaming),
+    [isStreaming, run],
+  )
 
   return (
     <ChatConversation
@@ -228,89 +142,13 @@ export const AgentTaskConversation = ({
         }
       }}
       onRewindMessage={(message) => onRewind(message.id)}
+      preserveEmptyMessages
       showAssistantAvatar={false}
       showInlineActivity={false}
       showMessageMeta
-      showStreamingPlaceholder={false}
+      showStreamingPlaceholder
     />
   )
-}
-
-type AgentToolDisplay =
-  | {
-      role: 'assistant'
-      content: string
-    }
-  | {
-      role: 'tool'
-      status: ConversationMessage['status']
-      output?: unknown
-      error?: string
-    }
-
-type AgentRunMessage = AgentRun['messages'][number]
-
-const getAgentToolDisplay = (message: AgentRunMessage): AgentToolDisplay => {
-  if (message.content === `Running ${message.toolName || 'tool'}...`) {
-    return {
-      role: 'tool',
-      status: 'streaming',
-    }
-  }
-
-  if (message.toolName === 'request_user_input') {
-    return {
-      role: 'assistant',
-      content: message.content,
-    }
-  }
-
-  const payload = parseToolPayload(message.content)
-  const error = getToolPayloadError(payload)
-
-  return {
-    role: 'tool',
-    status: error ? 'error' : 'done',
-    output: payload ?? message.content,
-    error,
-  }
-}
-
-const parseToolPayload = (content: string) => {
-  try {
-    return JSON.parse(content) as unknown
-  } catch {
-    return null
-  }
-}
-
-const getToolPayloadError = (payload: unknown) => {
-  if (!isRecord(payload)) {
-    return undefined
-  }
-
-  if (typeof payload.error === 'string' && payload.error.trim()) {
-    return payload.error.trim()
-  }
-
-  if (payload.ok === false) {
-    const stderr =
-      typeof payload.stderr === 'string' ? payload.stderr.trim() : ''
-    const stdout =
-      typeof payload.stdout === 'string' ? payload.stdout.trim() : ''
-    const exitCode =
-      typeof payload.exitCode === 'number'
-        ? `Command exited with code ${payload.exitCode}.`
-        : ''
-
-    return stderr || stdout || exitCode || 'Tool returned ok: false.'
-  }
-
-  return undefined
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 const AgentContextMemoryPanel = ({
@@ -335,9 +173,7 @@ const AgentContextMemoryPanel = ({
           >
             <Network className="h-3.5 w-3.5 shrink-0" />
             <span className="font-medium">Context memory</span>
-            <Badge
-              className="border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
-            >
+            <Badge className="border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300">
               {usage}%
             </Badge>
             <span className="truncate text-amber-800">

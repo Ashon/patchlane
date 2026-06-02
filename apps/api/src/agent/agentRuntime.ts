@@ -63,6 +63,7 @@ type AgentRuntimeStreamEvent =
   | {
       type: 'tool_start'
       toolName: string
+      toolInput?: string
       metadata?: AgentRunMessageMetadata
     }
   | {
@@ -617,6 +618,7 @@ export class AgentRuntime {
             emit({
               type: 'tool_start',
               toolName,
+              toolInput: toolCall.function.arguments,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
                 toolInput: toolCall.function.arguments,

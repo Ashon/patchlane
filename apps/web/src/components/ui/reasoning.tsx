@@ -10,6 +10,7 @@ import React, {
   useState,
 } from 'react'
 import { Markdown } from './markdown'
+import { TextShimmer } from './text-shimmer'
 
 type ReasoningContextType = {
   isOpen: boolean
@@ -69,16 +70,26 @@ function Reasoning({
 export type ReasoningTriggerProps = {
   children: React.ReactNode
   className?: string
+  streaming?: boolean
 } & React.ButtonHTMLAttributes<HTMLButtonElement>
 
 function ReasoningTrigger({
   children,
   className,
   onClick,
+  streaming = false,
   type = 'button',
   ...props
 }: ReasoningTriggerProps) {
   const { isOpen, onOpenChange } = useReasoningContext()
+  const label =
+    streaming && typeof children === 'string' ? (
+      <TextShimmer duration={3} spread={24}>
+        {children}
+      </TextShimmer>
+    ) : (
+      children
+    )
 
   return (
     <button
@@ -98,7 +109,7 @@ function ReasoningTrigger({
       {...props}
     >
       <span className="inline-flex min-w-0 items-center truncate text-primary">
-        {children}
+        {label}
       </span>
       <div
         className={cn(
@@ -117,6 +128,7 @@ export type ReasoningContentProps = {
   className?: string
   markdown?: boolean
   contentClassName?: string
+  streaming?: boolean
 } & React.HTMLAttributes<HTMLDivElement>
 
 function ReasoningContent({
@@ -124,14 +136,21 @@ function ReasoningContent({
   className,
   contentClassName,
   markdown = false,
+  streaming = false,
   ...props
 }: ReasoningContentProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
   const { isOpen } = useReasoningContext()
+  const useNaturalHeight = streaming && isOpen
 
   useEffect(() => {
     if (!contentRef.current || !innerRef.current) return
+
+    if (useNaturalHeight) {
+      contentRef.current.style.maxHeight = ''
+      return
+    }
 
     const observer = new ResizeObserver(() => {
       if (contentRef.current && innerRef.current && isOpen) {
@@ -146,7 +165,7 @@ function ReasoningContent({
     }
 
     return () => observer.disconnect()
-  }, [isOpen])
+  }, [isOpen, useNaturalHeight])
 
   const content = markdown ? (
     <Markdown>{children as string}</Markdown>
@@ -158,12 +177,18 @@ function ReasoningContent({
     <div
       ref={contentRef}
       className={cn(
-        'overflow-hidden transition-[max-height] duration-150 ease-out',
+        useNaturalHeight
+          ? 'overflow-visible'
+          : 'overflow-hidden transition-[max-height] duration-150 ease-out',
         className,
       )}
-      style={{
-        maxHeight: isOpen ? contentRef.current?.scrollHeight : '0px',
-      }}
+      style={
+        useNaturalHeight
+          ? undefined
+          : {
+              maxHeight: isOpen ? contentRef.current?.scrollHeight : '0px',
+            }
+      }
       {...props}
     >
       <div

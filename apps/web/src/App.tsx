@@ -62,6 +62,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import { ChatPanel } from '@/components/chat/chat-panel'
+import { TextShimmerTestPage } from '@/components/debug/text-shimmer-test-page'
 import { ProjectDetailPage } from '@/components/issues/project-detail-page'
 import { ProjectsListPage } from '@/components/issues/projects-list-page'
 import type { ProjectDetailTab } from '@/components/issues/types'
@@ -70,9 +71,14 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
 import {
-  normalizeAgentAssistantDisplay,
-  splitThinking,
-} from '@/lib/chat-format'
+  finalizeAssistantSegmentMessage,
+  getVisibleAgentAssistantText,
+  mergeToolResultMessage,
+  mergeToolStartMessage,
+  mergeVisibleAgentRunMessages,
+  parseToolInputArguments,
+  type PendingToolMessage,
+} from '@/lib/agent-run-message-merge'
 import { queryKeys } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
 
@@ -233,6 +239,9 @@ export default function App() {
   const [toolSaving, setToolSaving] = useState(false)
   const [workspaceCreating, setWorkspaceCreating] = useState(false)
   const [agentRunning, setAgentRunning] = useState(false)
+  const [streamingAgentRunId, setStreamingAgentRunId] = useState<string | null>(
+    null,
+  )
   const [agentRunDeletingId, setAgentRunDeletingId] = useState<string | null>(
     null,
   )
@@ -270,6 +279,7 @@ export default function App() {
   const agentRunsQuery = useQuery({
     queryKey: queryKeys.agentRuns,
     queryFn: api.listAgentRuns,
+    enabled: !agentRunning,
   })
   const projectsQuery = useQuery({
     queryKey: queryKeys.projects,
@@ -278,6 +288,7 @@ export default function App() {
   const issuesQuery = useQuery({
     queryKey: queryKeys.issues,
     queryFn: api.listIssues,
+    enabled: !agentRunning,
   })
 
   const endpoints = useMemo(
@@ -350,6 +361,8 @@ export default function App() {
     () => agentRuns.find((run) => run.id === selectedAgentRunId) ?? null,
     [agentRuns, selectedAgentRunId],
   )
+  const isSelectedAgentRunStreaming =
+    Boolean(streamingAgentRunId) && selectedAgentRunId === streamingAgentRunId
   const endpointError =
     error ?? getQueryErrorMessage(healthQuery.error, endpointsQuery.error)
   const toolSettingsError =
@@ -450,7 +463,10 @@ export default function App() {
   )
 
   const upsertAgentRunPreservingVisibleMessages = useCallback(
-    (run: AgentRun) => {
+    (
+      run: AgentRun,
+      options: { skipServerAssistantMessages?: boolean } = {},
+    ) => {
       let mergedRun = run
 
       queryClient.setQueryData<{ runs: AgentRun[] }>(
@@ -460,7 +476,11 @@ export default function App() {
           mergedRun = {
             ...run,
             messages: existingRun
-              ? mergeVisibleAgentRunMessages(existingRun.messages, run.messages)
+              ? mergeVisibleAgentRunMessages(
+                  existingRun.messages,
+                  run.messages,
+                  options,
+                )
               : run.messages,
           }
 
@@ -570,7 +590,7 @@ export default function App() {
   }, [themeMode])
 
   useEffect(() => {
-    if (!hasActiveAgentTasks) {
+    if (!hasActiveAgentTasks || agentRunning) {
       return
     }
 
@@ -580,7 +600,7 @@ export default function App() {
     }, 2_000)
 
     return () => window.clearInterval(intervalId)
-  }, [hasActiveAgentTasks, queryClient])
+  }, [agentRunning, hasActiveAgentTasks, queryClient])
 
   useEffect(() => {
     if (toolSettings) {
@@ -881,12 +901,17 @@ export default function App() {
     let activeAssistantMessageId: string | null = null
     let activeAssistantContent = ''
     let activeAssistantMetadata: AgentRunMessageMetadata | undefined
-    let toolMessageId: string | null = null
+    const pendingToolMessages: PendingToolMessage[] = []
     let finalRun: AgentRun | null = null
 
     agentStreamAbortRef.current = controller
     setAgentRunning(true)
+    setStreamingAgentRunId(run.id)
     setSandboxError(null)
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: queryKeys.agentRuns }),
+      queryClient.cancelQueries({ queryKey: queryKeys.issues }),
+    ])
 
     const createAssistantSegment = (metadata?: AgentRunMessageMetadata) => {
       const id = `stream-${crypto.randomUUID()}`
@@ -958,6 +983,20 @@ export default function App() {
       }))
     }
 
+    const consumePendingToolMessage = (toolName: string) => {
+      const index = pendingToolMessages.findIndex(
+        (message) => message.toolName === toolName,
+      )
+
+      if (index < 0) {
+        return null
+      }
+
+      const [message] = pendingToolMessages.splice(index, 1)
+
+      return message ?? null
+    }
+
     const finalizeAssistantSegment = (
       serverMessages: AgentRun['messages'] = [],
     ) => {
@@ -978,22 +1017,43 @@ export default function App() {
       }))
     }
 
-    const finalizeAssistantSegmentIfPersisted = (
+    const syncActiveAssistantSegmentFromServer = (
       serverMessages: AgentRun['messages'],
     ) => {
-      if (!activeAssistantMessageId || !activeAssistantContent.trim()) {
+      if (!activeAssistantMessageId) {
         return
       }
 
-      const hasMatchingServerMessage = serverMessages.some(
-        (message) =>
-          message.role === 'assistant' &&
-          message.content === activeAssistantContent,
-      )
+      const serverAssistant = serverMessages
+        .slice()
+        .reverse()
+        .find(
+          (message) =>
+            message.role === 'assistant' &&
+            getVisibleAgentAssistantText(message.content),
+        )
 
-      if (hasMatchingServerMessage) {
-        finalizeAssistantSegment(serverMessages)
+      if (!serverAssistant) {
+        return
       }
+
+      activeAssistantContent = serverAssistant.content
+      activeAssistantMetadata =
+        serverAssistant.metadata ?? activeAssistantMetadata
+
+      updateAgentRunInPlace(run.id, (current) => ({
+        ...current,
+        status: 'running',
+        messages: current.messages.map((message) =>
+          message.id === activeAssistantMessageId
+            ? {
+                ...message,
+                content: serverAssistant.content,
+                metadata: serverAssistant.metadata ?? message.metadata,
+              }
+            : message,
+        ),
+      }))
     }
 
     try {
@@ -1006,8 +1066,10 @@ export default function App() {
           signal: controller.signal,
           onEvent: (event) => {
             if (event.type === 'run') {
-              finalizeAssistantSegmentIfPersisted(event.run.messages)
-              upsertAgentRunPreservingVisibleMessages(event.run)
+              syncActiveAssistantSegmentFromServer(event.run.messages)
+              upsertAgentRunPreservingVisibleMessages(event.run, {
+                skipServerAssistantMessages: Boolean(activeAssistantMessageId),
+              })
               return
             }
 
@@ -1071,12 +1133,24 @@ export default function App() {
 
             if (event.type === 'tool_start') {
               const now = new Date().toISOString()
-              toolMessageId = `tool-${crypto.randomUUID()}`
               const assistantSegment = consumeAssistantSegment()
+              const shouldReuseAssistantMessageId =
+                Boolean(assistantSegment) &&
+                !getVisibleAgentAssistantText(assistantSegment?.content ?? '')
+              const parsedToolInput = parseToolInputArguments(event.toolInput)
+              const nextToolMessageId = shouldReuseAssistantMessageId
+                ? assistantSegment!.id
+                : `tool-${crypto.randomUUID()}`
+              pendingToolMessages.push({
+                id: nextToolMessageId,
+                toolInput: parsedToolInput,
+                toolName: event.toolName,
+              })
               const toolMessage: AgentRun['messages'][number] = {
-                id: toolMessageId,
+                id: nextToolMessageId,
                 role: 'tool',
                 toolName: event.toolName,
+                toolInput: parsedToolInput,
                 content: `Running ${event.toolName}...`,
                 metadata: event.metadata,
                 createdAt: now,
@@ -1095,17 +1169,26 @@ export default function App() {
             }
 
             if (event.type === 'tool_result') {
+              const now = new Date().toISOString()
+              const pendingTool = consumePendingToolMessage(event.toolName)
+              const resultMessage: AgentRun['messages'][number] = {
+                id:
+                  pendingTool?.id ??
+                  `tool-${crypto.randomUUID()}`,
+                role: 'tool',
+                toolName: event.toolName,
+                toolInput: pendingTool?.toolInput,
+                content: event.content,
+                metadata: event.metadata,
+                createdAt: now,
+              }
+
               updateAgentRunInPlace(run.id, (current) => ({
                 ...current,
                 status: 'running',
-                messages: current.messages.map((message) =>
-                  message.id === toolMessageId
-                    ? {
-                        ...message,
-                        content: event.content,
-                        metadata: event.metadata ?? message.metadata,
-                      }
-                    : message,
+                messages: mergeToolResultMessage(
+                  current.messages,
+                  resultMessage,
                 ),
               }))
               return
@@ -1136,6 +1219,7 @@ export default function App() {
       }
     } finally {
       agentStreamAbortRef.current = null
+      setStreamingAgentRunId((current) => (current === run.id ? null : current))
       setAgentRunning(false)
     }
   }
@@ -1638,11 +1722,13 @@ export default function App() {
                   runs={agentRuns}
                   runDeletingId={agentRunDeletingId}
                   selectedRun={selectedAgentRun}
+                  selectedRunStreaming={isSelectedAgentRunStreaming}
                   selectedWorkspace={selectedWorkspace}
                 />
               }
               path="/agent"
             />
+            <Route element={<TextShimmerTestPage />} path="/debug/text-shimmer" />
             <Route
               element={<Navigate replace to={buildRoute('/chat')} />}
               path="*"
@@ -1715,6 +1801,7 @@ type SandboxPanelProps = {
   runs: AgentRun[]
   runDeletingId: string | null
   selectedRun: AgentRun | null
+  selectedRunStreaming: boolean
   selectedWorkspace: SandboxWorkspace | null
 }
 
@@ -1907,6 +1994,7 @@ const SandboxPanel = ({
   runs,
   runDeletingId,
   selectedRun,
+  selectedRunStreaming,
   selectedWorkspace,
 }: SandboxPanelProps) => {
   const issueById = useMemo(
@@ -1993,7 +2081,7 @@ const SandboxPanel = ({
               draft={agentReplyDraft}
               endpoint={endpoint}
               error={error}
-              isStreaming={agentRunning}
+              isStreaming={selectedRunStreaming}
               onChange={onAgentReplyChange}
               onContinue={() => onContinueAgentRun(selectedRun)}
               onRewind={(messageId) => onRewindAgentRun(selectedRun, messageId)}
@@ -2319,196 +2407,6 @@ const getAgentRunContextUsage = (context: NonNullable<AgentRun['context']>) => {
     100,
     Math.round((context.estimatedTokens / context.tokenBudget) * 100),
   )
-}
-
-type AgentRunMessage = AgentRun['messages'][number]
-type AssistantStreamSegment = {
-  id: string
-  content: string
-  metadata?: AgentRunMessageMetadata
-} | null
-
-const mergeToolStartMessage = (
-  messages: AgentRunMessage[],
-  assistantSegment: AssistantStreamSegment,
-  toolMessage: AgentRunMessage,
-) => {
-  if (!assistantSegment) {
-    return [...messages, toolMessage]
-  }
-
-  const existingIndex = messages.findIndex(
-    (message) => message.id === assistantSegment.id,
-  )
-  const hasAssistantContent = Boolean(
-    getVisibleAgentAssistantText(assistantSegment.content),
-  )
-
-  if (existingIndex < 0) {
-    if (!hasAssistantContent) {
-      return [...messages, toolMessage]
-    }
-
-    return [
-      ...messages,
-      createFinalAssistantMessage(assistantSegment, toolMessage.createdAt),
-      toolMessage,
-    ]
-  }
-
-  return messages.flatMap((message) => {
-    if (message.id !== assistantSegment.id) {
-      return [message]
-    }
-
-    if (!hasAssistantContent) {
-      return [toolMessage]
-    }
-
-    return [
-      {
-        ...message,
-        id: getFinalAssistantMessageId(assistantSegment.id),
-        content: assistantSegment.content,
-        metadata: assistantSegment.metadata ?? message.metadata,
-      },
-      toolMessage,
-    ]
-  })
-}
-
-const finalizeAssistantSegmentMessage = (
-  messages: AgentRunMessage[],
-  assistantSegment: Exclude<AssistantStreamSegment, null>,
-  serverMessages: AgentRunMessage[],
-) => {
-  const existingIndex = messages.findIndex(
-    (message) => message.id === assistantSegment.id,
-  )
-  const hasAssistantContent = Boolean(
-    getVisibleAgentAssistantText(assistantSegment.content),
-  )
-
-  if (existingIndex < 0) {
-    return hasAssistantContent
-      ? [
-          ...messages,
-          getFinalAssistantMessage(assistantSegment, serverMessages),
-        ]
-      : messages
-  }
-
-  return messages.flatMap((message) => {
-    if (message.id !== assistantSegment.id) {
-      return [message]
-    }
-
-    return hasAssistantContent
-      ? [getFinalAssistantMessage(assistantSegment, serverMessages, message)]
-      : []
-  })
-}
-
-const getFinalAssistantMessage = (
-  assistantSegment: Exclude<AssistantStreamSegment, null>,
-  serverMessages: AgentRunMessage[],
-  fallback?: AgentRunMessage,
-) => {
-  const serverMessage = serverMessages.find(
-    (message) =>
-      message.role === 'assistant' &&
-      message.content === assistantSegment.content,
-  )
-
-  if (serverMessage) {
-    return serverMessage
-  }
-
-  return {
-    ...(fallback ??
-      createFinalAssistantMessage(assistantSegment, new Date().toISOString())),
-    id: getFinalAssistantMessageId(assistantSegment.id),
-    content: assistantSegment.content,
-    metadata: assistantSegment.metadata ?? fallback?.metadata,
-  }
-}
-
-const mergeVisibleAgentRunMessages = (
-  visibleMessages: AgentRunMessage[],
-  serverMessages: AgentRunMessage[],
-) => {
-  const merged = [...visibleMessages]
-
-  for (const serverMessage of serverMessages) {
-    const existingIndex = merged.findIndex((message) =>
-      isSameVisibleMessage(message, serverMessage),
-    )
-
-    if (existingIndex < 0) {
-      merged.push(serverMessage)
-      continue
-    }
-
-    if (serverMessage.metadata) {
-      merged[existingIndex] = {
-        ...merged[existingIndex]!,
-        metadata: serverMessage.metadata,
-      }
-    }
-  }
-
-  return merged
-}
-
-const isSameVisibleMessage = (
-  left: AgentRunMessage,
-  right: AgentRunMessage,
-) => {
-  if (left.id === right.id) {
-    return true
-  }
-
-  if (left.role === 'assistant' && right.role === 'assistant') {
-    const leftContent = normalizeAgentAssistantDisplay(
-      splitThinking(left.content),
-    ).content.trim()
-    const rightContent = normalizeAgentAssistantDisplay(
-      splitThinking(right.content),
-    ).content.trim()
-
-    if (leftContent && rightContent && leftContent === rightContent) {
-      return true
-    }
-  }
-
-  return (
-    left.role === right.role &&
-    left.toolName === right.toolName &&
-    left.content === right.content
-  )
-}
-
-const getVisibleAgentAssistantText = (content: string) => {
-  const parsed = normalizeAgentAssistantDisplay(splitThinking(content))
-
-  return `${parsed.reasoning}\n${parsed.content}`.trim()
-}
-
-const createFinalAssistantMessage = (
-  assistantSegment: Exclude<AssistantStreamSegment, null>,
-  createdAt: string,
-): AgentRunMessage => ({
-  id: getFinalAssistantMessageId(assistantSegment.id),
-  role: 'assistant',
-  content: assistantSegment.content,
-  metadata: assistantSegment.metadata,
-  createdAt,
-})
-
-const getFinalAssistantMessageId = (id: string) => {
-  return id.startsWith('stream-')
-    ? `assistant-${id.slice('stream-'.length)}`
-    : id
 }
 
 const SandboxWorkspaceCard = ({
