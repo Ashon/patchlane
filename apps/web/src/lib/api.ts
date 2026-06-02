@@ -264,13 +264,13 @@ export const api = {
     });
   },
   async analyzeIssue(id: string, input: { endpointId?: string }) {
-    return request<{ issue: Issue }>(`/api/issues/${id}/analyze`, {
+    return request<{ issue: Issue; runs?: AgentRun[] }>(`/api/issues/${id}/analyze`, {
       method: "POST",
       body: JSON.stringify(input)
     });
   },
   async startIssue(id: string, input: StartIssueInput) {
-    return request<{ run: AgentRun; issue: Issue }>(`/api/issues/${id}/start`, {
+    return request<{ run?: AgentRun; issue: Issue; runs?: AgentRun[] }>(`/api/issues/${id}/start`, {
       method: "POST",
       body: JSON.stringify(input)
     });
@@ -301,6 +301,9 @@ export const api = {
   async listAgentRuns() {
     return request<{ runs: AgentRun[] }>("/api/agent/runs");
   },
+  async getAgentRun(id: string) {
+    return request<{ run: AgentRun }>(`/api/agent/runs/${id}`);
+  },
   async createAgentRun(input: CreateAgentRunInput) {
     return request<{ run: AgentRun }>("/api/agent/runs", {
       method: "POST",
@@ -313,8 +316,9 @@ export const api = {
       body: JSON.stringify(input)
     });
   },
-  async deleteAgentRun(id: string) {
-    return request<void>(`/api/agent/runs/${id}`, {
+  async deleteAgentRun(id: string, options: { cleanupWorkspace?: boolean } = {}) {
+    const query = options.cleanupWorkspace ? "?cleanupWorkspace=true" : "";
+    return request<void>(`/api/agent/runs/${id}${query}`, {
       method: "DELETE"
     });
   },

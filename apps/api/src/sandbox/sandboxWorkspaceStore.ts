@@ -6,7 +6,8 @@ import {
   sandboxWorkspaceListSchema,
   sandboxWorkspaceSchema,
   type CreateSandboxWorkspaceInput,
-  type SandboxWorkspace
+  type SandboxWorkspace,
+  type SandboxWorkspaceKind
 } from "@agent-fleet/shared";
 import { AppDatabase, optionalString } from "../db/database";
 import { readLegacyJson } from "../db/legacyJson";
@@ -18,10 +19,36 @@ type SandboxWorkspaceRow = {
   path: string;
   repository_url: string | null;
   workspace_ref: string | null;
+  kind: SandboxWorkspaceKind;
+  project_id: string | null;
+  issue_id: string | null;
+  agent_run_id: string | null;
+  parent_workspace_id: string | null;
+  base_ref: string | null;
+  branch_name: string | null;
+  cleanup_status: SandboxWorkspace["cleanupStatus"];
   status: "ready" | "error";
   error: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type ProjectCacheWorkspaceInput = {
+  name: string;
+  projectId: string;
+  repositoryUrl: string;
+  ref?: string;
+};
+
+type TaskWorkspaceInput = {
+  branchName: string;
+  baseRef?: string;
+  issueId: string;
+  name: string;
+  parentWorkspaceId: string;
+  projectId: string;
+  repositoryUrl: string;
+  ref?: string;
 };
 
 export class SandboxWorkspaceStore {
@@ -51,6 +78,14 @@ export class SandboxWorkspaceStore {
     return workspace;
   }
 
+  async findProjectCache(projectId: string) {
+    const row = this.database.sqlite
+      .prepare("SELECT * FROM sandbox_workspaces WHERE project_id = ? AND kind = 'project_cache' ORDER BY created_at DESC LIMIT 1")
+      .get(projectId) as unknown as SandboxWorkspaceRow | undefined;
+
+    return row ? toWorkspace(row) : undefined;
+  }
+
   async create(input: CreateSandboxWorkspaceInput) {
     const parsed = createSandboxWorkspaceSchema.parse(input);
     const id = randomUUID();
@@ -66,6 +101,14 @@ export class SandboxWorkspaceStore {
       path: workspacePath,
       repositoryUrl: parsed.repositoryUrl,
       ref: parsed.ref,
+      kind: parsed.kind ?? "manual",
+      projectId: parsed.projectId,
+      issueId: parsed.issueId,
+      agentRunId: parsed.agentRunId,
+      parentWorkspaceId: parsed.parentWorkspaceId,
+      baseRef: parsed.baseRef,
+      branchName: parsed.branchName,
+      cleanupStatus: parsed.cleanupStatus ?? "active",
       status: "ready",
       createdAt: now,
       updatedAt: now
@@ -73,6 +116,117 @@ export class SandboxWorkspaceStore {
 
     this.insert(workspace);
     return workspace;
+  }
+
+  async createProjectCache(input: ProjectCacheWorkspaceInput) {
+    const existing = await this.findProjectCache(input.projectId);
+
+    if (existing) {
+      return existing;
+    }
+
+    const now = new Date().toISOString();
+    const workspace = sandboxWorkspaceSchema.parse({
+      id: randomUUID(),
+      name: `${input.name} cache`.slice(0, 80),
+      path: this.getProjectCachePath(input.projectId),
+      repositoryUrl: input.repositoryUrl,
+      ref: input.ref,
+      kind: "project_cache",
+      projectId: input.projectId,
+      baseRef: input.ref,
+      cleanupStatus: "active",
+      status: "ready",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    await mkdir(workspace.path, { recursive: true });
+    this.insert(workspace);
+    return workspace;
+  }
+
+  async createTaskWorktree(input: TaskWorkspaceInput) {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const workspace = sandboxWorkspaceSchema.parse({
+      id,
+      name: input.name.slice(0, 80),
+      path: this.getTaskWorkspacePath(input.projectId, id),
+      repositoryUrl: input.repositoryUrl,
+      ref: input.ref,
+      kind: "task_worktree",
+      projectId: input.projectId,
+      issueId: input.issueId,
+      parentWorkspaceId: input.parentWorkspaceId,
+      baseRef: input.baseRef,
+      branchName: input.branchName,
+      cleanupStatus: "active",
+      status: "ready",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    this.insert(workspace);
+    return workspace;
+  }
+
+  async linkAgentRun(id: string, agentRunId: string) {
+    const current = await this.get(id);
+    const updated = sandboxWorkspaceSchema.parse({
+      ...current,
+      agentRunId,
+      updatedAt: new Date().toISOString()
+    });
+
+    this.database.sqlite
+      .prepare("UPDATE sandbox_workspaces SET agent_run_id = ?, updated_at = ? WHERE id = ?")
+      .run(updated.agentRunId ?? null, updated.updatedAt, updated.id);
+
+    return updated;
+  }
+
+  async updateRepositorySource(
+    id: string,
+    input: {
+      baseRef?: string;
+      name?: string;
+      ref?: string;
+      repositoryUrl: string;
+    }
+  ) {
+    const current = await this.get(id);
+    const updated = sandboxWorkspaceSchema.parse({
+      ...current,
+      name: input.name ?? current.name,
+      repositoryUrl: input.repositoryUrl,
+      ref: input.ref,
+      baseRef: input.baseRef ?? input.ref,
+      status: "ready",
+      error: undefined,
+      updatedAt: new Date().toISOString()
+    });
+
+    this.database.sqlite
+      .prepare(
+        `
+        UPDATE sandbox_workspaces
+        SET name = ?, repository_url = ?, workspace_ref = ?, base_ref = ?, status = ?, error = ?, updated_at = ?
+        WHERE id = ?
+      `
+      )
+      .run(
+        updated.name,
+        updated.repositoryUrl ?? null,
+        updated.ref ?? null,
+        updated.baseRef ?? null,
+        updated.status,
+        updated.error ?? null,
+        updated.updatedAt,
+        updated.id
+      );
+
+    return updated;
   }
 
   async markError(id: string, error: string) {
@@ -108,6 +262,14 @@ export class SandboxWorkspaceStore {
     return ensureWithinRoot(this.rootDir, path.join(this.rootDir, directoryName));
   }
 
+  private getProjectCachePath(projectId: string) {
+    return ensureWithinRoot(this.rootDir, path.join(this.rootDir, "projects", slugify(projectId), "repo"));
+  }
+
+  private getTaskWorkspacePath(projectId: string, id: string) {
+    return ensureWithinRoot(this.rootDir, path.join(this.rootDir, "projects", slugify(projectId), "tasks", id));
+  }
+
   private getById(id: string) {
     const row = this.database.sqlite
       .prepare("SELECT * FROM sandbox_workspaces WHERE id = ?")
@@ -141,8 +303,9 @@ export class SandboxWorkspaceStore {
       .prepare(
         `
         INSERT INTO sandbox_workspaces (
-          id, name, path, repository_url, workspace_ref, status, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, name, path, repository_url, workspace_ref, kind, project_id, issue_id, agent_run_id,
+          parent_workspace_id, base_ref, branch_name, cleanup_status, status, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
@@ -151,6 +314,14 @@ export class SandboxWorkspaceStore {
         workspace.path,
         workspace.repositoryUrl ?? null,
         workspace.ref ?? null,
+        workspace.kind,
+        workspace.projectId ?? null,
+        workspace.issueId ?? null,
+        workspace.agentRunId ?? null,
+        workspace.parentWorkspaceId ?? null,
+        workspace.baseRef ?? null,
+        workspace.branchName ?? null,
+        workspace.cleanupStatus,
         workspace.status,
         workspace.error ?? null,
         workspace.createdAt,
@@ -178,6 +349,14 @@ const toWorkspace = (row: SandboxWorkspaceRow) => {
     path: row.path,
     repositoryUrl: optionalString(row.repository_url),
     ref: optionalString(row.workspace_ref),
+    kind: row.kind ?? "manual",
+    projectId: optionalString(row.project_id),
+    issueId: optionalString(row.issue_id),
+    agentRunId: optionalString(row.agent_run_id),
+    parentWorkspaceId: optionalString(row.parent_workspace_id),
+    baseRef: optionalString(row.base_ref),
+    branchName: optionalString(row.branch_name),
+    cleanupStatus: row.cleanup_status ?? "active",
     status: row.status,
     error: optionalString(row.error),
     createdAt: row.created_at,

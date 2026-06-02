@@ -53,7 +53,17 @@ export const updateAgentProjectSchema = createAgentProjectSchema.partial().refin
   message: "At least one field is required"
 });
 
-export const issueStatusSchema = z.enum(["backlog", "ready", "running", "review", "completed", "blocked", "failed"]);
+export const issueStatusSchema = z.enum([
+  "backlog",
+  "planning",
+  "ready",
+  "running",
+  "awaiting_user",
+  "review",
+  "completed",
+  "blocked",
+  "failed"
+]);
 export const issuePrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
 
 export const issueEventSchema = z.object({
@@ -71,11 +81,14 @@ export const issueSchema = z.object({
   projectId: z.string().min(1),
   workspaceId: z.string().min(1).optional(),
   endpointId: z.string().min(1).optional(),
+  requirementRunId: z.string().min(1).optional(),
+  planningRunId: z.string().min(1).optional(),
   agentRunId: z.string().min(1).optional(),
   status: issueStatusSchema,
   priority: issuePrioritySchema,
   analysis: optionalTextSchema,
   branchName: z.string().trim().min(1).max(200).optional(),
+  prUrl: z.string().url().optional(),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
   events: z.array(issueEventSchema).default([])
@@ -97,10 +110,13 @@ export const updateIssueSchema = z
     projectId: z.string().min(1).optional(),
     workspaceId: z.string().min(1).optional(),
     endpointId: z.string().min(1).optional(),
+    requirementRunId: z.string().min(1).optional(),
+    planningRunId: z.string().min(1).optional(),
     status: issueStatusSchema.optional(),
     priority: issuePrioritySchema.optional(),
     analysis: optionalTextSchema,
-    branchName: z.string().trim().min(1).max(200).optional()
+    branchName: z.string().trim().min(1).max(200).optional(),
+    prUrl: z.string().url().optional()
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field is required"

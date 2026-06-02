@@ -3,6 +3,7 @@ import { z } from "zod";
 const isoDateSchema = z.string().datetime();
 
 export const agentRunStatusSchema = z.enum(["idle", "running", "awaiting_user", "completed", "failed"]);
+export const agentRunKindSchema = z.enum(["coding", "requirements", "planning", "verification", "publish", "followup"]);
 
 export const agentRunMessageSchema = z.object({
   id: z.string().min(1),
@@ -28,6 +29,12 @@ export const agentRunSchema = z.object({
   endpointId: z.string().min(1).optional(),
   model: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120),
+  kind: agentRunKindSchema.default("coding"),
+  projectId: z.string().min(1).optional(),
+  issueId: z.string().min(1).optional(),
+  branchName: z.string().trim().min(1).max(200).optional(),
+  prUrl: z.string().url().optional(),
+  resultSummary: z.string().max(8_000).optional(),
   status: agentRunStatusSchema,
   messages: z.array(agentRunMessageSchema),
   context: agentRunContextSchema.optional(),
@@ -43,6 +50,10 @@ export const createAgentRunSchema = z.object({
   endpointId: z.string().min(1).optional(),
   model: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120).optional(),
+  kind: agentRunKindSchema.optional(),
+  projectId: z.string().min(1).optional(),
+  issueId: z.string().min(1).optional(),
+  branchName: z.string().trim().min(1).max(200).optional(),
   task: z.string().trim().min(1).max(20_000)
 });
 
@@ -56,6 +67,7 @@ export const continueAgentRunSchema = z.object({
 });
 
 export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>;
+export type AgentRunKind = z.infer<typeof agentRunKindSchema>;
 export type AgentRunMessage = z.infer<typeof agentRunMessageSchema>;
 export type AgentRunContext = z.infer<typeof agentRunContextSchema>;
 export type AgentRun = z.infer<typeof agentRunSchema>;

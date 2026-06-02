@@ -69,6 +69,10 @@ SANDBOX_ALLOWED_COMMANDS=git,pnpm,npm,node,tsx,tsc,ls,pwd,cat,rg,sed
 SANDBOX_ENV_ALLOWLIST=PATH,HOME,LANG,LC_ALL
 ```
 
+## Product Specs
+
+- [Agent Task Management Policy](docs/agent-task-management-policy.md): project, issue, agent task, task workspace, verification, and PR flow policy.
+
 ## API
 
 - `GET /health`

@@ -53,6 +53,7 @@ app.use(
   createAgentRouter({
     contextTokenBudget: env.agent.contextTokenBudget,
     endpointStore: llmStore,
+    issueStore,
     runStore: agentRunStore,
     sandboxSettings: env.sandbox,
     toolSettingsStore,

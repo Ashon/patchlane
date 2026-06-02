@@ -1,6 +1,7 @@
 import { FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  AgentProject,
   AgentRun,
   CreateLlmEndpointInput,
   CreateSandboxWorkspaceInput,
@@ -40,12 +41,12 @@ import {
   XCircle
 } from "lucide-react";
 import { parseAsString, useQueryState } from "nuqs";
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatConversation, type ConversationMessage } from "@/components/chat/chat-conversation";
 import { ChatPanel } from "@/components/chat/chat-panel";
-import { ProjectsPanel } from "@/components/issues/issues-panel";
+import { ProjectDetailPage, ProjectsListPage, type ProjectDetailTab } from "@/components/issues/issues-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -108,7 +109,7 @@ const emptySandboxWorkspaceDraft: SandboxWorkspaceDraft = {
 const navigationItems = [
   { value: "chat", label: "Chat", icon: MessageSquare, path: "/chat" },
   { value: "projects", label: "Projects", icon: ClipboardList, path: "/projects" },
-  { value: "sandbox", label: "Agent", icon: Terminal, path: "/agent" },
+  { value: "sandbox", label: "Agent Tasks", icon: Terminal, path: "/agent" },
   { value: "settings", label: "Settings", icon: Settings, path: "/settings/endpoints" }
 ] satisfies Array<{ value: AppView; label: string; icon: typeof MessageSquare; path: string }>;
 
@@ -128,7 +129,6 @@ export default function App() {
     parseAsString.withOptions({ history: "replace", shallow: true })
   );
   const [selectedAgentRunId, setSelectedAgentRunId] = useQueryState("run", parseAsString.withOptions({ history: "replace", shallow: true }));
-  const [selectedProjectId, setSelectedProjectId] = useQueryState("project", parseAsString.withOptions({ history: "replace", shallow: true }));
   const [selectedIssueId, setSelectedIssueId] = useQueryState("issue", parseAsString.withOptions({ history: "replace", shallow: true }));
   const [draft, setDraft] = useState<EndpointDraft>(emptyDraft);
   const [githubDraft, setGithubDraft] = useState<GitHubToolDraft>(emptyGitHubToolDraft);
@@ -165,6 +165,10 @@ export default function App() {
     [sandboxWorkspacesQuery.data?.workspaces]
   );
   const agentRuns = useMemo(() => agentRunsQuery.data?.runs ?? [], [agentRunsQuery.data?.runs]);
+  const hasActiveAgentTasks = useMemo(
+    () => agentRuns.some((run) => run.status === "running" || run.status === "idle"),
+    [agentRuns]
+  );
   const projects = useMemo(() => projectsQuery.data?.projects ?? [], [projectsQuery.data?.projects]);
   const issues = useMemo(() => issuesQuery.data?.issues ?? [], [issuesQuery.data?.issues]);
   const loading = fetchingCount > 0;
@@ -264,6 +268,19 @@ export default function App() {
     [queryClient, selectAgentRun]
   );
 
+  const upsertAgentRunsInCache = useCallback(
+    (runs?: AgentRun[]) => {
+      if (!runs?.length) {
+        return;
+      }
+
+      queryClient.setQueryData<{ runs: AgentRun[] }>(queryKeys.agentRuns, (current) => ({
+        runs: [...runs, ...(current?.runs ?? []).filter((run) => !runs.some((item) => item.id === run.id))]
+      }));
+    },
+    [queryClient]
+  );
+
   const upsertIssue = useCallback(
     (issue: Issue) => {
       queryClient.setQueryData<{ issues: Issue[] }>(queryKeys.issues, (current) => ({
@@ -276,12 +293,21 @@ export default function App() {
 
   const syncIssueFromRun = useCallback(
     async (issueId: string, run: AgentRun) => {
-      const status = getIssueStatusFromRun(run.status);
-      const response = await api.updateIssue(issueId, { status });
+      const status = getIssueStatusFromRun(run);
+      const response = await api.updateIssue(issueId, {
+        branchName: run.branchName,
+        prUrl: run.prUrl,
+        status
+      });
       upsertIssue(response.issue);
     },
     [upsertIssue]
   );
+
+  const refreshIssues = useCallback(async () => {
+    const response = await api.listIssues();
+    queryClient.setQueryData(queryKeys.issues, response);
+  }, [queryClient]);
 
   const updateAgentRunInPlace = useCallback(
     (runId: string, updater: (run: AgentRun) => AgentRun) => {
@@ -298,6 +324,19 @@ export default function App() {
     setSandboxError(null);
     void queryClient.invalidateQueries();
   }, [queryClient]);
+
+  useEffect(() => {
+    if (!hasActiveAgentTasks) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentRuns });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.issues });
+    }, 2_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [hasActiveAgentTasks, queryClient]);
 
   useEffect(() => {
     if (toolSettings) {
@@ -362,12 +401,6 @@ export default function App() {
       void setSelectedAgentRunId(null);
     }
   }, [agentRuns, selectedAgentRunId, setSelectedAgentRunId]);
-
-  useEffect(() => {
-    if (selectedProjectId && !projects.some((project) => project.id === selectedProjectId)) {
-      void setSelectedProjectId(null);
-    }
-  }, [projects, selectedProjectId, setSelectedProjectId]);
 
   useEffect(() => {
     if (selectedIssueId && !issues.some((issue) => issue.id === selectedIssueId)) {
@@ -653,6 +686,9 @@ export default function App() {
             if (event.type === "done") {
               finalRun = event.run;
               upsertAgentRun(event.run);
+              if (event.run.issueId) {
+                void refreshIssues();
+              }
               return;
             }
 
@@ -788,8 +824,14 @@ export default function App() {
 
     try {
       await api.deleteAgentRun(run.id);
-      const runsResponse = await api.listAgentRuns();
+      const [runsResponse, issuesResponse, workspaceResponse] = await Promise.all([
+        api.listAgentRuns(),
+        api.listIssues(),
+        api.listSandboxWorkspaces()
+      ]);
       queryClient.setQueryData(queryKeys.agentRuns, runsResponse);
+      queryClient.setQueryData(queryKeys.issues, issuesResponse);
+      queryClient.setQueryData(queryKeys.sandboxWorkspaces, workspaceResponse);
     } catch (deleteError) {
       setSandboxError(getErrorMessage(deleteError));
     } finally {
@@ -805,12 +847,72 @@ export default function App() {
       endpointId: issue.endpointId ?? project?.defaultEndpointId ?? selectedEndpoint?.id
     });
     upsertIssue(response.issue);
+    upsertAgentRunsInCache(response.runs);
+
+    if (!response.run) {
+      return;
+    }
+
     upsertAgentRun({ ...response.run, status: "running" });
     await streamAgentRun(response.run, response.issue.id);
   };
 
   const openAgentRun = (runId: string) => {
-    navigate(buildRoute("/agent", { run: runId }));
+    const existingRun = agentRuns.find((run) => run.id === runId);
+
+    if (existingRun) {
+      selectAgentRun(existingRun);
+      return;
+    }
+
+    void api
+      .getAgentRun(runId)
+      .then((response) => {
+        upsertAgentRun(response.run);
+      })
+      .catch((openError) => {
+        setSandboxError(getErrorMessage(openError));
+      });
+  };
+
+  const ProjectDetailRoute = () => {
+    const { projectId, tab } = useParams<{ projectId: string; tab?: string }>();
+
+    if (!projectId) {
+      return <Navigate replace to={buildRoute("/projects")} />;
+    }
+
+    if (!tab) {
+      return <Navigate replace to={buildRoute(`/projects/${projectId}/issues`, { project: null })} />;
+    }
+
+    const selectedTab: ProjectDetailTab = tab === "tasks" ? "tasks" : "issues";
+    const projectExists = projects.some((project) => project.id === projectId);
+
+    if (!loading && projects.length > 0 && !projectExists) {
+      return <Navigate replace to={buildRoute("/projects", { issue: null, project: null })} />;
+    }
+
+    return (
+      <ProjectDetailPage
+        agentRuns={agentRuns}
+        endpoints={endpoints}
+        error={issuesLoadError}
+        issues={issues}
+        loading={loading}
+        onBack={() => navigate(buildRoute("/projects", { issue: null, project: null }))}
+        onNavigateTab={(nextTab) => navigate(buildRoute(`/projects/${projectId}/${nextTab}`))}
+        onOpenRun={openAgentRun}
+        onSelectIssue={(id) => void setSelectedIssueId(id)}
+        onStartIssueRun={startIssueRun}
+        projectId={projectId}
+        projects={projects}
+        selectedEndpoint={selectedEndpoint}
+        selectedIssueId={selectedIssueId}
+        tab={selectedTab}
+        workspaces={sandboxWorkspaces}
+      />
+    );
   };
 
   return (
@@ -831,7 +933,12 @@ export default function App() {
             <nav className="flex h-8 max-w-full shrink-0 items-center gap-1 overflow-x-auto border-l pl-2 lg:ml-2" aria-label="Primary">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
-                const active = item.value === "settings" ? location.pathname.startsWith("/settings") : location.pathname === item.path;
+                const active =
+                  item.value === "settings"
+                    ? location.pathname.startsWith("/settings")
+                    : item.value === "projects"
+                      ? location.pathname.startsWith("/projects")
+                      : location.pathname === item.path;
 
                 return (
                   <NavLink
@@ -886,25 +993,21 @@ export default function App() {
             <Route element={<ChatPanel endpoint={selectedEndpoint} />} path="/chat" />
             <Route
               element={
-                <ProjectsPanel
-                  agentRuns={agentRuns}
+                <ProjectsListPage
                   endpoints={endpoints}
                   error={issuesLoadError}
                   issues={issues}
                   loading={loading}
-                  onOpenRun={openAgentRun}
-                  onSelectIssue={(id) => void setSelectedIssueId(id)}
-                  onSelectProject={(id) => void setSelectedProjectId(id)}
-                  onStartIssueRun={startIssueRun}
+                  onOpenProject={(id) => navigate(buildRoute(`/projects/${id}/issues`, { issue: null, project: null }))}
                   projects={projects}
                   selectedEndpoint={selectedEndpoint}
-                  selectedIssueId={selectedIssueId}
-                  selectedProjectId={selectedProjectId}
                   workspaces={sandboxWorkspaces}
                 />
               }
               path="/projects"
             />
+            <Route element={<ProjectDetailRoute />} path="/projects/:projectId" />
+            <Route element={<ProjectDetailRoute />} path="/projects/:projectId/:tab" />
             <Route element={<Navigate replace to={buildRoute("/projects")} />} path="/issues" />
             <Route element={<Navigate replace to={buildRoute("/settings/endpoints")} />} path="/settings" />
             <Route
@@ -1075,6 +1178,8 @@ export default function App() {
                   onSelectAgentRun={selectAgentRun}
                   onStartNewAgentRun={startNewAgentRun}
                   onStopAgentRun={stopAgentRun}
+                  issues={issues}
+                  projects={projects}
                   runs={agentRuns}
                   runDeletingId={agentRunDeletingId}
                   selectedRun={selectedAgentRun}
@@ -1144,6 +1249,8 @@ type SandboxPanelProps = {
   onSelectAgentRun: (run: AgentRun) => void;
   onStartNewAgentRun: () => void;
   onStopAgentRun: () => void;
+  issues: Issue[];
+  projects: AgentProject[];
   runs: AgentRun[];
   runDeletingId: string | null;
   selectedRun: AgentRun | null;
@@ -1287,18 +1394,23 @@ const SandboxPanel = ({
   onSelectAgentRun,
   onStartNewAgentRun,
   onStopAgentRun,
+  issues,
+  projects,
   runs,
   runDeletingId,
   selectedRun,
   selectedWorkspace
 }: SandboxPanelProps) => {
+  const issueById = useMemo(() => new Map(issues.map((issue) => [issue.id, issue])), [issues]);
+  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
+
   return (
     <section className="grid h-full min-h-0 overflow-y-auto bg-background xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:overflow-hidden">
       <div className="flex min-h-[260px] flex-col border-b xl:min-h-0 xl:border-b-0 xl:border-r">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Bot className="h-4 w-4" />
-            Agent runs
+            Agent tasks
           </h2>
           <Button disabled={agentRunning} onClick={onStartNewAgentRun} size="sm" type="button" variant="secondary">
             <Plus />
@@ -1314,6 +1426,8 @@ const SandboxPanel = ({
                   key={run.id}
                   onDelete={() => onDeleteAgentRun(run)}
                   onSelect={() => onSelectAgentRun(run)}
+                  issue={run.issueId ? issueById.get(run.issueId) : undefined}
+                  project={run.projectId ? projectById.get(run.projectId) : undefined}
                   run={run}
                   selected={selectedRun?.id === run.id}
                 />
@@ -1329,11 +1443,12 @@ const SandboxPanel = ({
         <div className="flex flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Bot className="h-4 w-4" />
-            Coding agent
+            Agent task
           </h2>
           <div className="flex flex-wrap items-center gap-2 md:justify-end">
             {endpoint ? <Badge variant="secondary">{endpoint.defaultModel}</Badge> : null}
             {selectedWorkspace ? <Badge variant="outline">{selectedWorkspace.name}</Badge> : <StateBadge tone="warning">No workspace</StateBadge>}
+            {selectedRun ? <AgentRunKindBadge kind={selectedRun.kind} /> : null}
             {selectedRun ? <AgentRunStatusBadge status={selectedRun.status} /> : null}
             {selectedRun?.context ? <AgentRunContextBadge context={selectedRun.context} /> : null}
           </div>
@@ -1528,28 +1643,38 @@ const AgentContextMemoryPanel = ({ context }: { context: NonNullable<AgentRun["c
 
 const AgentRunCard = ({
   deleting,
+  issue,
   onDelete,
   onSelect,
+  project,
   run,
   selected
 }: {
   deleting: boolean;
+  issue?: Issue;
   onDelete: () => void;
   onSelect: () => void;
+  project?: AgentProject;
   run: AgentRun;
   selected: boolean;
 }) => {
+  const promptPreview = getAgentRunPromptPreview(run);
+
   return (
     <div className={cn("rounded-md border bg-background p-2.5 transition-colors", selected && "border-primary ring-1 ring-primary")}>
       <div className="flex items-start justify-between gap-3">
         <button className="min-w-0 flex-1 text-left" onClick={onSelect} type="button">
           <div className="flex flex-wrap items-center gap-2">
             <Bot className="h-4 w-4 text-primary" />
+            <AgentRunKindBadge kind={run.kind} />
             <h3 className="truncate text-sm font-semibold">{run.title}</h3>
             <AgentRunStatusBadge status={run.status} />
           </div>
+          {promptPreview ? <p className="mt-1 truncate text-xs text-muted-foreground">{promptPreview}</p> : null}
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{formatDateTime(run.updatedAt)}</span>
+            {project ? <span className="truncate">{project.name}</span> : null}
+            {issue ? <span className="truncate">{issue.title}</span> : null}
             {run.context ? <span>{formatAgentRunContext(run.context)}</span> : null}
           </div>
         </button>
@@ -1559,6 +1684,30 @@ const AgentRunCard = ({
       </div>
     </div>
   );
+};
+
+const AgentRunKindBadge = ({ kind }: { kind: AgentRun["kind"] }) => {
+  if (kind === "requirements") {
+    return <Badge variant="outline">requirements</Badge>;
+  }
+
+  if (kind === "planning") {
+    return <Badge variant="secondary">plan</Badge>;
+  }
+
+  if (kind === "verification") {
+    return <Badge variant="secondary">verify</Badge>;
+  }
+
+  if (kind === "publish") {
+    return <Badge variant="secondary">publish</Badge>;
+  }
+
+  if (kind === "followup") {
+    return <Badge variant="outline">followup</Badge>;
+  }
+
+  return <Badge variant="outline">coding</Badge>;
 };
 
 const AgentRunStatusBadge = ({ status }: { status: AgentRun["status"] }) => {
@@ -1602,6 +1751,16 @@ const formatAgentRunContext = (context: NonNullable<AgentRun["context"]>) => {
   }
 
   return `context ${usage}%`;
+};
+
+const getAgentRunPromptPreview = (run: AgentRun) => {
+  const prompt = run.messages.find((message) => message.role === "user")?.content;
+
+  if (!prompt) {
+    return "";
+  }
+
+  return prompt.split("\n").find((line) => line.trim())?.trim() ?? "";
 };
 
 const getAgentRunContextUsage = (context: NonNullable<AgentRun["context"]>) => {
@@ -1936,17 +2095,21 @@ const getAgentRunTitle = (task: string) => {
   return task.split("\n").find(Boolean)?.slice(0, 80) || "Agent task";
 };
 
-const getIssueStatusFromRun = (status: AgentRun["status"]): IssueStatus => {
-  if (status === "completed") {
+const getIssueStatusFromRun = (run: AgentRun): IssueStatus => {
+  if (run.prUrl) {
+    return "review";
+  }
+
+  if (run.status === "completed") {
     return "completed";
   }
 
-  if (status === "failed") {
+  if (run.status === "failed") {
     return "failed";
   }
 
-  if (status === "awaiting_user") {
-    return "review";
+  if (run.status === "awaiting_user") {
+    return "awaiting_user";
   }
 
   return "running";

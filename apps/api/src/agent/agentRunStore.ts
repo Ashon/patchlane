@@ -21,6 +21,12 @@ type AgentRunRow = {
   endpoint_id: string | null;
   model: string | null;
   title: string;
+  kind: AgentRun["kind"];
+  project_id: string | null;
+  issue_id: string | null;
+  branch_name: string | null;
+  pr_url: string | null;
+  result_summary: string | null;
   status: AgentRunStatus;
   context_json: string | null;
   error: string | null;
@@ -64,6 +70,10 @@ export class AgentRunStore {
     return run;
   }
 
+  async find(id: string) {
+    return this.getById(id);
+  }
+
   async create(input: CreateAgentRunInput) {
     const parsed = createAgentRunSchema.parse(input);
     const now = new Date().toISOString();
@@ -73,6 +83,10 @@ export class AgentRunStore {
       endpointId: parsed.endpointId,
       model: parsed.model,
       title: parsed.title || getTitle(parsed.task),
+      kind: parsed.kind ?? "coding",
+      projectId: parsed.projectId,
+      issueId: parsed.issueId,
+      branchName: parsed.branchName,
       status: "idle",
       messages: [
         createMessage({
@@ -126,6 +140,22 @@ export class AgentRunStore {
     }));
   }
 
+  async setPullRequest(id: string, prUrl: string) {
+    return this.update(id, (run) => ({
+      ...run,
+      prUrl,
+      updatedAt: new Date().toISOString()
+    }));
+  }
+
+  async setResultSummary(id: string, resultSummary: string) {
+    return this.update(id, (run) => ({
+      ...run,
+      resultSummary,
+      updatedAt: new Date().toISOString()
+    }));
+  }
+
   async remove(id: string) {
     const result = this.database.sqlite.prepare("DELETE FROM agent_runs WHERE id = ?").run(id);
 
@@ -148,7 +178,8 @@ export class AgentRunStore {
         .prepare(
           `
           UPDATE agent_runs
-          SET workspace_id = ?, endpoint_id = ?, model = ?, title = ?, status = ?, context_json = ?, error = ?, updated_at = ?
+          SET workspace_id = ?, endpoint_id = ?, model = ?, title = ?, kind = ?, project_id = ?, issue_id = ?,
+            branch_name = ?, pr_url = ?, result_summary = ?, status = ?, context_json = ?, error = ?, updated_at = ?
           WHERE id = ?
         `
         )
@@ -157,6 +188,12 @@ export class AgentRunStore {
           updated.endpointId ?? null,
           updated.model ?? null,
           updated.title,
+          updated.kind,
+          updated.projectId ?? null,
+          updated.issueId ?? null,
+          updated.branchName ?? null,
+          updated.prUrl ?? null,
+          updated.resultSummary ?? null,
           updated.status,
           updated.context ? JSON.stringify(updated.context) : null,
           updated.error ?? null,
@@ -187,6 +224,12 @@ export class AgentRunStore {
       endpointId: optionalString(row.endpoint_id),
       model: optionalString(row.model),
       title: row.title,
+      kind: row.kind ?? "coding",
+      projectId: optionalString(row.project_id),
+      issueId: optionalString(row.issue_id),
+      branchName: optionalString(row.branch_name),
+      prUrl: optionalString(row.pr_url),
+      resultSummary: optionalString(row.result_summary),
       status: row.status,
       messages: messageRows.map(toMessage),
       context: parseContext(row.context_json),
@@ -221,8 +264,9 @@ export class AgentRunStore {
       .prepare(
         `
         INSERT INTO agent_runs (
-          id, workspace_id, endpoint_id, model, title, status, context_json, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, branch_name, pr_url,
+          result_summary, status, context_json, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
@@ -231,6 +275,12 @@ export class AgentRunStore {
         run.endpointId ?? null,
         run.model ?? null,
         run.title,
+        run.kind,
+        run.projectId ?? null,
+        run.issueId ?? null,
+        run.branchName ?? null,
+        run.prUrl ?? null,
+        run.resultSummary ?? null,
         run.status,
         run.context ? JSON.stringify(run.context) : null,
         run.error ?? null,

@@ -21,6 +21,29 @@ import {
 import { AppDatabase, optionalString } from "../db/database";
 import { notFound } from "../http/errors";
 
+type IssueAnalysisOptions = {
+  endpointId?: string;
+  analysis?: string;
+  eventMessage?: string;
+  planningRunId?: string;
+  requirementRunId?: string;
+};
+
+type IssuePlanningStartOptions = {
+  branchName: string;
+  endpointId?: string;
+  eventMessage?: string;
+  planningRunId: string;
+  requirementRunId: string;
+  workspaceId: string;
+};
+
+type IssueRunStartOptions = {
+  branchName?: string;
+  endpointId?: string;
+  workspaceId?: string;
+};
+
 type AgentProjectRow = {
   id: string;
   name: string;
@@ -41,11 +64,14 @@ type IssueRow = {
   project_id: string;
   workspace_id: string | null;
   endpoint_id: string | null;
+  requirement_run_id: string | null;
+  planning_run_id: string | null;
   agent_run_id: string | null;
   status: IssueStatus;
   priority: Issue["priority"];
   analysis: string | null;
   branch_name: string | null;
+  pr_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -213,17 +239,29 @@ export class IssueStore {
     return { ...updated, events: [...updated.events, event] };
   }
 
-  async analyzeIssue(id: string, endpointId?: string) {
+  async getIssueAnalysisContext(id: string, endpointId?: string) {
     const issue = await this.getIssue(id);
     const project = await this.getProject(issue.projectId);
-    const workspaceId = issue.workspaceId ?? project.workspaceId;
-    const branchName = issue.branchName ?? buildBranchName(project.branchPrefix, issue.title, issue.id);
-    const analysis = buildIssueAnalysis({ branchName, issue, project, workspaceId });
+
+    return {
+      issue,
+      project,
+      workspaceId: issue.workspaceId ?? project.workspaceId,
+      branchName: issue.branchName ?? buildBranchName(project.branchPrefix, issue.title, issue.id),
+      endpointId: endpointId ?? issue.endpointId ?? project.defaultEndpointId
+    };
+  }
+
+  async analyzeIssue(id: string, options: IssueAnalysisOptions = {}) {
+    const { branchName, endpointId, issue, project, workspaceId } = await this.getIssueAnalysisContext(id, options.endpointId);
+    const analysis = options.analysis ?? buildIssueAnalysis({ branchName, issue, project, workspaceId });
     const updated = issueSchema.parse({
       ...issue,
       status: "ready",
-      endpointId: endpointId ?? issue.endpointId ?? project.defaultEndpointId,
+      endpointId,
       workspaceId,
+      requirementRunId: options.requirementRunId ?? issue.requirementRunId,
+      planningRunId: options.planningRunId ?? issue.planningRunId,
       branchName,
       analysis,
       updatedAt: new Date().toISOString()
@@ -231,7 +269,7 @@ export class IssueStore {
     const event = createEvent({
       issueId: id,
       type: "analyzed",
-      message: `Analyzed for ${branchName}.`
+      message: options.eventMessage ?? `Analyzed for ${branchName}.`
     });
 
     this.database.transaction(() => {
@@ -242,19 +280,121 @@ export class IssueStore {
     return { ...updated, events: [...updated.events, event] };
   }
 
-  async markRunStarted(id: string, agentRunId: string, endpointId?: string) {
+  async markPlanningStarted(id: string, options: IssuePlanningStartOptions) {
+    const issue = await this.getIssue(id);
+    const updated = issueSchema.parse({
+      ...issue,
+      status: "planning",
+      endpointId: options.endpointId ?? issue.endpointId,
+      workspaceId: options.workspaceId,
+      requirementRunId: options.requirementRunId,
+      planningRunId: options.planningRunId,
+      branchName: options.branchName,
+      analysis: undefined,
+      updatedAt: new Date().toISOString()
+    });
+    const event = createEvent({
+      issueId: id,
+      type: "updated",
+      message: options.eventMessage ?? `Planning tasks started for ${options.branchName}.`
+    });
+
+    this.database.transaction(() => {
+      this.updateIssueRow(updated);
+      this.insertEvents([event]);
+    });
+
+    return { ...updated, events: [...updated.events, event] };
+  }
+
+  async markRunStarted(id: string, agentRunId: string, options: IssueRunStartOptions = {}) {
     const issue = await this.getIssue(id);
     const updated = issueSchema.parse({
       ...issue,
       status: "running",
       agentRunId,
-      endpointId: endpointId ?? issue.endpointId,
+      endpointId: options.endpointId ?? issue.endpointId,
+      workspaceId: options.workspaceId ?? issue.workspaceId,
+      branchName: options.branchName ?? issue.branchName,
       updatedAt: new Date().toISOString()
     });
     const event = createEvent({
       issueId: id,
       type: "run_started",
       message: `Agent run ${agentRunId.slice(0, 8)} started.`
+    });
+
+    this.database.transaction(() => {
+      this.updateIssueRow(updated);
+      this.insertEvents([event]);
+    });
+
+    return { ...updated, events: [...updated.events, event] };
+  }
+
+  async unlinkAgentRunReferences(run: { id: string; issueId?: string; kind?: string; workspaceId?: string }) {
+    if (!run.issueId) {
+      return undefined;
+    }
+
+    const issue = await this.getIssue(run.issueId).catch(() => undefined);
+
+    if (!issue) {
+      return undefined;
+    }
+
+    const clearsRequirement = issue.requirementRunId === run.id;
+    const clearsPlanning = issue.planningRunId === run.id;
+    const clearsCoding = issue.agentRunId === run.id;
+
+    if (!clearsRequirement && !clearsPlanning && !clearsCoding) {
+      return issue;
+    }
+
+    const shouldResetStatus =
+      (clearsCoding && (issue.status === "running" || issue.status === "awaiting_user")) ||
+      ((clearsRequirement || clearsPlanning) && issue.status === "planning");
+    const updated = issueSchema.parse({
+      ...issue,
+      requirementRunId: clearsRequirement ? undefined : issue.requirementRunId,
+      planningRunId: clearsPlanning ? undefined : issue.planningRunId,
+      agentRunId: clearsCoding ? undefined : issue.agentRunId,
+      workspaceId: clearsCoding && issue.workspaceId === run.workspaceId ? undefined : issue.workspaceId,
+      status: shouldResetStatus ? (issue.analysis ? "ready" : "backlog") : issue.status,
+      updatedAt: new Date().toISOString()
+    });
+    const event = createEvent({
+      issueId: issue.id,
+      type: "updated",
+      message: `Unlinked deleted agent task ${run.id.slice(0, 8)}.`
+    });
+
+    this.database.transaction(() => {
+      this.updateIssueRow(updated);
+      this.insertEvents([event]);
+    });
+
+    return { ...updated, events: [...updated.events, event] };
+  }
+
+  async clearMissingAgentRunReference(id: string, runId: string, eventMessage?: string) {
+    const issue = await this.getIssue(id);
+
+    if (issue.agentRunId !== runId) {
+      return issue;
+    }
+
+    const shouldResetStatus = issue.status === "running" || issue.status === "awaiting_user";
+    const updated = issueSchema.parse({
+      ...issue,
+      agentRunId: undefined,
+      status: shouldResetStatus ? (issue.analysis ? "ready" : "backlog") : issue.status,
+      updatedAt: new Date().toISOString()
+    });
+    const event = createEvent({
+      issueId: issue.id,
+      type: "updated",
+      message: eventMessage ?? `Unlinked missing coding task ${runId.slice(0, 8)}.`
     });
 
     this.database.transaction(() => {
@@ -329,11 +469,14 @@ export class IssueStore {
       projectId: row.project_id,
       workspaceId: optionalString(row.workspace_id),
       endpointId: optionalString(row.endpoint_id),
+      requirementRunId: optionalString(row.requirement_run_id),
+      planningRunId: optionalString(row.planning_run_id),
       agentRunId: optionalString(row.agent_run_id),
       status: row.status,
       priority: row.priority,
       analysis: optionalString(row.analysis),
       branchName: optionalString(row.branch_name),
+      prUrl: optionalString(row.pr_url),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       events: events.map(toIssueEvent)
@@ -345,9 +488,9 @@ export class IssueStore {
       .prepare(
         `
         INSERT INTO issues (
-          id, title, description, project_id, workspace_id, endpoint_id, agent_run_id,
-          status, priority, analysis, branch_name, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id, agent_run_id,
+          status, priority, analysis, branch_name, pr_url, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       )
       .run(
@@ -357,11 +500,14 @@ export class IssueStore {
         issue.projectId,
         issue.workspaceId ?? null,
         issue.endpointId ?? null,
+        issue.requirementRunId ?? null,
+        issue.planningRunId ?? null,
         issue.agentRunId ?? null,
         issue.status,
         issue.priority,
         issue.analysis ?? null,
         issue.branchName ?? null,
+        issue.prUrl ?? null,
         issue.createdAt,
         issue.updatedAt
       );
@@ -373,7 +519,7 @@ export class IssueStore {
         `
         UPDATE issues
         SET title = ?, description = ?, project_id = ?, workspace_id = ?, endpoint_id = ?,
-          agent_run_id = ?, status = ?, priority = ?, analysis = ?, branch_name = ?, updated_at = ?
+          requirement_run_id = ?, planning_run_id = ?, agent_run_id = ?, status = ?, priority = ?, analysis = ?, branch_name = ?, pr_url = ?, updated_at = ?
         WHERE id = ?
       `
       )
@@ -383,11 +529,14 @@ export class IssueStore {
         issue.projectId,
         issue.workspaceId ?? null,
         issue.endpointId ?? null,
+        issue.requirementRunId ?? null,
+        issue.planningRunId ?? null,
         issue.agentRunId ?? null,
         issue.status,
         issue.priority,
         issue.analysis ?? null,
         issue.branchName ?? null,
+        issue.prUrl ?? null,
         issue.updatedAt,
         issue.id
       );

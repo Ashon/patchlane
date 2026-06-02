@@ -59,6 +59,12 @@ export const env = {
       "ls",
       "pwd",
       "cat",
+      "head",
+      "tail",
+      "wc",
+      "grep",
+      "awk",
+      "find",
       "rg",
       "sed"
     ]),

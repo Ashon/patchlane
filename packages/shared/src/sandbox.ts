@@ -18,6 +18,8 @@ export const sandboxSettingsSchema = z.object({
 });
 
 export const sandboxWorkspaceStatusSchema = z.enum(["ready", "error"]);
+export const sandboxWorkspaceKindSchema = z.enum(["manual", "project_cache", "task_worktree"]);
+export const sandboxWorkspaceCleanupStatusSchema = z.enum(["active", "archived", "deleted", "cleanup_failed"]);
 
 export const sandboxWorkspaceSchema = z.object({
   id: z.string().min(1),
@@ -25,6 +27,14 @@ export const sandboxWorkspaceSchema = z.object({
   path: z.string().min(1),
   repositoryUrl: z.string().url().optional(),
   ref: z.string().trim().min(1).max(200).optional(),
+  kind: sandboxWorkspaceKindSchema.default("manual"),
+  projectId: z.string().min(1).optional(),
+  issueId: z.string().min(1).optional(),
+  agentRunId: z.string().min(1).optional(),
+  parentWorkspaceId: z.string().min(1).optional(),
+  baseRef: z.string().trim().min(1).max(200).optional(),
+  branchName: z.string().trim().min(1).max(200).optional(),
+  cleanupStatus: sandboxWorkspaceCleanupStatusSchema.default("active"),
   status: sandboxWorkspaceStatusSchema,
   error: z.string().optional(),
   createdAt: isoDateSchema,
@@ -36,7 +46,15 @@ export const sandboxWorkspaceListSchema = z.array(sandboxWorkspaceSchema);
 export const createSandboxWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   repositoryUrl: z.string().trim().url().optional(),
-  ref: z.string().trim().min(1).max(200).optional()
+  ref: z.string().trim().min(1).max(200).optional(),
+  kind: sandboxWorkspaceKindSchema.optional(),
+  projectId: z.string().min(1).optional(),
+  issueId: z.string().min(1).optional(),
+  agentRunId: z.string().min(1).optional(),
+  parentWorkspaceId: z.string().min(1).optional(),
+  baseRef: z.string().trim().min(1).max(200).optional(),
+  branchName: z.string().trim().min(1).max(200).optional(),
+  cleanupStatus: sandboxWorkspaceCleanupStatusSchema.optional()
 });
 
 export const sandboxExecRequestSchema = z.object({
@@ -58,6 +76,8 @@ export const sandboxWriteFileRequestSchema = z.object({
 });
 
 export type SandboxSettings = z.infer<typeof sandboxSettingsSchema>;
+export type SandboxWorkspaceKind = z.infer<typeof sandboxWorkspaceKindSchema>;
+export type SandboxWorkspaceCleanupStatus = z.infer<typeof sandboxWorkspaceCleanupStatusSchema>;
 export type SandboxWorkspace = z.infer<typeof sandboxWorkspaceSchema>;
 export type CreateSandboxWorkspaceInput = z.infer<typeof createSandboxWorkspaceSchema>;
 export type SandboxExecRequest = z.infer<typeof sandboxExecRequestSchema>;

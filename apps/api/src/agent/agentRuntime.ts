@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { AgentRun, AgentRunMessage, LlmEndpoint, SandboxSettings, SandboxWorkspace } from "@agent-fleet/shared";
+import type {
+  AgentRun,
+  AgentRunMessage,
+  LlmEndpoint,
+  SandboxFileContent,
+  SandboxSettings,
+  SandboxWorkspace
+} from "@agent-fleet/shared";
 import { createOpenAIClient } from "../llm/openaiClient";
 import { executeSandboxCommand } from "../sandbox/sandboxExecutor";
 import { getGitAuthEnv } from "../sandbox/gitSandbox";
@@ -15,6 +22,7 @@ type AgentRuntimeOptions = {
   getEndpoint: (id?: string) => Promise<LlmEndpoint>;
   getWorkspace: (id: string) => Promise<SandboxWorkspace>;
   getGitHubToken: () => Promise<string | undefined>;
+  onRunFinished?: (run: AgentRun) => Promise<void>;
 };
 
 type ToolContext = {
@@ -27,6 +35,8 @@ type AgentToolResult = {
   content: string;
   completed?: boolean;
   awaitingUser?: boolean;
+  prUrl?: string;
+  resultSummary?: string;
 };
 
 type AgentRuntimeStreamEvent =
@@ -62,7 +72,10 @@ type AgentRuntimeStreamEmit = (event: AgentRuntimeStreamEvent) => void;
 const maxToolIterations = 8;
 const retryToolIterations = 4;
 const totalToolIterations = maxToolIterations + retryToolIterations;
-const toolPromptContentMaxChars = 16_000;
+const toolPromptContentMaxChars = 6_000;
+const defaultReadFileMaxLines = 240;
+const maxReadFileMaxLines = 500;
+const maxReadFileContentChars = 20_000;
 const toolIterationRetryPrompt = [
   "The tool loop reached the normal per-pass limit.",
   "Continue from the current context instead of stopping.",
@@ -71,6 +84,17 @@ const toolIterationRetryPrompt = [
 ].join("\n");
 const toolIterationLimitMessage =
   "Tool iteration limit reached after an automatic retry. Review the current changes and continue the run.";
+const thinkingOnlyContinuationPrompt = [
+  "Your previous response contained only private reasoning and did not call a tool, ask a blocking question, or finish the task.",
+  "Do not stop on private reasoning. Continue now with a concrete tool call, finish, or request_user_input.",
+  "Avoid repeating broad exploration. Use the compacted context and choose the next highest-value coding action."
+].join("\n");
+const replayRecoveryPrompt = [
+  "Replay recovery mode:",
+  "- The previous attempt stalled after repeated exploration or a tool iteration limit.",
+  "- Do not repeat the same generic 'different approach' reasoning.",
+  "- Use allowed tools directly, inspect only targeted file windows, and move toward editing, verification, finish, or request_user_input."
+].join("\n");
 
 export class AgentRuntime {
   constructor(private readonly options: AgentRuntimeOptions) {}
@@ -87,11 +111,19 @@ export class AgentRuntime {
       const client = createOpenAIClient(endpoint);
       const preparedContext = prepareAgentContext({
         messages: run.messages,
-        systemPrompt: getSystemPrompt(workspace),
+        systemPrompt: getSystemPrompt(workspace, this.options.settings),
         tokenBudget: this.options.contextTokenBudget
       });
       run = await this.options.runStore.setContext(run.id, preparedContext.context);
       const messages = [...preparedContext.messages];
+      const replayRecovery = getReplayRecoveryPrompt(run);
+
+      if (replayRecovery) {
+        messages.push({
+          role: "system",
+          content: replayRecovery
+        });
+      }
 
       const pendingMessages: Array<Omit<AgentRunMessage, "id" | "createdAt">> = [];
       let completed = false;
@@ -135,6 +167,14 @@ export class AgentRuntime {
         });
 
         if (!message.tool_calls?.length) {
+          if (isThinkingOnlyContent(message.content || "")) {
+            messages.push({
+              role: "system",
+              content: thinkingOnlyContinuationPrompt
+            });
+            continue;
+          }
+
           pendingMessages.push({
             role: "assistant",
             content: message.content || ""
@@ -162,6 +202,14 @@ export class AgentRuntime {
             content: result.content
           });
 
+          if (result.prUrl) {
+            run = await this.options.runStore.setPullRequest(run.id, result.prUrl);
+          }
+
+          if (result.resultSummary) {
+            run = await this.options.runStore.setResultSummary(run.id, result.resultSummary);
+          }
+
           if (result.completed) {
             completed = true;
           }
@@ -188,7 +236,9 @@ export class AgentRuntime {
         await this.options.runStore.appendMessages(run.id, pendingMessages);
       }
 
-      return this.options.runStore.setStatus(run.id, completed ? "completed" : "awaiting_user");
+      run = await this.options.runStore.setStatus(run.id, completed ? "completed" : "awaiting_user");
+      await this.options.onRunFinished?.(run);
+      return run;
     } catch (error) {
       const message = getErrorMessage(error);
       await this.options.runStore.appendMessage(run.id, {
@@ -212,12 +262,20 @@ export class AgentRuntime {
       const client = createOpenAIClient(endpoint);
       const preparedContext = prepareAgentContext({
         messages: run.messages,
-        systemPrompt: getSystemPrompt(workspace),
+        systemPrompt: getSystemPrompt(workspace, this.options.settings),
         tokenBudget: this.options.contextTokenBudget
       });
       run = await this.options.runStore.setContext(run.id, preparedContext.context);
       emit({ type: "run", run });
       const messages = [...preparedContext.messages];
+      const replayRecovery = getReplayRecoveryPrompt(run);
+
+      if (replayRecovery) {
+        messages.push({
+          role: "system",
+          content: replayRecovery
+        });
+      }
 
       let completed = false;
       let awaitingUser = false;
@@ -272,25 +330,39 @@ export class AgentRuntime {
           tool_calls: toolCalls.length ? toolCalls : undefined
         });
 
-        if (assistantContent.trim()) {
-          run = await this.options.runStore.appendMessage(run.id, {
-            role: "assistant",
-            content: assistantContent
-          });
-          emit({ type: "run", run });
-        }
-
         if (!toolCalls.length) {
+          if (isThinkingOnlyContent(assistantContent)) {
+            messages.push({
+              role: "system",
+              content: thinkingOnlyContinuationPrompt
+            });
+            continue;
+          }
+
           if (!assistantContent.trim()) {
             run = await this.options.runStore.appendMessage(run.id, {
               role: "assistant",
               content: "I need more context before I can continue."
             });
             emit({ type: "run", run });
+          } else {
+            run = await this.options.runStore.appendMessage(run.id, {
+              role: "assistant",
+              content: assistantContent
+            });
+            emit({ type: "run", run });
           }
 
           awaitingUser = true;
           break;
+        }
+
+        if (assistantContent.trim()) {
+          run = await this.options.runStore.appendMessage(run.id, {
+            role: "assistant",
+            content: assistantContent
+          });
+          emit({ type: "run", run });
         }
 
         for (const toolCall of toolCalls) {
@@ -314,6 +386,14 @@ export class AgentRuntime {
             toolName,
             content: result.content
           });
+
+          if (result.prUrl) {
+            run = await this.options.runStore.setPullRequest(run.id, result.prUrl);
+          }
+
+          if (result.resultSummary) {
+            run = await this.options.runStore.setResultSummary(run.id, result.resultSummary);
+          }
 
           emit({ type: "tool_result", toolName, content: result.content });
           emit({ type: "run", run });
@@ -342,6 +422,7 @@ export class AgentRuntime {
       }
 
       run = await this.options.runStore.setStatus(run.id, completed ? "completed" : "awaiting_user");
+      await this.options.onRunFinished?.(run);
       emit({ type: "done", run });
       return run;
     } catch (error) {
@@ -429,12 +510,15 @@ const agentTools = [
     type: "function",
     function: {
       name: "read_file",
-      description: "Read a UTF-8 source file from the sandbox workspace.",
+      description:
+        "Read a UTF-8 source file from the sandbox workspace. For large files, request a line window with startLine and maxLines instead of rereading the whole file.",
       parameters: {
         type: "object",
         required: ["path"],
         properties: {
-          path: { type: "string" }
+          path: { type: "string" },
+          startLine: { type: "number", description: "1-based starting line. Defaults to 1." },
+          maxLines: { type: "number", description: "Maximum lines to return. Defaults to 240 and caps at 500." }
         }
       }
     }
@@ -544,13 +628,18 @@ const executeAgentTool = async (name: string, rawArguments: string, context: Too
     }
 
     if (name === "read_file") {
-      return toolResult(await readWorkspaceFile(context.workspace, requireString(args.path, "path")));
+      const file = await readWorkspaceFile(context.workspace, requireString(args.path, "path"));
+      return toolResult(formatReadFileResult(file, args));
     }
 
     if (name === "write_file") {
-      return toolResult(
-        await writeWorkspaceFile(context.workspace, requireString(args.path, "path"), requireString(args.content, "content"))
-      );
+      const file = await writeWorkspaceFile(context.workspace, requireString(args.path, "path"), requireString(args.content, "content"));
+      return toolResult({
+        path: file.path,
+        size: file.size,
+        modifiedAt: file.modifiedAt,
+        written: true
+      });
     }
 
     if (name === "run_command") {
@@ -605,7 +694,7 @@ const executeAgentTool = async (name: string, rawArguments: string, context: Too
         base: requireString(args.base, "base")
       });
 
-      return toolResult({ url });
+      return { ...toolResult({ url }), prUrl: url };
     }
 
     if (name === "request_user_input") {
@@ -616,8 +705,10 @@ const executeAgentTool = async (name: string, rawArguments: string, context: Too
     }
 
     if (name === "finish") {
+      const summary = requireString(args.summary, "summary");
       return {
-        content: requireString(args.summary, "summary"),
+        content: summary,
+        resultSummary: summary,
         completed: true
       };
     }
@@ -654,13 +745,84 @@ const getString = (value: unknown) => {
   return typeof value === "string" && value.trim() ? value : undefined;
 };
 
-const getSystemPrompt = (workspace: SandboxWorkspace) => {
+const getNumber = (value: unknown) => {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+};
+
+const getPositiveInteger = (value: unknown, fallback: number, max: number) => {
+  const number = getNumber(value);
+
+  if (number === undefined) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(1, Math.floor(number)), max);
+};
+
+const getReplayRecoveryPrompt = (run: AgentRun) => {
+  const recentMessages = run.messages.slice(-6);
+  const recentText = recentMessages.map((message) => message.content).join("\n");
+  const hasToolLimit = recentText.includes(toolIterationLimitMessage);
+  const assistantTail = recentMessages
+    .filter((message) => message.role === "assistant")
+    .slice(-3);
+  const thinkingOnlyTail = assistantTail.length > 0 && assistantTail.every((message) => isThinkingOnlyContent(message.content));
+
+  return hasToolLimit || thinkingOnlyTail ? replayRecoveryPrompt : undefined;
+};
+
+const isThinkingOnlyContent = (content: string) => {
+  const trimmed = content.trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  return stripThinking(trimmed).length === 0;
+};
+
+const stripThinking = (content: string) => {
+  return content.replace(/<think>[\s\S]*?<\/think>/giu, "").trim();
+};
+
+const formatReadFileResult = (file: SandboxFileContent, args: Record<string, unknown>) => {
+  const lines = file.content.split(/\r?\n/u);
+  const totalLines = lines.length;
+  const startLine = getPositiveInteger(args.startLine, 1, Math.max(1, totalLines));
+  const maxLines = getPositiveInteger(args.maxLines, defaultReadFileMaxLines, maxReadFileMaxLines);
+  const endLine = Math.min(totalLines, startLine + maxLines - 1);
+  let content = lines.slice(startLine - 1, endLine).join("\n");
+  let charTruncated = false;
+
+  if (content.length > maxReadFileContentChars) {
+    content = `${content.slice(0, maxReadFileContentChars)}\n\n[truncated ${content.length - maxReadFileContentChars} characters from this line window]`;
+    charTruncated = true;
+  }
+
+  return {
+    path: file.path,
+    size: file.size,
+    modifiedAt: file.modifiedAt,
+    startLine,
+    endLine,
+    totalLines,
+    truncated: startLine > 1 || endLine < totalLines || charTruncated,
+    content
+  };
+};
+
+const getSystemPrompt = (workspace: SandboxWorkspace, settings: SandboxSettings) => {
+  const allowedCommands = settings.allowedCommands.join(", ");
+
   return [
     "You are a coding agent running inside an isolated sandbox workspace.",
     "Communicate with the user through the run thread. Ask for clarification only when blocked.",
     "Use tools to inspect files, edit files, run tests/builds, inspect git diff, commit, push, and create a pull request when requested.",
     "Do not claim that work is complete until you have inspected relevant files and run reasonable verification.",
+    "Summarize tool findings in natural language. Never copy raw tool result JSON or [tool:name] transcript blocks into replies or reasoning.",
     "Use command tools with explicit command and args only. Never rely on shell metacharacters.",
+    "Use read_file with startLine/maxLines for large files. Do not repeatedly read an entire large file when a smaller line window is enough.",
+    `Allowed run_command commands: ${allowedCommands}. Prefer rg and sed for source search/slices; do not assume grep, head, awk, wc, or shell pipelines are available unless listed.`,
     `Workspace path: ${workspace.path}`,
     workspace.repositoryUrl ? `Repository: ${workspace.repositoryUrl}` : "Repository: not configured"
   ].join("\n");

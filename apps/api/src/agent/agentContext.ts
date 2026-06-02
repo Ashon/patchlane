@@ -99,13 +99,29 @@ export const prepareAgentContext = ({
 };
 
 const toPromptMessage = (message: AgentRunMessage): ChatMessage => {
-  const content =
-    message.role === "tool" ? `[tool:${message.toolName || "unknown"}]\n${message.content}` : message.content;
+  if (message.role === "tool") {
+    return {
+      role: "system",
+      content: buildToolContextMessage(message)
+    };
+  }
 
   return {
     role: message.role === "user" ? "user" : "assistant",
-    content: truncateForPrompt(content, message.role === "tool" ? toolMessageMaxChars : retainedMessageMaxChars)
+    content: truncateForPrompt(message.content, retainedMessageMaxChars)
   };
+};
+
+const buildToolContextMessage = (message: AgentRunMessage) => {
+  const toolName = message.toolName || "unknown";
+  const content = normalizeToolContentForPrompt(message.content);
+
+  return [
+    `Private tool result context for ${toolName}.`,
+    "Use this result only to continue the task. Do not quote this block, render raw tool JSON, or include tool transcripts in user-facing replies or reasoning.",
+    "",
+    truncateForPrompt(content, toolMessageMaxChars)
+  ].join("\n");
 };
 
 const buildContextSummary = (messages: AgentRunMessage[]) => {
@@ -115,7 +131,8 @@ const buildContextSummary = (messages: AgentRunMessage[]) => {
 
   const lines = messages.map((message, index) => {
     const label = message.role === "tool" ? `tool:${message.toolName || "unknown"}` : message.role;
-    return `${index + 1}. ${label}: ${singleLine(truncateForPrompt(message.content, 700))}`;
+    const content = message.role === "tool" ? normalizeToolContentForPrompt(message.content) : message.content;
+    return `${index + 1}. ${label}: ${singleLine(truncateForPrompt(content, 700))}`;
   });
 
   return truncateForPrompt(
@@ -179,4 +196,18 @@ const truncateForPrompt = (value: string, maxChars: number) => {
 
 const singleLine = (value: string) => {
   return value.replace(/\s+/gu, " ").trim();
+};
+
+const normalizeToolContentForPrompt = (content: string) => {
+  try {
+    const parsed = JSON.parse(content) as unknown;
+
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return content;
+  }
 };

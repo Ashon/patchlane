@@ -4,7 +4,10 @@ import { AgentRuntime } from "../agent/agentRuntime";
 import type { AgentRunStore } from "../agent/agentRunStore";
 import { asyncHandler } from "../http/asyncHandler";
 import { badRequest } from "../http/errors";
+import { reconcileIssueAfterAgentRun } from "../issues/issueReconciliation";
+import type { IssueStore } from "../issues/issueStore";
 import type { LlmEndpointStore } from "../llm/endpointStore";
+import { removeWorktreeFromCache } from "../sandbox/gitSandbox";
 import type { SandboxWorkspaceStore } from "../sandbox/sandboxWorkspaceStore";
 import type { SandboxSettings } from "@agent-fleet/shared";
 import type { ToolSettingsStore } from "../tools/toolSettingsStore";
@@ -12,6 +15,7 @@ import type { ToolSettingsStore } from "../tools/toolSettingsStore";
 type AgentRouterOptions = {
   runStore: AgentRunStore;
   endpointStore: LlmEndpointStore;
+  issueStore: IssueStore;
   workspaceStore: SandboxWorkspaceStore;
   toolSettingsStore: ToolSettingsStore;
   sandboxSettings: SandboxSettings;
@@ -21,6 +25,7 @@ type AgentRouterOptions = {
 export const createAgentRouter = ({
   contextTokenBudget,
   endpointStore,
+  issueStore,
   runStore,
   sandboxSettings,
   toolSettingsStore,
@@ -35,6 +40,9 @@ export const createAgentRouter = ({
     getGitHubToken: async () => {
       const settings = await toolSettingsStore.get();
       return settings.github.enabled ? settings.github.token : undefined;
+    },
+    onRunFinished: async (run) => {
+      await reconcileIssueAfterAgentRun({ issueStore, runStore }, run);
     }
   });
 
@@ -57,7 +65,34 @@ export const createAgentRouter = ({
   router.delete(
     "/runs/:id",
     asyncHandler(async (request, response) => {
-      await runStore.remove(getRouteParam(request.params.id, "id"));
+      const id = getRouteParam(request.params.id, "id");
+      const run = await runStore.get(id);
+
+      await issueStore.unlinkAgentRunReferences(run);
+      await runStore.remove(id);
+
+      if (request.query.cleanupWorkspace === "true") {
+        const workspace = await workspaceStore.get(run.workspaceId).catch(() => undefined);
+
+        if (workspace?.kind === "task_worktree") {
+          const cache = workspace.parentWorkspaceId
+            ? await workspaceStore.get(workspace.parentWorkspaceId).catch(() => undefined)
+            : undefined;
+
+          if (cache) {
+            const settings = await toolSettingsStore.get();
+            await removeWorktreeFromCache({
+              cache,
+              target: workspace,
+              settings: sandboxSettings,
+              githubToken: settings.github.enabled ? settings.github.token : undefined
+            });
+          }
+
+          await workspaceStore.remove(workspace.id);
+        }
+      }
+
       response.status(204).send();
     })
   );
