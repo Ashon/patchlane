@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
 import { Message, MessageAction, MessageActions, MessageAvatar, MessageContent } from "@/components/ui/message";
 import { PromptInput, PromptInputActions, PromptInputTextarea } from "@/components/ui/prompt-input";
+import { PulseDotLoader } from "@/components/ui/loader";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ui/reasoning";
 import { ScrollButton } from "@/components/ui/scroll-button";
 import { SystemMessage } from "@/components/ui/system-message";
@@ -69,10 +70,10 @@ export const ChatConversation = ({
   const [reasoningOpen, setReasoningOpen] = useState<Record<string, boolean>>({});
   const groups = groupMessages(messages);
 
-  const toggleReasoning = (message: ConversationMessage, defaultOpen: boolean) => {
+  const setReasoningVisibility = (message: ConversationMessage, open: boolean) => {
     setReasoningOpen((current) => ({
       ...current,
-      [message.id]: !(current[message.id] ?? defaultOpen)
+      [message.id]: open
     }));
   };
 
@@ -103,12 +104,13 @@ export const ChatConversation = ({
                       detectPullRequestLinks={detectPullRequestLinks}
                       key={group.id}
                       messages={group.messages}
-                      onReasoningToggle={toggleReasoning}
+                      onReasoningOpenChange={setReasoningVisibility}
                       reasoningOpen={reasoningOpen}
                       showMeta={showMessageMeta}
                     />
                   )
                 )}
+            {inputLoading ? <AssistantActivityIndicator /> : null}
             <ChatContainerScrollAnchor />
           </ChatContainerContent>
           <div className="absolute bottom-4 right-4">
@@ -128,12 +130,27 @@ export const ChatConversation = ({
         >
           <PromptInputTextarea placeholder={inputPlaceholder} />
           <div className="flex min-h-9 items-center justify-between gap-3 px-2 pb-1">
-            <div className="truncate text-xs text-muted-foreground">{inputFooter}</div>
+            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              {inputLoading ? <PulseDotLoader className="text-primary" label="Agent is working" /> : null}
+              <span className="truncate">{inputFooter}</span>
+            </div>
             <PromptInputActions>{inputActions}</PromptInputActions>
           </div>
         </PromptInput>
       </div>
     </section>
+  );
+};
+
+const AssistantActivityIndicator = () => {
+  return (
+    <Message className="group gap-2">
+      <MessageAvatar alt="Assistant" className="h-7 w-7" fallback="AI" src="" />
+      <div className="flex h-8 min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <PulseDotLoader className="text-primary" label="Agent is working" />
+        <span>Working</span>
+      </div>
+    </Message>
   );
 };
 
@@ -181,13 +198,13 @@ const UserMessageBubble = ({ message, showMeta }: { message: ConversationMessage
 const AssistantMessageGroup = ({
   detectPullRequestLinks,
   messages,
-  onReasoningToggle,
+  onReasoningOpenChange,
   reasoningOpen,
   showMeta
 }: {
   detectPullRequestLinks: boolean;
   messages: ConversationMessage[];
-  onReasoningToggle: (message: ConversationMessage, defaultOpen: boolean) => void;
+  onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void;
   reasoningOpen: Record<string, boolean>;
   showMeta: boolean;
 }) => {
@@ -203,7 +220,7 @@ const AssistantMessageGroup = ({
             detectPullRequestLinks={detectPullRequestLinks}
             key={message.id}
             message={message}
-            onReasoningToggle={onReasoningToggle}
+            onReasoningOpenChange={onReasoningOpenChange}
             reasoningOpen={reasoningOpen[message.id]}
           />
         ))}
@@ -215,12 +232,12 @@ const AssistantMessageGroup = ({
 const AssistantMessagePart = ({
   detectPullRequestLinks,
   message,
-  onReasoningToggle,
+  onReasoningOpenChange,
   reasoningOpen
 }: {
   detectPullRequestLinks: boolean;
   message: ConversationMessage;
-  onReasoningToggle: (message: ConversationMessage, defaultOpen: boolean) => void;
+  onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void;
   reasoningOpen?: boolean;
 }) => {
   const isTool = message.role === "tool";
@@ -229,24 +246,16 @@ const AssistantMessagePart = ({
   const isStreaming = message.status === "streaming";
   const content = message.content;
   const reasoning = message.reasoning ?? "";
+  const isReasoningOpen = reasoningOpen ?? false;
 
   return (
     <div className="min-w-0 space-y-1">
       {isAssistant && reasoning ? (
         <Reasoning
-          isStreaming={isStreaming}
-          onOpenChange={(open) => {
-            if (reasoningOpen !== open) {
-              onReasoningToggle(message, isStreaming);
-            }
-          }}
-          open={reasoningOpen ?? isStreaming}
+          onOpenChange={(open) => onReasoningOpenChange(message, open)}
+          open={isReasoningOpen}
         >
-          {isStreaming ? (
-            <ThinkingBar className="max-w-[min(960px,100%)] py-0.5 text-xs" onClick={() => onReasoningToggle(message, true)} />
-          ) : (
-            <ReasoningTrigger className="text-xs">Thinking trace</ReasoningTrigger>
-          )}
+          <ReasoningTrigger>Thinking trace</ReasoningTrigger>
           <ReasoningContent className="ml-1 mt-1 border-l pl-2" contentClassName="max-w-[min(960px,100%)] py-0.5 text-xs" markdown>
             {reasoning}
           </ReasoningContent>
@@ -254,13 +263,13 @@ const AssistantMessagePart = ({
       ) : null}
 
       {isAssistant && isStreaming && !content && !reasoning ? (
-        <ThinkingBar className="max-w-[min(960px,100%)] py-0.5 text-xs" />
+        <ThinkingBar className="h-8 max-w-[min(960px,100%)] py-0 text-xs" />
       ) : null}
 
       {isTool ? (
         <Tool
           className="mt-0.5 min-w-[220px] max-w-[min(420px,100%)] border-muted-foreground/20 bg-muted/20 shadow-none"
-          defaultOpen={isStreaming || message.status === "error"}
+          defaultOpen={false}
           size="compact"
           toolPart={toToolPart(message)}
         />

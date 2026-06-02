@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button"
+import { PulseDotLoader } from "@/components/ui/loader"
 import {
   Collapsible,
   CollapsibleContent,
@@ -8,7 +9,6 @@ import { cn } from "@/lib/utils"
 import {
   CheckCircle,
   ChevronDown,
-  Loader2,
   Settings,
   XCircle,
 } from "lucide-react"
@@ -50,7 +50,7 @@ const Tool = ({
 
     switch (state) {
       case "input-streaming":
-        return <Loader2 className={cn(iconClassName, "animate-spin text-blue-500")} />
+        return <PulseDotLoader className={cn(isCompact ? "h-3.5 w-5" : "h-4 w-6", "text-blue-500")} />
       case "input-available":
         return <Settings className={cn(iconClassName, "text-orange-500")} />
       case "output-available":

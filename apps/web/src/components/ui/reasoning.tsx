@@ -35,17 +35,14 @@ export type ReasoningProps = {
   className?: string
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  isStreaming?: boolean
 }
 function Reasoning({
   children,
   className,
   open,
   onOpenChange,
-  isStreaming,
 }: ReasoningProps) {
   const [internalOpen, setInternalOpen] = useState(false)
-  const [wasAutoOpened, setWasAutoOpened] = useState(false)
 
   const isControlled = open !== undefined
   const isOpen = isControlled ? open : internalOpen
@@ -56,18 +53,6 @@ function Reasoning({
     }
     onOpenChange?.(newOpen)
   }
-
-  useEffect(() => {
-    if (isStreaming && !wasAutoOpened) {
-      if (!isControlled) setInternalOpen(true)
-      setWasAutoOpened(true)
-    }
-
-    if (!isStreaming && wasAutoOpened) {
-      if (!isControlled) setInternalOpen(false)
-      setWasAutoOpened(false)
-    }
-  }, [isStreaming, wasAutoOpened, isControlled])
 
   return (
     <ReasoningContext.Provider
@@ -84,29 +69,44 @@ function Reasoning({
 export type ReasoningTriggerProps = {
   children: React.ReactNode
   className?: string
-} & React.HTMLAttributes<HTMLButtonElement>
+} & React.ButtonHTMLAttributes<HTMLButtonElement>
 
 function ReasoningTrigger({
   children,
   className,
+  onClick,
+  type = "button",
   ...props
 }: ReasoningTriggerProps) {
   const { isOpen, onOpenChange } = useReasoningContext()
 
   return (
     <button
-      className={cn("flex cursor-pointer items-center gap-2", className)}
-      onClick={() => onOpenChange(!isOpen)}
+      aria-expanded={isOpen}
+      className={cn(
+        "inline-flex h-6 min-w-[8rem] cursor-pointer items-center gap-1.5 rounded-sm text-xs leading-none text-muted-foreground transition-colors hover:text-foreground",
+        className
+      )}
+      onClick={(event) => {
+        onClick?.(event)
+
+        if (!event.defaultPrevented) {
+          onOpenChange(!isOpen)
+        }
+      }}
+      type={type}
       {...props}
     >
-      <span className="text-primary">{children}</span>
+      <span className="inline-flex min-w-[6.5rem] items-center text-primary">
+        {children}
+      </span>
       <div
         className={cn(
-          "transform transition-transform",
+          "grid size-4 shrink-0 place-items-center transition-transform",
           isOpen ? "rotate-180" : ""
         )}
       >
-        <ChevronDownIcon className="size-4" />
+        <ChevronDownIcon className="size-3.5" />
       </div>
     </button>
   )

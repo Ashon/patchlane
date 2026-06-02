@@ -152,7 +152,6 @@ export const ProjectsListPage = ({
   const [localError, setLocalError] = useState<string | null>(null);
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>(() => toProjectDraft(null, selectedEndpoint?.id));
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
-  const [editProjectOpen, setEditProjectOpen] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
   const visibleError = localError ?? error;
 
@@ -482,23 +481,23 @@ export const ProjectDetailPage = ({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <section className="border-b p-3">
-          <Dialog onOpenChange={setEditProjectOpen} open={editProjectOpen}>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Edit Project</DialogTitle>
-                <DialogDescription>Update the project settings</DialogDescription>
-              </DialogHeader>
-              <ProjectForm
-            draft={activeProjectDraft}
-            endpoints={endpoints}
-            onChange={updateProjectDraft}
-            onSubmit={saveProject}
-            saving={savingProject}
-            submitLabel="Save"
-            workspaces={workspaces}
-          />
-        </section>
+        <Dialog onOpenChange={setEditProjectOpen} open={editProjectOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Project</DialogTitle>
+              <DialogDescription>Update the project settings</DialogDescription>
+            </DialogHeader>
+            <ProjectForm
+              draft={activeProjectDraft}
+              endpoints={endpoints}
+              onChange={updateProjectDraft}
+              onSubmit={saveProject}
+              saving={savingProject}
+              submitLabel="Save"
+              workspaces={workspaces}
+            />
+          </DialogContent>
+        </Dialog>
 
         {tab === "issues" ? (
           <ProjectIssuesView

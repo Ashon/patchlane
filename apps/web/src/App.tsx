@@ -49,6 +49,7 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { ProjectDetailPage, ProjectsListPage, type ProjectDetailTab } from "@/components/issues/issues-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Markdown } from "@/components/ui/markdown";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PromptInputAction } from "@/components/ui/prompt-input";
 import {
@@ -264,6 +265,26 @@ export default function App() {
         runs: [run, ...(current?.runs ?? []).filter((item) => item.id !== run.id)]
       }));
       selectAgentRun(run);
+    },
+    [queryClient, selectAgentRun]
+  );
+
+  const upsertAgentRunPreservingVisibleMessages = useCallback(
+    (run: AgentRun) => {
+      let mergedRun = run;
+
+      queryClient.setQueryData<{ runs: AgentRun[] }>(queryKeys.agentRuns, (current) => {
+        const existingRun = current?.runs.find((item) => item.id === run.id);
+        mergedRun = {
+          ...run,
+          messages: existingRun ? mergeVisibleAgentRunMessages(existingRun.messages, run.messages) : run.messages
+        };
+
+        return {
+          runs: [mergedRun, ...(current?.runs ?? []).filter((item) => item.id !== run.id)]
+        };
+      });
+      selectAgentRun(mergedRun);
     },
     [queryClient, selectAgentRun]
   );
@@ -632,43 +653,47 @@ export default function App() {
 
     const ensureAssistantSegment = () => activeAssistantMessageId ?? createAssistantSegment();
 
-    const finalizeAssistantSegment = () => {
+    const consumeAssistantSegment = () => {
       const id = activeAssistantMessageId;
 
       if (!id) {
-        return;
+        return null;
       }
 
       const content = activeAssistantContent;
       activeAssistantMessageId = null;
       activeAssistantContent = "";
 
-      updateAgentRunInPlace(run.id, (current) => {
-        if (!content.trim()) {
-          return {
-            ...current,
-            status: "running",
-            messages: current.messages.filter((message) => message.id !== id)
-          };
-        }
-
-        return {
-          ...current,
-          status: "running",
-          messages: current.messages.map((message) =>
-            message.id === id
-              ? {
-                  ...message,
-                  id: id.startsWith("stream-") ? `assistant-${id.slice("stream-".length)}` : id,
-                  content
-                }
-              : message
-          )
-        };
-      });
+      return { id, content };
     };
 
-    createAssistantSegment();
+    const finalizeAssistantSegment = (serverMessages: AgentRun["messages"] = []) => {
+      const assistantSegment = consumeAssistantSegment();
+
+      if (!assistantSegment) {
+        return;
+      }
+
+      updateAgentRunInPlace(run.id, (current) => ({
+        ...current,
+        status: "running",
+        messages: finalizeAssistantSegmentMessage(current.messages, assistantSegment, serverMessages)
+      }));
+    };
+
+    const finalizeAssistantSegmentIfPersisted = (serverMessages: AgentRun["messages"]) => {
+      if (!activeAssistantMessageId || !activeAssistantContent.trim()) {
+        return;
+      }
+
+      const hasMatchingServerMessage = serverMessages.some(
+        (message) => message.role === "assistant" && message.content === activeAssistantContent
+      );
+
+      if (hasMatchingServerMessage) {
+        finalizeAssistantSegment(serverMessages);
+      }
+    };
 
     try {
       await api.streamAgentRun(
@@ -680,12 +705,15 @@ export default function App() {
           signal: controller.signal,
           onEvent: (event) => {
             if (event.type === "run") {
+              finalizeAssistantSegmentIfPersisted(event.run.messages);
+              upsertAgentRunPreservingVisibleMessages(event.run);
               return;
             }
 
             if (event.type === "done") {
+              finalizeAssistantSegment(event.run.messages);
               finalRun = event.run;
-              upsertAgentRun(event.run);
+              upsertAgentRunPreservingVisibleMessages(event.run);
               if (event.run.issueId) {
                 void refreshIssues();
               }
@@ -729,21 +757,19 @@ export default function App() {
             if (event.type === "tool_start") {
               const now = new Date().toISOString();
               toolMessageId = `tool-${crypto.randomUUID()}`;
-              finalizeAssistantSegment();
+              const assistantSegment = consumeAssistantSegment();
+              const toolMessage: AgentRun["messages"][number] = {
+                id: toolMessageId,
+                role: "tool",
+                toolName: event.toolName,
+                content: `Running ${event.toolName}...`,
+                createdAt: now
+              };
 
               updateAgentRunInPlace(run.id, (current) => ({
                 ...current,
                 status: "running",
-                messages: [
-                  ...current.messages,
-                  {
-                    id: toolMessageId || `tool-${crypto.randomUUID()}`,
-                    role: "tool",
-                    toolName: event.toolName,
-                    content: `Running ${event.toolName}...`,
-                    createdAt: now
-                  }
-                ]
+                messages: mergeToolStartMessage(current.messages, assistantSegment, toolMessage)
               }));
               return;
             }
@@ -766,8 +792,9 @@ export default function App() {
 
             if (event.type === "error") {
               if (event.run) {
+                finalizeAssistantSegment(event.run.messages);
                 finalRun = event.run;
-                upsertAgentRun(event.run);
+                upsertAgentRunPreservingVisibleMessages(event.run);
               }
 
               throw new Error(event.error);
@@ -1634,7 +1661,11 @@ const AgentContextMemoryPanel = ({ context }: { context: NonNullable<AgentRun["c
       </div>
       <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
         <div className="px-3 pb-3">
-          <pre className="max-h-56 overflow-y-auto rounded-md border border-amber-200 bg-background p-2.5 whitespace-pre-wrap font-mono text-xs leading-5 text-muted-foreground">{context.summary || "No context summary is available for this compacted run."}</pre>
+          <div className="max-h-72 overflow-y-auto rounded-md border border-amber-200 bg-background px-3 py-2.5 text-sm">
+            <Markdown className="prose prose-sm max-w-none dark:prose-invert prose-headings:my-2 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-code:text-xs">
+              {formatContextMemoryMarkdown(context)}
+            </Markdown>
+          </div>
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -1753,6 +1784,23 @@ const formatAgentRunContext = (context: NonNullable<AgentRun["context"]>) => {
   return `context ${usage}%`;
 };
 
+const formatContextMemoryMarkdown = (context: NonNullable<AgentRun["context"]>) => {
+  const summary = context.summary?.trim() || "_No context summary is available for this compacted run._";
+
+  return [
+    "### Context Memory Prompt",
+    [
+      `- Strategy: \`${context.strategy}\``,
+      `- Estimated tokens: \`${context.estimatedTokens.toLocaleString()}\` / \`${context.tokenBudget.toLocaleString()}\``,
+      `- Compacted messages: \`${context.summarizedMessages.toLocaleString()}\``,
+      `- Recent messages kept: \`${context.retainedMessages.toLocaleString()}\``,
+      `- Updated: \`${formatDateTime(context.updatedAt)}\``
+    ].join("\n"),
+    "### Compacted Context",
+    summary
+  ].join("\n\n");
+};
+
 const getAgentRunPromptPreview = (run: AgentRun) => {
   const prompt = run.messages.find((message) => message.role === "user")?.content;
 
@@ -1765,6 +1813,132 @@ const getAgentRunPromptPreview = (run: AgentRun) => {
 
 const getAgentRunContextUsage = (context: NonNullable<AgentRun["context"]>) => {
   return Math.min(100, Math.round((context.estimatedTokens / context.tokenBudget) * 100));
+};
+
+type AgentRunMessage = AgentRun["messages"][number];
+type AssistantStreamSegment = {
+  id: string;
+  content: string;
+} | null;
+
+const mergeToolStartMessage = (
+  messages: AgentRunMessage[],
+  assistantSegment: AssistantStreamSegment,
+  toolMessage: AgentRunMessage
+) => {
+  if (!assistantSegment) {
+    return [...messages, toolMessage];
+  }
+
+  const existingIndex = messages.findIndex((message) => message.id === assistantSegment.id);
+  const hasAssistantContent = Boolean(assistantSegment.content.trim());
+
+  if (existingIndex < 0) {
+    if (!hasAssistantContent) {
+      return [...messages, toolMessage];
+    }
+
+    return [...messages, createFinalAssistantMessage(assistantSegment, toolMessage.createdAt), toolMessage];
+  }
+
+  return messages.flatMap((message) => {
+    if (message.id !== assistantSegment.id) {
+      return [message];
+    }
+
+    if (!hasAssistantContent) {
+      return [toolMessage];
+    }
+
+    return [
+      {
+        ...message,
+        id: getFinalAssistantMessageId(assistantSegment.id),
+        content: assistantSegment.content
+      },
+      toolMessage
+    ];
+  });
+};
+
+const finalizeAssistantSegmentMessage = (
+  messages: AgentRunMessage[],
+  assistantSegment: Exclude<AssistantStreamSegment, null>,
+  serverMessages: AgentRunMessage[]
+) => {
+  const existingIndex = messages.findIndex((message) => message.id === assistantSegment.id);
+
+  if (existingIndex < 0) {
+    return assistantSegment.content.trim() ? [...messages, getFinalAssistantMessage(assistantSegment, serverMessages)] : messages;
+  }
+
+  return messages.flatMap((message) => {
+    if (message.id !== assistantSegment.id) {
+      return [message];
+    }
+
+    return assistantSegment.content.trim() ? [getFinalAssistantMessage(assistantSegment, serverMessages, message)] : [];
+  });
+};
+
+const getFinalAssistantMessage = (
+  assistantSegment: Exclude<AssistantStreamSegment, null>,
+  serverMessages: AgentRunMessage[],
+  fallback?: AgentRunMessage
+) => {
+  const serverMessage = serverMessages.find(
+    (message) => message.role === "assistant" && message.content === assistantSegment.content
+  );
+
+  if (serverMessage) {
+    return serverMessage;
+  }
+
+  return {
+    ...(fallback ?? createFinalAssistantMessage(assistantSegment, new Date().toISOString())),
+    id: getFinalAssistantMessageId(assistantSegment.id),
+    content: assistantSegment.content
+  };
+};
+
+const mergeVisibleAgentRunMessages = (visibleMessages: AgentRunMessage[], serverMessages: AgentRunMessage[]) => {
+  const merged = [...visibleMessages];
+
+  for (const serverMessage of serverMessages) {
+    if (!merged.some((message) => isSameVisibleMessage(message, serverMessage))) {
+      merged.push(serverMessage);
+    }
+  }
+
+  return merged;
+};
+
+const isSameVisibleMessage = (left: AgentRunMessage, right: AgentRunMessage) => {
+  if (left.id === right.id) {
+    return true;
+  }
+
+  if (left.role === "assistant" && right.role === "assistant") {
+    const leftContent = splitThinking(left.content).content.trim();
+    const rightContent = splitThinking(right.content).content.trim();
+
+    if (leftContent && rightContent && leftContent === rightContent) {
+      return true;
+    }
+  }
+
+  return left.role === right.role && left.toolName === right.toolName && left.content === right.content;
+};
+
+const createFinalAssistantMessage = (assistantSegment: Exclude<AssistantStreamSegment, null>, createdAt: string): AgentRunMessage => ({
+  id: getFinalAssistantMessageId(assistantSegment.id),
+  role: "assistant",
+  content: assistantSegment.content,
+  createdAt
+});
+
+const getFinalAssistantMessageId = (id: string) => {
+  return id.startsWith("stream-") ? `assistant-${id.slice("stream-".length)}` : id;
 };
 
 const SandboxWorkspaceCard = ({
