@@ -17,6 +17,7 @@ import type {
 import {
   Bot,
   CheckCircle2,
+  ChevronDown,
   Folder,
   Github,
   KeyRound,
@@ -47,6 +48,7 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { ProjectsPanel } from "@/components/issues/issues-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PromptInputAction } from "@/components/ui/prompt-input";
 import {
   Select,
@@ -1403,6 +1405,8 @@ const AgentConversation = ({
   const canUseEndpoint = Boolean(endpoint?.enabled);
   const canContinue = canUseEndpoint && !isStreaming && run.status !== "completed";
   const canSend = canUseEndpoint && !isStreaming && Boolean(draft.trim()) && run.status !== "completed";
+  const contextPanel =
+    run.context?.strategy === "compacted" ? <AgentContextMemoryPanel context={run.context} /> : null;
   const messages = useMemo<ConversationMessage[]>(
     () =>
       run.messages.map((message) => {
@@ -1443,6 +1447,7 @@ const AgentConversation = ({
         </div>
       }
       error={error}
+      header={contextPanel}
       inputActions={
         <>
           <PromptInputAction tooltip="Continue run">
@@ -1481,6 +1486,43 @@ const AgentConversation = ({
       }}
       showMessageMeta
     />
+  );
+};
+
+const AgentContextMemoryPanel = ({ context }: { context: NonNullable<AgentRun["context"]> }) => {
+  const [open, setOpen] = useState(false);
+  const usage = getAgentRunContextUsage(context);
+
+  return (
+    <Collapsible
+      className="border-b bg-amber-50/45 text-amber-950"
+      onOpenChange={setOpen}
+      open={open}
+    >
+      <div className="px-3 py-2">
+        <CollapsibleTrigger asChild>
+          <button
+            className="flex w-full min-w-0 items-center gap-2 text-left text-xs"
+            type="button"
+          >
+            <Network className="h-3.5 w-3.5 shrink-0" />
+            <span className="font-medium">Context memory</span>
+            <Badge className="border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-100" variant="outline">
+              {usage}%
+            </Badge>
+            <span className="truncate text-amber-800">
+              {context.summarizedMessages} compacted · {context.retainedMessages} recent kept
+            </span>
+            <ChevronDown className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-180")} />
+          </button>
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+        <div className="px-3 pb-3">
+          <pre className="max-h-56 overflow-y-auto rounded-md border border-amber-200 bg-background p-2.5 whitespace-pre-wrap font-mono text-xs leading-5 text-muted-foreground">{context.summary || "No context summary is available for this compacted run."}</pre>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 };
 
