@@ -24,6 +24,7 @@ import {
   Loader2,
   Play,
   Plus,
+  Pencil,
   RefreshCw,
   Save
 } from "lucide-react";
@@ -151,6 +152,7 @@ export const ProjectsListPage = ({
   const [localError, setLocalError] = useState<string | null>(null);
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>(() => toProjectDraft(null, selectedEndpoint?.id));
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
   const visibleError = localError ?? error;
 
@@ -307,6 +309,7 @@ export const ProjectDetailPage = ({
   const [savingProject, setSavingProject] = useState(false);
   const [savingIssue, setSavingIssue] = useState(false);
   const [runningIssueId, setRunningIssueId] = useState<string | null>(null);
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
 
   const project = projects.find((item) => item.id === projectId) ?? null;
   const projectIssues = useMemo(() => issues.filter((issue) => issue.projectId === projectId), [issues, projectId]);
@@ -455,6 +458,9 @@ export const ProjectDetailPage = ({
           <Button disabled={loading} onClick={() => void refreshProject()} size="icon" type="button" variant="ghost">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
+          <Button onClick={() => setEditProjectOpen(true)} size="icon" type="button" variant="ghost">
+            <Pencil className="h-4 w-4" />
+          </Button>
         </div>
       </header>
 
@@ -477,7 +483,13 @@ export const ProjectDetailPage = ({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="border-b p-3">
-          <ProjectForm
+          <Dialog onOpenChange={setEditProjectOpen} open={editProjectOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Edit Project</DialogTitle>
+                <DialogDescription>Update the project settings</DialogDescription>
+              </DialogHeader>
+              <ProjectForm
             draft={activeProjectDraft}
             endpoints={endpoints}
             onChange={updateProjectDraft}
