@@ -401,7 +401,7 @@ const UserMessageBubble = ({
         {showMeta ? <MessageMeta message={message} /> : null}
         {content ? (
           <MessageContent
-            className="max-w-full overflow-hidden rounded-md bg-primary px-2.5 py-1.5 text-sm leading-5 text-primary-foreground prose-invert prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto"
+            className="max-w-full overflow-hidden rounded-lg bg-primary px-2.5 py-1.5 text-sm leading-5 text-primary-foreground prose-invert prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto"
             id={message.id}
             markdown
           >
@@ -543,7 +543,7 @@ const AssistantMessagePart = ({
       ) : showContent ? (
         <MessageContent
           className={cn(
-            'w-full max-w-[min(920px,100%)] overflow-hidden rounded-md px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+            'w-full max-w-[min(920px,100%)] overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
             isSystem &&
               'border-destructive/25 bg-destructive/10 text-destructive',
           )}
@@ -736,7 +736,7 @@ const MessageStatusActions = ({
   }
 
   return (
-    <MessageActions className="pointer-events-none absolute bottom-1 right-1 z-20 gap-1 text-foreground opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100">
+    <MessageActions className="pointer-events-none absolute bottom-2 right-1 z-20 gap-1 text-foreground opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100">
       {message.status === 'error' ? (
         <Badge variant="destructive">error</Badge>
       ) : null}
