@@ -171,6 +171,8 @@ function ReasoningContent({
         className={cn(
           'text-muted-foreground prose prose-sm dark:prose-invert',
           'min-w-0 max-w-full break-words',
+          'prose-headings:text-current prose-p:text-current prose-strong:text-current prose-a:text-current prose-blockquote:text-current',
+          'prose-ol:text-current prose-ul:text-current prose-li:text-current prose-code:text-current prose-th:text-current prose-td:text-current',
           contentClassName,
         )}
       >

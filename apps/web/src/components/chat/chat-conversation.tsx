@@ -371,6 +371,55 @@ const getEstimatedRenderItemSize = (item?: ConversationRenderItem) => {
   return item.message.content.length > 480 ? 140 : 80
 }
 
+const MessageBlockFrame = ({
+  children,
+  className,
+  overlay,
+  overlayClassName,
+  overlaySide = 'right',
+}: {
+  children: ReactNode
+  className?: string
+  overlay?: ReactNode
+  overlayClassName?: string
+  overlaySide?: 'left' | 'right'
+}) => {
+  return (
+    <div className={cn('group/block relative min-w-0 max-w-full', className)}>
+      {children}
+      {overlay ? (
+        <MessageBlockOverlay className={overlayClassName} side={overlaySide}>
+          {overlay}
+        </MessageBlockOverlay>
+      ) : null}
+    </div>
+  )
+}
+
+const MessageBlockOverlay = ({
+  children,
+  className,
+  side,
+}: {
+  children: ReactNode
+  className?: string
+  side: 'left' | 'right'
+}) => {
+  return (
+    <MessageActions
+      className={cn(
+        'pointer-events-none absolute bottom-0.5 right-0.5 z-20 gap-1 text-foreground opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100',
+        side === 'right'
+          ? 'bottom-0 left-full right-auto pl-1'
+          : 'bottom-0 left-auto right-full pr-1',
+        className,
+      )}
+    >
+      {children}
+    </MessageActions>
+  )
+}
+
 const UserMessageBubble = ({
   message,
   onRewind,
@@ -386,22 +435,29 @@ const UserMessageBubble = ({
 
   return (
     <Message className="group w-full min-w-0 justify-end">
-      <div className="group/message relative flex w-full min-w-0 max-w-[920px] flex-col items-end space-y-1">
+      <div className="group/message flex w-full min-w-0 max-w-[920px] flex-col items-end space-y-1">
         {showMeta ? <MessageMeta message={message} /> : null}
         {content ? (
-          <MessageContent
-            className="max-w-full overflow-hidden rounded-lg bg-primary px-2.5 py-1.5 text-sm leading-5 text-primary-foreground prose-invert prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto"
-            id={message.id}
-            markdown
+          <MessageBlockFrame
+            className="w-fit max-w-[calc(100%_-_10rem)]"
+            overlay={
+              <MessageStatusActions
+                message={message}
+                onRewind={onRewind}
+                rewindDisabled={rewindDisabled}
+              />
+            }
+            overlaySide="left"
           >
-            {content}
-          </MessageContent>
+            <MessageContent
+              className="max-w-full overflow-hidden rounded-lg bg-primary px-2.5 py-1.5 text-sm leading-5 text-primary-foreground prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto"
+              id={message.id}
+              markdown
+            >
+              {content}
+            </MessageContent>
+          </MessageBlockFrame>
         ) : null}
-        <MessageStatusActions
-          message={message}
-          onRewind={onRewind}
-          rewindDisabled={rewindDisabled}
-        />
       </div>
     </Message>
   )
@@ -440,7 +496,7 @@ const AssistantMessageRow = ({
       ) : showAvatar ? (
         <div aria-hidden className="h-7 w-7 shrink-0" />
       ) : null}
-      <div className="w-full min-w-0 space-y-1 overflow-hidden">
+      <div className="w-full min-w-0 space-y-1 overflow-visible">
         {showMeta && metaMessage ? (
           <AssistantGroupMeta message={metaMessage} />
         ) : null}
@@ -490,52 +546,83 @@ const AssistantMessagePart = ({
   const showContextMetadata =
     Boolean(message.metadata?.context) &&
     (isTool || showThinkingPlaceholder || (showReasoning && !showContent))
+  const contextOverlay = showContextMetadata ? (
+    <MetadataAction metadata={message.metadata} />
+  ) : null
 
   if (!showReasoning && !showThinkingPlaceholder && !isTool && !showContent) {
     return null
   }
 
   return (
-    <div className="group/message relative w-full min-w-0 space-y-0.5 overflow-hidden">
-      {showContextMetadata ? (
-        <ContextMetadataOverlay metadata={message.metadata} />
-      ) : null}
-
+    <div className="group/message w-full min-w-0 space-y-0.5 overflow-visible">
       {showReasoning ? (
-        <Reasoning
-          className="w-full min-w-0 overflow-hidden"
-          onOpenChange={(open) => onReasoningOpenChange(message, open)}
-          open={isReasoningOpen}
+        <MessageBlockFrame
+          className="w-fit max-w-[min(920px,calc(100%_-_5.5rem))]"
+          overlay={contextOverlay}
         >
-          <ReasoningTrigger className="max-w-full">
-            Thinking trace
-          </ReasoningTrigger>
-          <ReasoningContent
-            className="ml-1 mt-0.5 w-full min-w-0 border-l pl-2"
-            contentClassName="w-full min-w-0 max-w-full overflow-hidden py-0.5 text-xs leading-5 break-words prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 [&_*]:max-w-full [&_pre]:overflow-x-auto"
-            markdown
+          <Reasoning
+            className="w-fit max-w-full min-w-0 overflow-hidden"
+            onOpenChange={(open) => onReasoningOpenChange(message, open)}
+            open={isReasoningOpen}
           >
-            {reasoning}
-          </ReasoningContent>
-        </Reasoning>
+            <ReasoningTrigger className="max-w-full">
+              Reasoning
+            </ReasoningTrigger>
+            <ReasoningContent
+              className={cn(
+                'min-w-0',
+                isReasoningOpen
+                  ? 'ml-1 mt-0.5 max-w-full border-l pl-2'
+                  : 'm-0 h-0 w-0 border-0 p-0',
+              )}
+              contentClassName={cn(
+                'max-w-full overflow-hidden py-0.5 text-xs leading-5 break-words prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+                !isReasoningOpen && 'w-0 p-0',
+              )}
+              markdown
+            >
+              {reasoning}
+            </ReasoningContent>
+          </Reasoning>
+        </MessageBlockFrame>
       ) : null}
 
       {showThinkingPlaceholder ? (
-        <ThinkingBar className="h-7 w-full max-w-[min(920px,100%)] py-0 text-xs" />
+        <MessageBlockFrame
+          className="w-fit max-w-[min(920px,calc(100%_-_5.5rem))]"
+          overlay={contextOverlay}
+        >
+          <ThinkingBar className="h-7 w-fit max-w-full py-0 text-xs" />
+        </MessageBlockFrame>
       ) : null}
 
       {isTool ? (
-        <Tool
-          className="mt-0.5 w-full max-w-[min(720px,100%)] border-muted-foreground/20 bg-muted/20 shadow-none"
-          defaultOpen={false}
-          size="compact"
-          toolPart={toToolPart(message)}
-        />
+        <MessageBlockFrame
+          className="w-fit max-w-[min(720px,calc(100%_-_5.5rem))]"
+          overlay={contextOverlay}
+        >
+          <Tool
+            className="border-muted-foreground/20 bg-muted/20 shadow-none"
+            defaultOpen={false}
+            size="compact"
+            toolPart={toToolPart(message)}
+          />
+        </MessageBlockFrame>
       ) : showContent ? (
-        <div className="group/content relative w-full max-w-[min(920px,100%)]">
+        <MessageBlockFrame
+          className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
+          overlay={
+            <MessageStatusActions
+              message={message}
+              onRewind={onRewind}
+              rewindDisabled={rewindDisabled}
+            />
+          }
+        >
           <MessageContent
             className={cn(
-              'w-full overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+              'max-w-full overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
               isSystem &&
                 'border-destructive/25 bg-destructive/10 text-destructive',
             )}
@@ -544,13 +631,7 @@ const AssistantMessagePart = ({
           >
             {content}
           </MessageContent>
-          <MessageStatusActions
-            hoverScope="content"
-            message={message}
-            onRewind={onRewind}
-            rewindDisabled={rewindDisabled}
-          />
-        </div>
+        </MessageBlockFrame>
       ) : null}
     </div>
   )
@@ -701,13 +782,11 @@ const MessageMeta = ({ message }: { message: ConversationMessage }) => {
 
 const MessageStatusActions = ({
   allowCopy = true,
-  hoverScope = 'message',
   message,
   onRewind,
   rewindDisabled,
 }: {
   allowCopy?: boolean
-  hoverScope?: 'content' | 'message'
   message: ConversationMessage
   onRewind?: (message: ConversationMessage) => void
   rewindDisabled?: boolean
@@ -735,14 +814,7 @@ const MessageStatusActions = ({
   }
 
   return (
-    <MessageActions
-      className={cn(
-        'pointer-events-none absolute bottom-2 right-1 z-20 gap-1 text-foreground opacity-0 transition-opacity',
-        hoverScope === 'content'
-          ? 'group-hover/content:pointer-events-auto group-hover/content:opacity-100'
-          : 'group-hover/message:pointer-events-auto group-hover/message:opacity-100',
-      )}
-    >
+    <>
       {message.status === 'error' ? (
         <Badge variant="destructive">error</Badge>
       ) : null}
@@ -762,28 +834,12 @@ const MessageStatusActions = ({
         />
       ) : null}
       {canCopy ? <CopyAction value={content} /> : null}
-    </MessageActions>
+    </>
   )
 }
 
 const overlayActionButtonClass =
   'h-6 gap-1 rounded-md bg-background/80 px-2 text-[11px] text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3'
-
-const ContextMetadataOverlay = ({
-  metadata,
-}: {
-  metadata?: AgentRunMessageMetadata
-}) => {
-  if (!metadata?.context) {
-    return null
-  }
-
-  return (
-    <div className="pointer-events-none absolute bottom-0 right-0 z-20 opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100">
-      <MetadataAction metadata={metadata} />
-    </div>
-  )
-}
 
 const MetadataAction = ({
   metadata,

@@ -23,7 +23,7 @@ function ScrollButton({
       variant={variant}
       size={size}
       className={cn(
-        'h-10 w-10 rounded-full transition-all duration-150 ease-out',
+        'h-10 w-10 rounded-full bg-background/80 shadow-sm backdrop-blur-md transition-all duration-150 ease-out hover:bg-background/90 dark:bg-background/70 dark:hover:bg-background/85',
         !isAtBottom
           ? 'translate-y-0 scale-100 opacity-100'
           : 'pointer-events-none translate-y-4 scale-95 opacity-0',

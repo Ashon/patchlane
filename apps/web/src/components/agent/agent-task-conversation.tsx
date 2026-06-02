@@ -323,7 +323,7 @@ const AgentContextMemoryPanel = ({
 
   return (
     <Collapsible
-      className="border-b bg-amber-50/45 text-amber-950"
+      className="border-b bg-amber-500/10 text-amber-500"
       onOpenChange={setOpen}
       open={open}
     >
@@ -336,8 +336,7 @@ const AgentContextMemoryPanel = ({
             <Network className="h-3.5 w-3.5 shrink-0" />
             <span className="font-medium">Context memory</span>
             <Badge
-              className="border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-100"
-              variant="outline"
+              className="border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
             >
               {usage}%
             </Badge>
@@ -355,8 +354,8 @@ const AgentContextMemoryPanel = ({
         </CollapsibleTrigger>
       </div>
       <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-        <div className="px-3 pb-3">
-          <div className="max-h-72 overflow-y-auto rounded-md border border-amber-200 bg-background px-3 py-2.5 text-sm">
+        <div className="m-3 mt-0 border bg-background rounded-md">
+          <div className="max-h-72 overflow-y-auto px-3 py-2.5 text-sm">
             <Markdown className="prose prose-sm max-w-none dark:prose-invert prose-headings:my-2 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-code:text-xs">
               {formatContextMemoryMarkdown(context)}
             </Markdown>

@@ -43,6 +43,7 @@ const agentRunMessageContextMetadataSchema = agentRunContextSchema
   })
 
 export const agentRunMessageMetadataSchema = z.object({
+  durationMs: z.number().int().nonnegative().optional(),
   context: agentRunMessageContextMetadataSchema.optional(),
   request: z
     .object({

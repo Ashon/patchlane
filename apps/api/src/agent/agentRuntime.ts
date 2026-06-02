@@ -118,6 +118,7 @@ type AgentMessageMetadataInput = {
   iteration: number
   promptMessages: number
   maxOutputTokens?: number
+  durationMs?: number
   content?: string
   toolInput?: string
   toolOutput?: string
@@ -130,11 +131,13 @@ const createAgentMessageMetadata = ({
   iteration,
   promptMessages,
   maxOutputTokens,
+  durationMs,
   content,
   toolInput,
   toolOutput,
 }: AgentMessageMetadataInput): AgentRunMessageMetadata => {
   return {
+    durationMs,
     context: {
       strategy: context.strategy,
       tokenBudget: context.tokenBudget,
@@ -243,6 +246,7 @@ export class AgentRuntime {
             promptMessages: promptMessageCount,
             maxOutputTokens: this.options.outputTokenBudget,
           }
+          const completionStartedAt = Date.now()
           const completion = await client.chat.completions.create({
             model: activeModel,
             messages: messages as never,
@@ -251,6 +255,7 @@ export class AgentRuntime {
             temperature: 0.2,
             max_tokens: this.options.outputTokenBudget,
           })
+          const completionDurationMs = Date.now() - completionStartedAt
 
           const message = completion.choices[0]?.message as {
             content?: string | null
@@ -291,6 +296,7 @@ export class AgentRuntime {
               content: message.content || '',
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
+                durationMs: completionDurationMs,
                 content: message.content || '',
               }),
             })
@@ -308,12 +314,14 @@ export class AgentRuntime {
               content: toolAdjacentAssistantContent,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
+                durationMs: completionDurationMs,
                 content: toolAdjacentAssistantContent,
               }),
             })
           }
 
           for (const toolCall of message.tool_calls) {
+            const toolStartedAt = Date.now()
             const result = await executeAgentTool(
               toolCall.function.name,
               toolCall.function.arguments,
@@ -336,6 +344,7 @@ export class AgentRuntime {
               content: result.content,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
+                durationMs: Date.now() - toolStartedAt,
                 toolInput: toolCall.function.arguments,
                 toolOutput: result.content,
               }),
@@ -492,6 +501,7 @@ export class AgentRuntime {
             promptMessages: promptMessageCount,
             maxOutputTokens: this.options.outputTokenBudget,
           }
+          const completionStartedAt = Date.now()
           const stream = await client.chat.completions.create({
             model: activeModel,
             messages: messages as never,
@@ -523,6 +533,7 @@ export class AgentRuntime {
               mergeToolCallDelta(toolCallsByIndex, toolCallDelta)
             }
           }
+          const completionDurationMs = Date.now() - completionStartedAt
 
           const toolCalls = Array.from(toolCallsByIndex.entries())
             .sort(([left], [right]) => left - right)
@@ -563,6 +574,7 @@ export class AgentRuntime {
                 content: fallbackContent,
                 metadata: createAgentMessageMetadata({
                   ...metadataBase,
+                  durationMs: completionDurationMs,
                   content: fallbackContent,
                 }),
               })
@@ -573,6 +585,7 @@ export class AgentRuntime {
                 content: assistantContent,
                 metadata: createAgentMessageMetadata({
                   ...metadataBase,
+                  durationMs: completionDurationMs,
                   content: assistantContent,
                 }),
               })
@@ -592,6 +605,7 @@ export class AgentRuntime {
               content: userFacingAssistantContent,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
+                durationMs: completionDurationMs,
                 content: userFacingAssistantContent,
               }),
             })
@@ -609,6 +623,7 @@ export class AgentRuntime {
               }),
             })
 
+            const toolStartedAt = Date.now()
             const result = await executeAgentTool(
               toolName,
               toolCall.function.arguments,
@@ -631,6 +646,7 @@ export class AgentRuntime {
               content: result.content,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
+                durationMs: Date.now() - toolStartedAt,
                 toolInput: toolCall.function.arguments,
                 toolOutput: result.content,
               }),
@@ -656,6 +672,7 @@ export class AgentRuntime {
               content: result.content,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
+                durationMs: Date.now() - toolStartedAt,
                 toolInput: toolCall.function.arguments,
                 toolOutput: result.content,
               }),

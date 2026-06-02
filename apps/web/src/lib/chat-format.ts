@@ -31,13 +31,15 @@ export const normalizeAgentAssistantDisplay = ({
   content: string
   reasoning: string
 }) => {
-  const normalizedReasoning = dedupeRepeatedLines(reasoning)
+  let normalizedReasoning = dedupeRepeatedLines(reasoning)
   let normalizedContent = content.trimStart()
 
-  if (
-    isDuplicateText(normalizedContent, normalizedReasoning) ||
-    isAgentProgressOnlyContent(normalizedContent)
-  ) {
+  if (isDuplicateText(normalizedContent, normalizedReasoning)) {
+    normalizedContent = ''
+  }
+
+  if (isAgentProgressOnlyContent(normalizedContent)) {
+    normalizedReasoning = joinReasoning(normalizedReasoning, normalizedContent)
     normalizedContent = ''
   }
 

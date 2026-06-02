@@ -142,7 +142,7 @@ const Tool = ({
   return (
     <div
       className={cn(
-        'border-border min-w-0 overflow-hidden border',
+        'border-border min-w-0 overflow-hidden border bg-background transition-colors hover:bg-accent dark:hover:bg-accent/50',
         isCompact ? 'mt-0.5 w-fit max-w-full rounded-md' : 'mt-2 rounded-md',
         className,
       )}
@@ -152,8 +152,8 @@ const Tool = ({
           <Button
             variant="ghost"
             className={cn(
-              'bg-background h-auto w-full justify-between rounded-b-none font-normal',
-              isCompact ? 'min-h-6 gap-2 px-2 py-0.5 text-xs' : 'px-3 py-2',
+              'w-full items-center justify-between rounded-none bg-transparent font-normal hover:bg-transparent hover:text-accent-foreground dark:hover:bg-transparent',
+              isCompact ? 'h-7 gap-2 px-2 py-0 text-xs' : 'h-9 px-3 py-0',
             )}
           >
             <div
@@ -181,114 +181,111 @@ const Tool = ({
             />
           </Button>
         </CollapsibleTrigger>
-        <CollapsibleContent
-          className={cn(
-            'border-border border-t',
-            'data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden',
-          )}
-        >
-          <div
-            className={cn(
-              'bg-background min-w-0',
-              isCompact ? 'space-y-1.5 p-2' : 'space-y-2 p-3',
-            )}
-          >
-            {input && Object.keys(input).length > 0 && (
-              <div className="min-w-0">
-                <h4
-                  className={cn(
-                    'text-muted-foreground font-medium',
-                    isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
-                  )}
-                >
-                  Input
-                </h4>
+        {isOpen ? (
+          <CollapsibleContent className="border-border overflow-hidden border-t data-[state=open]:animate-collapsible-down">
+            <div
+              className={cn(
+                'bg-background min-w-0',
+                isCompact ? 'space-y-1.5 p-2' : 'space-y-2 p-3',
+              )}
+            >
+              {input && Object.keys(input).length > 0 && (
+                <div className="min-w-0">
+                  <h4
+                    className={cn(
+                      'text-muted-foreground font-medium',
+                      isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
+                    )}
+                  >
+                    Input
+                  </h4>
+                  <div
+                    className={cn(
+                      'bg-background min-w-0 overflow-x-auto rounded border font-mono',
+                      isCompact ? 'p-1.5 text-xs' : 'p-2 text-sm',
+                    )}
+                  >
+                    {Object.entries(input).map(([key, value]) => (
+                      <div
+                        key={key}
+                        className={cn(
+                          'min-w-0 break-words',
+                          isCompact ? 'mb-0.5' : 'mb-1',
+                        )}
+                      >
+                        <span className="text-muted-foreground">{key}:</span>{' '}
+                        <span>{formatValue(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {output !== undefined && output !== null && (
+                <div className="min-w-0">
+                  <h4
+                    className={cn(
+                      'text-muted-foreground font-medium',
+                      isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
+                    )}
+                  >
+                    Output
+                  </h4>
+                  <div
+                    className={cn(
+                      'bg-background min-w-0 overflow-auto rounded border font-mono',
+                      isCompact
+                        ? 'max-h-44 p-1.5 text-xs'
+                        : 'max-h-60 p-2 text-sm',
+                    )}
+                  >
+                    <pre className="min-w-0 whitespace-pre-wrap break-words">
+                      {formatValue(output)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {state === 'output-error' && toolPart.errorText && (
+                <div className="min-w-0">
+                  <h4
+                    className={cn(
+                      'font-medium text-red-500',
+                      isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
+                    )}
+                  >
+                    Error
+                  </h4>
+                  <div
+                    className={cn(
+                      'bg-background min-w-0 break-words rounded border border-red-200 dark:border-red-950 dark:bg-red-900/20',
+                      isCompact ? 'p-1.5 text-xs' : 'p-2 text-sm',
+                    )}
+                  >
+                    {toolPart.errorText}
+                  </div>
+                </div>
+              )}
+
+              {state === 'input-streaming' && (
                 <div
                   className={cn(
-                    'bg-background min-w-0 overflow-x-auto rounded border font-mono',
-                    isCompact ? 'p-1.5 text-xs' : 'p-2 text-sm',
+                    'text-muted-foreground',
+                    isCompact ? 'text-xs' : 'text-sm',
                   )}
                 >
-                  {Object.entries(input).map(([key, value]) => (
-                    <div
-                      key={key}
-                      className={cn(
-                        'min-w-0 break-words',
-                        isCompact ? 'mb-0.5' : 'mb-1',
-                      )}
-                    >
-                      <span className="text-muted-foreground">{key}:</span>{' '}
-                      <span>{formatValue(value)}</span>
-                    </div>
-                  ))}
+                  Processing tool call...
                 </div>
-              </div>
-            )}
+              )}
 
-            {output !== undefined && output !== null && (
-              <div className="min-w-0">
-                <h4
-                  className={cn(
-                    'text-muted-foreground font-medium',
-                    isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
-                  )}
-                >
-                  Output
-                </h4>
-                <div
-                  className={cn(
-                    'bg-background min-w-0 overflow-auto rounded border font-mono',
-                    isCompact
-                      ? 'max-h-44 p-1.5 text-xs'
-                      : 'max-h-60 p-2 text-sm',
-                  )}
-                >
-                  <pre className="min-w-0 whitespace-pre-wrap break-words">
-                    {formatValue(output)}
-                  </pre>
+              {toolCallId && (
+                <div className="text-muted-foreground text-[11px]">
+                  <span className="font-mono">Call ID: {toolCallId}</span>
                 </div>
-              </div>
-            )}
-
-            {state === 'output-error' && toolPart.errorText && (
-              <div className="min-w-0">
-                <h4
-                  className={cn(
-                    'font-medium text-red-500',
-                    isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
-                  )}
-                >
-                  Error
-                </h4>
-                <div
-                  className={cn(
-                    'bg-background min-w-0 break-words rounded border border-red-200 dark:border-red-950 dark:bg-red-900/20',
-                    isCompact ? 'p-1.5 text-xs' : 'p-2 text-sm',
-                  )}
-                >
-                  {toolPart.errorText}
-                </div>
-              </div>
-            )}
-
-            {state === 'input-streaming' && (
-              <div
-                className={cn(
-                  'text-muted-foreground',
-                  isCompact ? 'text-xs' : 'text-sm',
-                )}
-              >
-                Processing tool call...
-              </div>
-            )}
-
-            {toolCallId && (
-              <div className="text-muted-foreground text-[11px]">
-                <span className="font-mono">Call ID: {toolCallId}</span>
-              </div>
-            )}
-          </div>
-        </CollapsibleContent>
+              )}
+            </div>
+          </CollapsibleContent>
+        ) : null}
       </Collapsible>
     </div>
   )
