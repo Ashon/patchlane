@@ -60,6 +60,17 @@ type AgentRuntimeStreamEvent =
 type AgentRuntimeStreamEmit = (event: AgentRuntimeStreamEvent) => void;
 
 const maxToolIterations = 8;
+const retryToolIterations = 4;
+const totalToolIterations = maxToolIterations + retryToolIterations;
+const toolPromptContentMaxChars = 16_000;
+const toolIterationRetryPrompt = [
+  "The tool loop reached the normal per-pass limit.",
+  "Continue from the current context instead of stopping.",
+  "Use only the highest-value remaining tool calls.",
+  "If the requested work is complete, call finish. If you are blocked, call request_user_input."
+].join("\n");
+const toolIterationLimitMessage =
+  "Tool iteration limit reached after an automatic retry. Review the current changes and continue the run.";
 
 export class AgentRuntime {
   constructor(private readonly options: AgentRuntimeOptions) {}
@@ -86,7 +97,14 @@ export class AgentRuntime {
       let completed = false;
       let awaitingUser = false;
 
-      for (let iteration = 0; iteration < maxToolIterations; iteration += 1) {
+      for (let iteration = 0; iteration < totalToolIterations; iteration += 1) {
+        if (iteration === maxToolIterations) {
+          messages.push({
+            role: "system",
+            content: toolIterationRetryPrompt
+          });
+        }
+
         const completion = await client.chat.completions.create({
           model: model || run.model || endpoint.defaultModel,
           messages: messages as never,
@@ -135,7 +153,7 @@ export class AgentRuntime {
           messages.push({
             role: "tool",
             tool_call_id: toolCall.id,
-            content: result.content
+            content: toToolPromptContent(result.content)
           });
 
           pendingMessages.push({
@@ -161,7 +179,7 @@ export class AgentRuntime {
       if (!completed && !awaitingUser) {
         pendingMessages.push({
           role: "assistant",
-          content: "Tool iteration limit reached. Review the current changes and continue the run."
+          content: toolIterationLimitMessage
         });
         awaitingUser = true;
       }
@@ -204,7 +222,14 @@ export class AgentRuntime {
       let completed = false;
       let awaitingUser = false;
 
-      for (let iteration = 0; iteration < maxToolIterations; iteration += 1) {
+      for (let iteration = 0; iteration < totalToolIterations; iteration += 1) {
+        if (iteration === maxToolIterations) {
+          messages.push({
+            role: "system",
+            content: toolIterationRetryPrompt
+          });
+        }
+
         let assistantContent = "";
         const toolCallsByIndex = new Map<number, PendingToolCall>();
         const stream = await client.chat.completions.create({
@@ -281,7 +306,7 @@ export class AgentRuntime {
           messages.push({
             role: "tool",
             tool_call_id: toolCall.id,
-            content: result.content
+            content: toToolPromptContent(result.content)
           });
 
           run = await this.options.runStore.appendMessage(run.id, {
@@ -310,7 +335,7 @@ export class AgentRuntime {
       if (!completed && !awaitingUser) {
         run = await this.options.runStore.appendMessage(run.id, {
           role: "assistant",
-          content: "Tool iteration limit reached. Review the current changes and continue the run."
+          content: toolIterationLimitMessage
         });
         emit({ type: "run", run });
         awaitingUser = true;
@@ -375,6 +400,15 @@ const mergeToolCallDelta = (toolCallsByIndex: Map<number, PendingToolCall>, delt
   }
 
   toolCallsByIndex.set(index, current);
+};
+
+const toToolPromptContent = (content: string) => {
+  if (content.length <= toolPromptContentMaxChars) {
+    return content;
+  }
+
+  const omittedChars = content.length - toolPromptContentMaxChars;
+  return `${content.slice(0, toolPromptContentMaxChars)}\n\n[truncated ${omittedChars} characters for in-loop context budget]`;
 };
 
 const agentTools = [
