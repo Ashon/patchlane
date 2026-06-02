@@ -156,6 +156,27 @@ export class AgentRunStore {
     }));
   }
 
+  async rewind(id: string, messageId: string) {
+    return this.update(id, (run) => {
+      const messageIndex = run.messages.findIndex((message) => message.id === messageId);
+
+      if (messageIndex < 0) {
+        throw notFound(`Agent run message '${messageId}' was not found`);
+      }
+
+      return {
+        ...run,
+        context: undefined,
+        error: undefined,
+        messages: run.messages.slice(0, messageIndex + 1),
+        prUrl: undefined,
+        resultSummary: undefined,
+        status: "idle",
+        updatedAt: new Date().toISOString()
+      };
+    });
+  }
+
   async remove(id: string) {
     const result = this.database.sqlite.prepare("DELETE FROM agent_runs WHERE id = ?").run(id);
 

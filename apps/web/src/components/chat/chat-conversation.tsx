@@ -1,11 +1,11 @@
 import { type ReactNode, useState } from "react";
-import { Bot, Check, Copy, GitPullRequest, MessageSquare } from "lucide-react";
+import { Bot, Check, Copy, GitPullRequest, MessageSquare, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
 import { Message, MessageAction, MessageActions, MessageAvatar, MessageContent } from "@/components/ui/message";
 import { PromptInput, PromptInputActions, PromptInputTextarea } from "@/components/ui/prompt-input";
-import { PulseDotLoader } from "@/components/ui/loader";
+import { Loader } from "@/components/ui/loader";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ui/reasoning";
 import { ScrollButton } from "@/components/ui/scroll-button";
 import { SystemMessage } from "@/components/ui/system-message";
@@ -48,6 +48,7 @@ type ChatConversationProps = {
   messages: ConversationMessage[];
   onInputChange: (value: string) => void;
   onInputSubmit: () => void;
+  onRewindMessage?: (message: ConversationMessage) => void;
   showMessageMeta?: boolean;
 };
 
@@ -65,10 +66,12 @@ export const ChatConversation = ({
   messages,
   onInputChange,
   onInputSubmit,
+  onRewindMessage,
   showMessageMeta = false
 }: ChatConversationProps) => {
   const [reasoningOpen, setReasoningOpen] = useState<Record<string, boolean>>({});
   const groups = groupMessages(messages);
+  const hasInlineActivity = messages.some((message) => message.status === "streaming");
 
   const setReasoningVisibility = (message: ConversationMessage, open: boolean) => {
     setReasoningOpen((current) => ({
@@ -89,7 +92,7 @@ export const ChatConversation = ({
 
       <div className="min-h-0 flex-1">
         <ChatContainerRoot className="relative h-full">
-          <ChatContainerContent className="w-full gap-2 px-3 py-2">
+          <ChatContainerContent className="w-full gap-1.5 px-3 py-2">
             {messages.length === 0
               ? emptyState
               : groups.map((group) =>
@@ -97,6 +100,8 @@ export const ChatConversation = ({
                     <UserMessageBubble
                       key={group.id}
                       message={group.messages[0]!}
+                      onRewind={onRewindMessage}
+                      rewindDisabled={inputLoading}
                       showMeta={showMessageMeta}
                     />
                   ) : (
@@ -105,12 +110,14 @@ export const ChatConversation = ({
                       key={group.id}
                       messages={group.messages}
                       onReasoningOpenChange={setReasoningVisibility}
+                      onRewind={onRewindMessage}
                       reasoningOpen={reasoningOpen}
+                      rewindDisabled={inputLoading}
                       showMeta={showMessageMeta}
                     />
                   )
                 )}
-            {inputLoading ? <AssistantActivityIndicator /> : null}
+            {inputLoading && !hasInlineActivity ? <AssistantActivityIndicator /> : null}
             <ChatContainerScrollAnchor />
           </ChatContainerContent>
           <div className="absolute bottom-4 right-4">
@@ -131,7 +138,7 @@ export const ChatConversation = ({
           <PromptInputTextarea placeholder={inputPlaceholder} />
           <div className="flex min-h-9 items-center justify-between gap-3 px-2 pb-1">
             <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-              {inputLoading ? <PulseDotLoader className="text-primary" label="Agent is working" /> : null}
+              {inputLoading ? <Loader className="text-primary" size="md" variant="pulse-dot" /> : null}
               <span className="truncate">{inputFooter}</span>
             </div>
             <PromptInputActions>{inputActions}</PromptInputActions>
@@ -144,10 +151,10 @@ export const ChatConversation = ({
 
 const AssistantActivityIndicator = () => {
   return (
-    <Message className="group gap-2">
+    <Message className="group w-full min-w-0 gap-2">
       <MessageAvatar alt="Assistant" className="h-7 w-7" fallback="AI" src="" />
       <div className="flex h-8 min-w-0 items-center gap-2 text-xs text-muted-foreground">
-        <PulseDotLoader className="text-primary" label="Agent is working" />
+        <Loader className="text-primary" size="md" variant="pulse-dot" />
         <span>Working</span>
       </div>
     </Message>
@@ -173,23 +180,37 @@ const groupMessages = (messages: ConversationMessage[]) => {
   }, []);
 };
 
-const UserMessageBubble = ({ message, showMeta }: { message: ConversationMessage; showMeta: boolean }) => {
+const UserMessageBubble = ({
+  message,
+  onRewind,
+  rewindDisabled,
+  showMeta
+}: {
+  message: ConversationMessage;
+  onRewind?: (message: ConversationMessage) => void;
+  rewindDisabled?: boolean;
+  showMeta: boolean;
+}) => {
   const content = message.content;
 
   return (
-    <Message className="group justify-end">
-      <div className="flex max-w-[960px] min-w-0 flex-col items-end space-y-2">
+    <Message className="group w-full min-w-0 justify-end">
+      <div className="group/message relative flex w-full min-w-0 max-w-[960px] flex-col items-end space-y-1.5">
         {showMeta ? <MessageMeta message={message} /> : null}
         {content ? (
           <MessageContent
-            className="max-w-[min(960px,100%)] rounded-lg bg-primary px-3 py-2.5 text-sm leading-6 text-primary-foreground prose-invert prose-p:my-0 prose-pre:my-2 prose-ol:my-1.5 prose-ul:my-1.5 prose-li:my-0 prose-blockquote:my-2 prose-table:my-2"
+            className="max-w-full overflow-hidden rounded-lg bg-primary px-3 py-2.5 text-sm leading-6 text-primary-foreground prose-invert prose-p:my-0 prose-pre:my-2 prose-ol:my-1.5 prose-ul:my-1.5 prose-li:my-0 prose-blockquote:my-2 prose-table:my-2 [&_*]:max-w-full [&_pre]:overflow-x-auto"
             id={message.id}
             markdown
           >
             {content}
           </MessageContent>
         ) : null}
-        <MessageStatusActions message={message} />
+        <MessageStatusActions
+          message={message}
+          onRewind={onRewind}
+          rewindDisabled={rewindDisabled}
+        />
       </div>
     </Message>
   );
@@ -199,21 +220,25 @@ const AssistantMessageGroup = ({
   detectPullRequestLinks,
   messages,
   onReasoningOpenChange,
+  onRewind,
   reasoningOpen,
+  rewindDisabled,
   showMeta
 }: {
   detectPullRequestLinks: boolean;
   messages: ConversationMessage[];
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void;
+  onRewind?: (message: ConversationMessage) => void;
   reasoningOpen: Record<string, boolean>;
+  rewindDisabled?: boolean;
   showMeta: boolean;
 }) => {
   const metaMessage = messages.find((message) => message.role === "assistant" || message.role === "system") ?? messages[0]!;
 
   return (
-    <Message className="group gap-2">
+    <Message className="group w-full min-w-0 gap-2">
       <MessageAvatar alt="Assistant" className="h-7 w-7" fallback="AI" src="" />
-      <div className="min-w-0 space-y-1.5">
+      <div className="w-full min-w-0 space-y-1 overflow-hidden">
         {showMeta ? <AssistantGroupMeta message={metaMessage} /> : null}
         {messages.map((message) => (
           <AssistantMessagePart
@@ -221,7 +246,9 @@ const AssistantMessageGroup = ({
             key={message.id}
             message={message}
             onReasoningOpenChange={onReasoningOpenChange}
+            onRewind={onRewind}
             reasoningOpen={reasoningOpen[message.id]}
+            rewindDisabled={rewindDisabled}
           />
         ))}
       </div>
@@ -233,12 +260,16 @@ const AssistantMessagePart = ({
   detectPullRequestLinks,
   message,
   onReasoningOpenChange,
-  reasoningOpen
+  onRewind,
+  reasoningOpen,
+  rewindDisabled
 }: {
   detectPullRequestLinks: boolean;
   message: ConversationMessage;
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void;
+  onRewind?: (message: ConversationMessage) => void;
   reasoningOpen?: boolean;
+  rewindDisabled?: boolean;
 }) => {
   const isTool = message.role === "tool";
   const isSystem = message.role === "system";
@@ -249,26 +280,31 @@ const AssistantMessagePart = ({
   const isReasoningOpen = reasoningOpen ?? false;
 
   return (
-    <div className="min-w-0 space-y-1">
+    <div className="group/message relative w-full min-w-0 space-y-0.5 overflow-hidden">
       {isAssistant && reasoning ? (
         <Reasoning
+          className="w-full min-w-0 overflow-hidden"
           onOpenChange={(open) => onReasoningOpenChange(message, open)}
           open={isReasoningOpen}
         >
-          <ReasoningTrigger>Thinking trace</ReasoningTrigger>
-          <ReasoningContent className="ml-1 mt-1 border-l pl-2" contentClassName="max-w-[min(960px,100%)] py-0.5 text-xs" markdown>
+          <ReasoningTrigger className="max-w-full">Thinking trace</ReasoningTrigger>
+          <ReasoningContent
+            className="ml-1 mt-0.5 w-full min-w-0 border-l pl-2"
+            contentClassName="w-full min-w-0 max-w-full overflow-hidden py-0.5 text-xs leading-5 break-words prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 [&_*]:max-w-full [&_pre]:overflow-x-auto"
+            markdown
+          >
             {reasoning}
           </ReasoningContent>
         </Reasoning>
       ) : null}
 
       {isAssistant && isStreaming && !content && !reasoning ? (
-        <ThinkingBar className="h-8 max-w-[min(960px,100%)] py-0 text-xs" />
+        <ThinkingBar className="h-8 w-full max-w-[min(960px,100%)] py-0 text-xs" />
       ) : null}
 
       {isTool ? (
         <Tool
-          className="mt-0.5 min-w-[220px] max-w-[min(420px,100%)] border-muted-foreground/20 bg-muted/20 shadow-none"
+          className="mt-0.5 w-full max-w-[min(760px,100%)] border-muted-foreground/20 bg-muted/20 shadow-none"
           defaultOpen={false}
           size="compact"
           toolPart={toToolPart(message)}
@@ -276,7 +312,7 @@ const AssistantMessagePart = ({
       ) : content ? (
         <MessageContent
           className={cn(
-            "max-w-[min(960px,100%)] rounded-lg px-3 py-2.5 text-sm leading-6",
+            "w-full max-w-[min(960px,100%)] overflow-hidden rounded-lg px-3 py-2 text-sm leading-6 prose-p:my-0 prose-pre:my-2 prose-ol:my-1.5 prose-ul:my-1.5 prose-li:my-0 prose-blockquote:my-2 prose-table:my-2 [&_*]:max-w-full [&_pre]:overflow-x-auto",
             isSystem && "border-destructive/25 bg-destructive/10 text-destructive"
           )}
           id={message.id}
@@ -293,7 +329,12 @@ const AssistantMessagePart = ({
         </div>
       ) : null}
 
-      {!isTool ? <MessageStatusActions message={message} /> : null}
+      <MessageStatusActions
+        allowCopy={!isTool}
+        message={message}
+        onRewind={onRewind}
+        rewindDisabled={rewindDisabled}
+      />
     </div>
   );
 };
@@ -334,21 +375,60 @@ const MessageMeta = ({ message }: { message: ConversationMessage }) => {
   );
 };
 
-const MessageStatusActions = ({ message }: { message: ConversationMessage }) => {
+const MessageStatusActions = ({
+  allowCopy = true,
+  message,
+  onRewind,
+  rewindDisabled
+}: {
+  allowCopy?: boolean;
+  message: ConversationMessage;
+  onRewind?: (message: ConversationMessage) => void;
+  rewindDisabled?: boolean;
+}) => {
   const content = message.content;
+  const hasStatus = message.status === "error" || message.status === "stopped";
+  const canCopy = allowCopy && Boolean(content);
+  const canRewind = Boolean(onRewind) && message.status !== "streaming";
+
+  if (!canCopy && !canRewind && !hasStatus) {
+    return null;
+  }
 
   return (
-    <MessageActions className={cn("opacity-0 transition-opacity group-hover:opacity-100", message.role === "user" && "justify-end")}>
-      {message.finishReason ? <Badge variant="secondary">finish: {message.finishReason}</Badge> : null}
-      {message.status === "streaming" ? <Badge variant="secondary">streaming</Badge> : null}
+    <MessageActions className="pointer-events-none absolute bottom-1 right-1 z-20 gap-1 text-foreground opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100">
       {message.status === "error" ? <Badge variant="destructive">error</Badge> : null}
       {message.status === "stopped" ? (
         <Badge className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50" variant="outline">
           stopped
         </Badge>
       ) : null}
-      {content ? <CopyAction value={content} /> : null}
+      {canRewind ? (
+        <RewindAction
+          disabled={rewindDisabled}
+          onClick={() => onRewind?.(message)}
+        />
+      ) : null}
+      {canCopy ? <CopyAction value={content} /> : null}
     </MessageActions>
+  );
+};
+
+const RewindAction = ({ disabled, onClick }: { disabled?: boolean; onClick: () => void }) => {
+  return (
+    <MessageAction tooltip="Rewind to here">
+      <Button
+        aria-label="Rewind to this message"
+        className="size-6 rounded-md bg-background/75 text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+        disabled={disabled}
+        onClick={onClick}
+        size="icon-xs"
+        type="button"
+        variant="ghost"
+      >
+        <RotateCcw />
+      </Button>
+    </MessageAction>
   );
 };
 
@@ -357,9 +437,15 @@ const CopyAction = ({ value }: { value: string }) => {
 
   return (
     <MessageAction tooltip={copied ? "Copied" : "Copy message"}>
-      <Button className="h-7 px-2 text-xs" onClick={() => void copy(value)} size="sm" type="button" variant="ghost">
+      <Button
+        aria-label={copied ? "Copied" : "Copy message"}
+        className="size-6 rounded-md bg-background/75 text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+        onClick={() => void copy(value)}
+        size="icon-xs"
+        type="button"
+        variant="ghost"
+      >
         {copied ? <Check /> : <Copy />}
-        Copy
       </Button>
     </MessageAction>
   );

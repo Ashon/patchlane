@@ -61,7 +61,7 @@ function Reasoning({
         onOpenChange: handleOpenChange,
       }}
     >
-      <div className={className}>{children}</div>
+      <div className={cn("min-w-0", className)}>{children}</div>
     </ReasoningContext.Provider>
   )
 }
@@ -84,7 +84,7 @@ function ReasoningTrigger({
     <button
       aria-expanded={isOpen}
       className={cn(
-        "inline-flex h-6 min-w-[8rem] cursor-pointer items-center gap-1.5 rounded-sm text-xs leading-none text-muted-foreground transition-colors hover:text-foreground",
+        "inline-flex h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-xs leading-none text-muted-foreground transition-colors hover:text-foreground",
         className
       )}
       onClick={(event) => {
@@ -97,7 +97,7 @@ function ReasoningTrigger({
       type={type}
       {...props}
     >
-      <span className="inline-flex min-w-[6.5rem] items-center text-primary">
+      <span className="inline-flex min-w-0 items-center truncate text-primary">
         {children}
       </span>
       <div
@@ -170,6 +170,7 @@ function ReasoningContent({
         ref={innerRef}
         className={cn(
           "text-muted-foreground prose prose-sm dark:prose-invert",
+          "min-w-0 max-w-full break-words",
           contentClassName
         )}
       >

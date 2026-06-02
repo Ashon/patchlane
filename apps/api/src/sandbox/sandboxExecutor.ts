@@ -18,17 +18,18 @@ export const executeSandboxCommand = async (
 ) => {
   const settings = sandboxSettingsSchema.parse(settingsInput);
   const request = sandboxExecRequestSchema.parse(input);
+  const args = normalizeCommandArgs(request.command, request.args);
 
   if (!settings.allowedCommands.includes(request.command)) {
     throw badRequest(`Command '${request.command}' is not allowed in the sandbox`);
   }
 
   const cwd = ensureWorkspacePath(workspace, request.cwd);
-  validateCommandRequest(workspace, request.command, request.args);
+  validateCommandRequest(workspace, request.command, args);
 
   return runProcess({
     command: request.command,
-    args: request.args,
+    args,
     cwd,
     env: buildSandboxEnv(settings.envAllowlist, extraEnv),
     timeoutMs: request.timeoutMs ?? settings.defaultTimeoutMs,
@@ -85,6 +86,14 @@ const validateCommandRequest = (workspace: SandboxWorkspace, command: string, ar
   if (pathGuardedCommands.has(command)) {
     validatePathArgs(workspace, command, args);
   }
+};
+
+const normalizeCommandArgs = (command: string, args: string[]) => {
+  if (args[0] === command) {
+    return args.slice(1);
+  }
+
+  return args;
 };
 
 const blockedGitSubcommands = new Set(["reset", "clean", "restore", "checkout", "switch", "rebase", "stash", "worktree"]);

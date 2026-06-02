@@ -28,6 +28,7 @@
     "lucide-react": "^0.475.0",
     "marked": "^18.0.4",
     "nuqs": "^2.8.9",
+    "radix-ui": "^1.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",

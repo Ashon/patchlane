@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
-import { PulseDotLoader } from "@/components/ui/loader";
+import { Loader } from "@/components/ui/loader";
 import { TextShimmer } from "@/components/ui/text-shimmer";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +22,7 @@ export function ThinkingBar({
 }: ThinkingBarProps) {
   const content = (
     <>
-      <PulseDotLoader className="text-muted-foreground" />
+      <Loader className="text-muted-foreground" size="sm" variant="pulse-dot" />
       <TextShimmer className="min-w-[4.5rem] font-medium leading-5">{text}</TextShimmer>
     </>
   );

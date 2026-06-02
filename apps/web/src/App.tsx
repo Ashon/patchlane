@@ -61,7 +61,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { splitThinking } from "@/lib/chat-format";
+import { normalizeAgentAssistantDisplay, splitThinking } from "@/lib/chat-format";
 import { queryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 
@@ -616,6 +616,22 @@ export default function App() {
 
   const continueAgentRun = async (run: AgentRun) => {
     await streamAgentRun(run);
+  };
+
+  const rewindAgentRun = async (run: AgentRun, messageId: string) => {
+    if (agentRunning) {
+      return;
+    }
+
+    setSandboxError(null);
+
+    try {
+      const response = await api.rewindAgentRun(run.id, { messageId });
+      setAgentReplyDraft("");
+      upsertAgentRun(response.run);
+    } catch (rewindError) {
+      setSandboxError(getErrorMessage(rewindError));
+    }
   };
 
   const streamAgentRun = async (run: AgentRun, trackedIssueId?: string) => {
@@ -1201,6 +1217,7 @@ export default function App() {
                   onContinueAgentRun={(run) => void continueAgentRun(run)}
                   onDeleteAgentRun={(run) => void deleteAgentRun(run)}
                   onCreateAgentRun={createAgentRun}
+                  onRewindAgentRun={(run, messageId) => void rewindAgentRun(run, messageId)}
                   onSendAgentMessage={() => void sendAgentMessage()}
                   onSelectAgentRun={selectAgentRun}
                   onStartNewAgentRun={startNewAgentRun}
@@ -1272,6 +1289,7 @@ type SandboxPanelProps = {
   onContinueAgentRun: (run: AgentRun) => void;
   onDeleteAgentRun: (run: AgentRun) => void;
   onCreateAgentRun: (event: FormEvent<HTMLFormElement>) => void;
+  onRewindAgentRun: (run: AgentRun, messageId: string) => void;
   onSendAgentMessage: () => void;
   onSelectAgentRun: (run: AgentRun) => void;
   onStartNewAgentRun: () => void;
@@ -1417,6 +1435,7 @@ const SandboxPanel = ({
   onContinueAgentRun,
   onDeleteAgentRun,
   onCreateAgentRun,
+  onRewindAgentRun,
   onSendAgentMessage,
   onSelectAgentRun,
   onStartNewAgentRun,
@@ -1432,7 +1451,7 @@ const SandboxPanel = ({
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
 
   return (
-    <section className="grid h-full min-h-0 overflow-y-auto bg-background xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:overflow-hidden">
+    <section className="grid h-full min-h-0 overflow-y-auto bg-background xl:grid-cols-[minmax(360px,380px)_minmax(0,1fr)] xl:overflow-hidden">
       <div className="flex min-h-[260px] flex-col border-b xl:min-h-0 xl:border-b-0 xl:border-r">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <h2 className="flex items-center gap-2 text-base font-semibold">
@@ -1489,6 +1508,7 @@ const SandboxPanel = ({
               isStreaming={agentRunning}
               onChange={onAgentReplyChange}
               onContinue={() => onContinueAgentRun(selectedRun)}
+              onRewind={(messageId) => onRewindAgentRun(selectedRun, messageId)}
               onSend={onSendAgentMessage}
               onStop={onStopAgentRun}
               run={selectedRun}
@@ -1528,6 +1548,7 @@ type AgentConversationProps = {
   isStreaming: boolean;
   onChange: (value: string) => void;
   onContinue: () => void;
+  onRewind: (messageId: string) => void;
   onSend: () => void;
   onStop: () => void;
   run: AgentRun;
@@ -1540,6 +1561,7 @@ const AgentConversation = ({
   isStreaming,
   onChange,
   onContinue,
+  onRewind,
   onSend,
   onStop,
   run
@@ -1550,15 +1572,33 @@ const AgentConversation = ({
   const contextPanel =
     run.context?.strategy === "compacted" ? <AgentContextMemoryPanel context={run.context} /> : null;
   const messages = useMemo<ConversationMessage[]>(
-    () =>
-      run.messages.map((message) => {
+    () => {
+      const seenAssistantDisplay = new Set<string>();
+
+      return run.messages.flatMap((message) => {
         const isAssistantLike = message.role === "assistant" || message.role === "system";
-        const parsed = isAssistantLike ? splitThinking(message.content) : { content: message.content, reasoning: "" };
+        const parsed = isAssistantLike
+          ? normalizeAgentAssistantDisplay(splitThinking(message.content))
+          : { content: message.content, reasoning: "" };
         const isStreamingAssistant = message.id.startsWith("stream-");
         const isRunningTool =
           message.role === "tool" && message.content === `Running ${message.toolName || "tool"}...`;
 
-        return {
+        if (isAssistantLike && !parsed.content && !parsed.reasoning && !isStreamingAssistant) {
+          return [];
+        }
+
+        if (isAssistantLike && !isStreamingAssistant) {
+          const displayKey = `${message.role}:${parsed.reasoning.trim()}:${parsed.content.trim()}`;
+
+          if (displayKey.length > message.role.length + 2 && seenAssistantDisplay.has(displayKey)) {
+            return [];
+          }
+
+          seenAssistantDisplay.add(displayKey);
+        }
+
+        return [{
           id: message.id,
           role: message.role,
           content: parsed.content,
@@ -1567,8 +1607,9 @@ const AgentConversation = ({
           createdAt: message.createdAt,
           toolName: message.toolName,
           toolCallId: message.role === "tool" ? message.id : undefined
-        };
-      }),
+        }];
+      });
+    },
     [run.messages]
   );
 
@@ -1626,6 +1667,7 @@ const AgentConversation = ({
           onSend();
         }
       }}
+      onRewindMessage={(message) => onRewind(message.id)}
       showMessageMeta
     />
   );
@@ -1831,7 +1873,7 @@ const mergeToolStartMessage = (
   }
 
   const existingIndex = messages.findIndex((message) => message.id === assistantSegment.id);
-  const hasAssistantContent = Boolean(assistantSegment.content.trim());
+  const hasAssistantContent = Boolean(getVisibleAgentAssistantText(assistantSegment.content));
 
   if (existingIndex < 0) {
     if (!hasAssistantContent) {
@@ -1867,9 +1909,10 @@ const finalizeAssistantSegmentMessage = (
   serverMessages: AgentRunMessage[]
 ) => {
   const existingIndex = messages.findIndex((message) => message.id === assistantSegment.id);
+  const hasAssistantContent = Boolean(getVisibleAgentAssistantText(assistantSegment.content));
 
   if (existingIndex < 0) {
-    return assistantSegment.content.trim() ? [...messages, getFinalAssistantMessage(assistantSegment, serverMessages)] : messages;
+    return hasAssistantContent ? [...messages, getFinalAssistantMessage(assistantSegment, serverMessages)] : messages;
   }
 
   return messages.flatMap((message) => {
@@ -1877,7 +1920,7 @@ const finalizeAssistantSegmentMessage = (
       return [message];
     }
 
-    return assistantSegment.content.trim() ? [getFinalAssistantMessage(assistantSegment, serverMessages, message)] : [];
+    return hasAssistantContent ? [getFinalAssistantMessage(assistantSegment, serverMessages, message)] : [];
   });
 };
 
@@ -1919,8 +1962,8 @@ const isSameVisibleMessage = (left: AgentRunMessage, right: AgentRunMessage) => 
   }
 
   if (left.role === "assistant" && right.role === "assistant") {
-    const leftContent = splitThinking(left.content).content.trim();
-    const rightContent = splitThinking(right.content).content.trim();
+    const leftContent = normalizeAgentAssistantDisplay(splitThinking(left.content)).content.trim();
+    const rightContent = normalizeAgentAssistantDisplay(splitThinking(right.content)).content.trim();
 
     if (leftContent && rightContent && leftContent === rightContent) {
       return true;
@@ -1928,6 +1971,12 @@ const isSameVisibleMessage = (left: AgentRunMessage, right: AgentRunMessage) => 
   }
 
   return left.role === right.role && left.toolName === right.toolName && left.content === right.content;
+};
+
+const getVisibleAgentAssistantText = (content: string) => {
+  const parsed = normalizeAgentAssistantDisplay(splitThinking(content));
+
+  return `${parsed.reasoning}\n${parsed.content}`.trim();
 };
 
 const createFinalAssistantMessage = (assistantSegment: Exclude<AssistantStreamSegment, null>, createdAt: string): AgentRunMessage => ({

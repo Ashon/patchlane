@@ -13,6 +13,7 @@ import type {
   LlmEndpoint,
   LlmEndpointTestResult,
   PublicToolSettings,
+  RewindAgentRunInput,
   SandboxExecRequest,
   SandboxExecResult,
   SandboxSettings,
@@ -324,6 +325,12 @@ export const api = {
   },
   async continueAgentRun(id: string, input: ContinueAgentRunInput) {
     return request<{ run: AgentRun }>(`/api/agent/runs/${id}/continue`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async rewindAgentRun(id: string, input: RewindAgentRunInput) {
+    return request<{ run: AgentRun }>(`/api/agent/runs/${id}/rewind`, {
       method: "POST",
       body: JSON.stringify(input)
     });

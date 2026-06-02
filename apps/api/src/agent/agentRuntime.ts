@@ -19,6 +19,7 @@ type AgentRuntimeOptions = {
   runStore: AgentRunStore;
   settings: SandboxSettings;
   contextTokenBudget?: number;
+  outputTokenBudget?: number;
   getEndpoint: (id?: string) => Promise<LlmEndpoint>;
   getWorkspace: (id: string) => Promise<SandboxWorkspace>;
   getGitHubToken: () => Promise<string | undefined>;
@@ -142,7 +143,8 @@ export class AgentRuntime {
           messages: messages as never,
           tools: agentTools as never,
           tool_choice: "auto",
-          temperature: 0.2
+          temperature: 0.2,
+          max_tokens: this.options.outputTokenBudget
         });
 
         const message = completion.choices[0]?.message as {
@@ -167,7 +169,7 @@ export class AgentRuntime {
         });
 
         if (!message.tool_calls?.length) {
-          if (isThinkingOnlyContent(message.content || "")) {
+          if (isContinuationOnlyContent(message.content || "")) {
             messages.push({
               role: "system",
               content: thinkingOnlyContinuationPrompt
@@ -181,6 +183,15 @@ export class AgentRuntime {
           });
           awaitingUser = true;
           break;
+        }
+
+        const toolAdjacentAssistantContent = getToolAdjacentAssistantContent(message.content || "");
+
+        if (toolAdjacentAssistantContent) {
+          pendingMessages.push({
+            role: "assistant",
+            content: toolAdjacentAssistantContent
+          });
         }
 
         for (const toolCall of message.tool_calls) {
@@ -296,6 +307,7 @@ export class AgentRuntime {
           tools: agentTools as never,
           tool_choice: "auto",
           temperature: 0.2,
+          max_tokens: this.options.outputTokenBudget,
           stream: true
         });
 
@@ -331,7 +343,7 @@ export class AgentRuntime {
         });
 
         if (!toolCalls.length) {
-          if (isThinkingOnlyContent(assistantContent)) {
+          if (isContinuationOnlyContent(assistantContent)) {
             messages.push({
               role: "system",
               content: thinkingOnlyContinuationPrompt
@@ -357,10 +369,12 @@ export class AgentRuntime {
           break;
         }
 
-        if (assistantContent.trim()) {
+        const userFacingAssistantContent = getToolAdjacentAssistantContent(assistantContent);
+
+        if (userFacingAssistantContent) {
           run = await this.options.runStore.appendMessage(run.id, {
             role: "assistant",
-            content: assistantContent
+            content: userFacingAssistantContent
           });
           emit({ type: "run", run });
         }
@@ -542,13 +556,18 @@ const agentTools = [
     type: "function",
     function: {
       name: "run_command",
-      description: "Run an allowlisted command in the sandbox workspace without shell expansion.",
+      description:
+        "Run an allowlisted command in the sandbox workspace without shell expansion. Put the executable in command and only its arguments in args; never repeat the command name inside args.",
       parameters: {
         type: "object",
         required: ["command"],
         properties: {
-          command: { type: "string" },
-          args: { type: "array", items: { type: "string" } },
+          command: { type: "string", description: "Executable name only, for example 'ls', 'pnpm', 'node', or 'git'." },
+          args: {
+            type: "array",
+            items: { type: "string" },
+            description: "Arguments only. For 'ls -la', use command='ls' and args=['-la'], not args=['ls','-la']."
+          },
           cwd: { type: "string" },
           timeoutMs: { type: "number" }
         }
@@ -766,9 +785,13 @@ const getReplayRecoveryPrompt = (run: AgentRun) => {
   const assistantTail = recentMessages
     .filter((message) => message.role === "assistant")
     .slice(-3);
-  const thinkingOnlyTail = assistantTail.length > 0 && assistantTail.every((message) => isThinkingOnlyContent(message.content));
+  const thinkingOnlyTail = assistantTail.length > 0 && assistantTail.every((message) => isContinuationOnlyContent(message.content));
 
   return hasToolLimit || thinkingOnlyTail ? replayRecoveryPrompt : undefined;
+};
+
+const isContinuationOnlyContent = (content: string) => {
+  return isThinkingOnlyContent(content) || isAgentProgressOnlyContent(stripThinking(content));
 };
 
 const isThinkingOnlyContent = (content: string) => {
@@ -784,6 +807,36 @@ const isThinkingOnlyContent = (content: string) => {
 const stripThinking = (content: string) => {
   return content.replace(/<think>[\s\S]*?<\/think>/giu, "").trim();
 };
+
+const getToolAdjacentAssistantContent = (content: string) => {
+  if (hasThinkingBlock(content)) {
+    return content.trim();
+  }
+
+  const visibleContent = stripThinking(content);
+
+  return isAgentProgressOnlyContent(visibleContent) ? "" : visibleContent;
+};
+
+const hasThinkingBlock = (content: string) => /<think>/iu.test(content);
+
+const isAgentProgressOnlyContent = (content: string) => {
+  const normalized = content.replace(/\s+/gu, " ").trim();
+
+  if (!normalized || normalized.length > 320) {
+    return false;
+  }
+
+  return agentProgressPatterns.some((pattern) => pattern.test(normalized));
+};
+
+const agentProgressPatterns = [
+  /^let me\b.+\b(?:check|try|use|inspect|look|read|run|find|list)\b/iu,
+  /^i(?:'ll| will)\b.+\b(?:check|try|use|inspect|look|read|run|find|list)\b/iu,
+  /^good,\s+i can see\b.+\blet me\b/iu,
+  /^the (?:command|directory|file|path|issue)\b.+\blet me\b/iu,
+  /^actually,\s+.+\blet me\b/iu
+];
 
 const formatReadFileResult = (file: SandboxFileContent, args: Record<string, unknown>) => {
   const lines = file.content.split(/\r?\n/u);
@@ -820,6 +873,7 @@ const getSystemPrompt = (workspace: SandboxWorkspace, settings: SandboxSettings)
     "Use tools to inspect files, edit files, run tests/builds, inspect git diff, commit, push, and create a pull request when requested.",
     "Do not claim that work is complete until you have inspected relevant files and run reasonable verification.",
     "Summarize tool findings in natural language. Never copy raw tool result JSON or [tool:name] transcript blocks into replies or reasoning.",
+    "When a tool call is the next step, call the tool directly instead of emitting visible progress narration like 'Let me check...' or 'I will try...'.",
     "Use command tools with explicit command and args only. Never rely on shell metacharacters.",
     "Use read_file with startLine/maxLines for large files. Do not repeatedly read an entire large file when a smaller line window is enough.",
     `Allowed run_command commands: ${allowedCommands}. Prefer rg and sed for source search/slices; do not assume grep, head, awk, wc, or shell pipelines are available unless listed.`,

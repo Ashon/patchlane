@@ -20,8 +20,42 @@ export const splitThinking = (rawContent: string, rawReasoning = "") => {
 
   return {
     content: removeToolTranscripts(content).trimStart(),
-    reasoning: removeToolTranscripts(reasoning).trim()
+    reasoning: dedupeRepeatedLines(removeToolTranscripts(reasoning).trim())
   };
+};
+
+export const normalizeAgentAssistantDisplay = ({
+  content,
+  reasoning
+}: {
+  content: string;
+  reasoning: string;
+}) => {
+  const normalizedReasoning = dedupeRepeatedLines(reasoning);
+  let normalizedContent = content.trimStart();
+
+  if (isDuplicateText(normalizedContent, normalizedReasoning) || isAgentProgressOnlyContent(normalizedContent)) {
+    normalizedContent = "";
+  }
+
+  return {
+    content: normalizedContent,
+    reasoning: normalizedReasoning
+  };
+};
+
+export const isAgentProgressOnlyContent = (value: string) => {
+  const normalized = normalizeText(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (normalized.length > 320) {
+    return false;
+  }
+
+  return agentProgressPatterns.some((pattern) => pattern.test(normalized));
 };
 
 const joinReasoning = (current: string, next: string) => {
@@ -30,6 +64,41 @@ const joinReasoning = (current: string, next: string) => {
   }
 
   return current ? `${current}${next}` : next;
+};
+
+const agentProgressPatterns = [
+  /^let me\b.+\b(?:check|try|use|inspect|look|read|run|find|list)\b/iu,
+  /^i(?:'ll| will)\b.+\b(?:check|try|use|inspect|look|read|run|find|list)\b/iu,
+  /^good,\s+i can see\b.+\blet me\b/iu,
+  /^the (?:command|directory|file|path|issue)\b.+\blet me\b/iu,
+  /^actually,\s+.+\blet me\b/iu
+];
+
+const normalizeText = (value: string) => value.replace(/\s+/gu, " ").trim();
+
+const isDuplicateText = (left: string, right: string) => {
+  const normalizedLeft = normalizeText(left);
+  const normalizedRight = normalizeText(right);
+
+  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+};
+
+const dedupeRepeatedLines = (value: string) => {
+  const lines = value.split(/\r?\n/u);
+  const output: string[] = [];
+
+  for (const line of lines) {
+    const normalizedLine = normalizeText(line);
+    const previousLine = normalizeText(output[output.length - 1] ?? "");
+
+    if (normalizedLine && normalizedLine === previousLine) {
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join("\n");
 };
 
 const toolTranscriptMarkerPattern = /^[^\S\r\n]*\[tool:[^\]\n]+\][^\S\r\n]*$/gimu;

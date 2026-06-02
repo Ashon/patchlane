@@ -1,5 +1,5 @@
 import { Router, type Response } from "express";
-import { appendAgentRunMessageSchema, continueAgentRunSchema, createAgentRunSchema } from "@agent-fleet/shared";
+import { appendAgentRunMessageSchema, continueAgentRunSchema, createAgentRunSchema, rewindAgentRunSchema } from "@agent-fleet/shared";
 import { AgentRuntime } from "../agent/agentRuntime";
 import type { AgentRunStore } from "../agent/agentRunStore";
 import { asyncHandler } from "../http/asyncHandler";
@@ -20,6 +20,7 @@ type AgentRouterOptions = {
   toolSettingsStore: ToolSettingsStore;
   sandboxSettings: SandboxSettings;
   contextTokenBudget: number;
+  outputTokenBudget: number;
 };
 
 export const createAgentRouter = ({
@@ -28,6 +29,7 @@ export const createAgentRouter = ({
   issueStore,
   runStore,
   sandboxSettings,
+  outputTokenBudget,
   toolSettingsStore,
   workspaceStore
 }: AgentRouterOptions) => {
@@ -35,6 +37,7 @@ export const createAgentRouter = ({
     runStore,
     settings: sandboxSettings,
     contextTokenBudget,
+    outputTokenBudget,
     getEndpoint: async (id) => (id ? endpointStore.get(id) : endpointStore.getDefault()),
     getWorkspace: (id) => workspaceStore.get(id),
     getGitHubToken: async () => {
@@ -117,6 +120,16 @@ export const createAgentRouter = ({
         role: "user",
         content: input.content
       });
+
+      response.json({ run });
+    })
+  );
+
+  router.post(
+    "/runs/:id/rewind",
+    asyncHandler(async (request, response) => {
+      const input = rewindAgentRunSchema.parse(request.body);
+      const run = await runStore.rewind(getRouteParam(request.params.id, "id"), input.messageId);
 
       response.json({ run });
     })

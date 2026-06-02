@@ -66,6 +66,10 @@ export const continueAgentRunSchema = z.object({
   model: z.string().trim().min(1).optional()
 });
 
+export const rewindAgentRunSchema = z.object({
+  messageId: z.string().min(1)
+});
+
 export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>;
 export type AgentRunKind = z.infer<typeof agentRunKindSchema>;
 export type AgentRunMessage = z.infer<typeof agentRunMessageSchema>;
@@ -74,3 +78,4 @@ export type AgentRun = z.infer<typeof agentRunSchema>;
 export type CreateAgentRunInput = z.infer<typeof createAgentRunSchema>;
 export type AppendAgentRunMessageInput = z.infer<typeof appendAgentRunMessageSchema>;
 export type ContinueAgentRunInput = z.infer<typeof continueAgentRunSchema>;
+export type RewindAgentRunInput = z.infer<typeof rewindAgentRunSchema>;

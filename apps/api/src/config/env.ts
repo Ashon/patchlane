@@ -77,7 +77,8 @@ export const env = {
     envAllowlist: readCsv("SANDBOX_ENV_ALLOWLIST", ["PATH", "HOME", "LANG", "LC_ALL"])
   },
   agent: {
-    contextTokenBudget: readInt("AGENT_CONTEXT_TOKEN_BUDGET", 24_000)
+    contextTokenBudget: readInt("AGENT_CONTEXT_TOKEN_BUDGET", 24_000),
+    outputTokenBudget: readInt("AGENT_OUTPUT_TOKEN_BUDGET", 8_192)
   },
   defaultEndpoint: {
     name: process.env.DEFAULT_LLM_ENDPOINT_NAME?.trim() || "Ollama Local",
