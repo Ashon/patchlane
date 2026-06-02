@@ -152,9 +152,9 @@ export const StateBadge = ({
     className={cn(
       'gap-1 hover:bg-current/0',
       tone === 'success' &&
-        'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50',
+        'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300',
       tone === 'warning' &&
-        'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50',
+        'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
     )}
     variant="outline"
   >

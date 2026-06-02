@@ -76,7 +76,7 @@ const Tool = ({
           <span
             className={cn(
               baseClasses,
-              'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+              'bg-blue-500/10 text-blue-700 dark:text-blue-300',
             )}
           >
             Processing
@@ -87,7 +87,7 @@ const Tool = ({
           <span
             className={cn(
               baseClasses,
-              'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+              'bg-orange-500/10 text-orange-700 dark:text-orange-300',
             )}
           >
             Ready
@@ -98,7 +98,7 @@ const Tool = ({
           <span
             className={cn(
               baseClasses,
-              'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+              'bg-green-500/10 text-green-700 dark:text-green-300',
             )}
           >
             Completed
@@ -109,7 +109,7 @@ const Tool = ({
           <span
             className={cn(
               baseClasses,
-              'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+              'bg-red-500/10 text-red-700 dark:text-red-300',
             )}
           >
             Error
@@ -120,7 +120,7 @@ const Tool = ({
           <span
             className={cn(
               baseClasses,
-              'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
+              'bg-zinc-500/10 text-zinc-700 dark:text-zinc-300',
             )}
           >
             Pending
@@ -283,12 +283,7 @@ const Tool = ({
             )}
 
             {toolCallId && (
-              <div
-                className={cn(
-                  'text-muted-foreground border-t border-blue-200',
-                  isCompact ? 'pt-1.5 text-[11px]' : 'pt-2 text-xs',
-                )}
-              >
+              <div className="text-muted-foreground text-[11px]">
                 <span className="font-mono">Call ID: {toolCallId}</span>
               </div>
             )}

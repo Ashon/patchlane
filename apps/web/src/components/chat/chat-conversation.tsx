@@ -1,15 +1,7 @@
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import type { AgentRunMessageMetadata } from '@agent-fleet/shared'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import {
-  Bot,
-  Check,
-  Copy,
-  GitPullRequest,
-  Info,
-  MessageSquare,
-  RotateCcw,
-} from 'lucide-react'
+import { Bot, Check, Copy, Info, MessageSquare, RotateCcw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -78,7 +70,6 @@ type ConversationRenderItem =
     }
 
 type ChatConversationProps = {
-  detectPullRequestLinks?: boolean
   emptyState: ReactNode
   error?: string | null
   header?: ReactNode
@@ -99,7 +90,6 @@ type ChatConversationProps = {
 }
 
 export const ChatConversation = ({
-  detectPullRequestLinks = false,
   emptyState,
   error,
   header,
@@ -208,7 +198,6 @@ export const ChatConversation = ({
                         />
                       ) : (
                         <AssistantMessageRow
-                          detectPullRequestLinks={detectPullRequestLinks}
                           message={item.message}
                           metaMessage={item.metaMessage}
                           onReasoningOpenChange={setReasoningVisibility}
@@ -419,7 +408,6 @@ const UserMessageBubble = ({
 }
 
 const AssistantMessageRow = ({
-  detectPullRequestLinks,
   message,
   metaMessage,
   onReasoningOpenChange,
@@ -430,7 +418,6 @@ const AssistantMessageRow = ({
   showMeta,
   showStreamingPlaceholder,
 }: {
-  detectPullRequestLinks: boolean
   message: ConversationMessage
   metaMessage?: ConversationMessage
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
@@ -458,7 +445,6 @@ const AssistantMessageRow = ({
           <AssistantGroupMeta message={metaMessage} />
         ) : null}
         <AssistantMessagePart
-          detectPullRequestLinks={detectPullRequestLinks}
           message={message}
           onReasoningOpenChange={onReasoningOpenChange}
           onRewind={onRewind}
@@ -472,7 +458,6 @@ const AssistantMessageRow = ({
 }
 
 const AssistantMessagePart = ({
-  detectPullRequestLinks,
   message,
   onReasoningOpenChange,
   onRewind,
@@ -480,7 +465,6 @@ const AssistantMessagePart = ({
   rewindDisabled,
   showStreamingPlaceholder,
 }: {
-  detectPullRequestLinks: boolean
   message: ConversationMessage
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
   onRewind?: (message: ConversationMessage) => void
@@ -503,6 +487,9 @@ const AssistantMessagePart = ({
     !content &&
     !reasoning
   const showContent = Boolean(content)
+  const showContextMetadata =
+    Boolean(message.metadata?.context) &&
+    (isTool || showThinkingPlaceholder || (showReasoning && !showContent))
 
   if (!showReasoning && !showThinkingPlaceholder && !isTool && !showContent) {
     return null
@@ -510,6 +497,10 @@ const AssistantMessagePart = ({
 
   return (
     <div className="group/message relative w-full min-w-0 space-y-0.5 overflow-hidden">
+      {showContextMetadata ? (
+        <ContextMetadataOverlay metadata={message.metadata} />
+      ) : null}
+
       {showReasoning ? (
         <Reasoning
           className="w-full min-w-0 overflow-hidden"
@@ -541,32 +532,26 @@ const AssistantMessagePart = ({
           toolPart={toToolPart(message)}
         />
       ) : showContent ? (
-        <MessageContent
-          className={cn(
-            'w-full max-w-[min(920px,100%)] overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
-            isSystem &&
-              'border-destructive/25 bg-destructive/10 text-destructive',
-          )}
-          id={message.id}
-          markdown={isAssistant}
-        >
-          {content}
-        </MessageContent>
-      ) : null}
-
-      {detectPullRequestLinks && content.includes('https://github.com/') ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <GitPullRequest className="h-3.5 w-3.5" />
-          PR/reference detected
+        <div className="group/content relative w-full max-w-[min(920px,100%)]">
+          <MessageContent
+            className={cn(
+              'w-full overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+              isSystem &&
+                'border-destructive/25 bg-destructive/10 text-destructive',
+            )}
+            id={message.id}
+            markdown={isAssistant}
+          >
+            {content}
+          </MessageContent>
+          <MessageStatusActions
+            hoverScope="content"
+            message={message}
+            onRewind={onRewind}
+            rewindDisabled={rewindDisabled}
+          />
         </div>
       ) : null}
-
-      <MessageStatusActions
-        allowCopy={!isTool}
-        message={message}
-        onRewind={onRewind}
-        rewindDisabled={rewindDisabled}
-      />
     </div>
   )
 }
@@ -716,33 +701,54 @@ const MessageMeta = ({ message }: { message: ConversationMessage }) => {
 
 const MessageStatusActions = ({
   allowCopy = true,
+  hoverScope = 'message',
   message,
   onRewind,
   rewindDisabled,
 }: {
   allowCopy?: boolean
+  hoverScope?: 'content' | 'message'
   message: ConversationMessage
   onRewind?: (message: ConversationMessage) => void
   rewindDisabled?: boolean
 }) => {
   const content = message.content
+  const hasContent = Boolean(content)
+  const isTool = message.role === 'tool'
+  const isAssistantLike =
+    message.role === 'assistant' || message.role === 'system'
+  const isReasoningOnly =
+    isAssistantLike && Boolean(message.reasoning) && !hasContent
+
+  if (isTool || isReasoningOnly || message.status === 'streaming') {
+    return null
+  }
+
   const hasStatus = message.status === 'error' || message.status === 'stopped'
-  const canCopy = allowCopy && Boolean(content)
-  const canRewind = Boolean(onRewind) && message.status !== 'streaming'
-  const hasMetadata = getMessageMetadataItems(message.metadata).length > 0
+  const canCopy = allowCopy && hasContent
+  const canRewind = message.role === 'user' && Boolean(onRewind)
+  const hasMetadata =
+    hasContent && getMessageMetadataItems(message.metadata).length > 0
 
   if (!canCopy && !canRewind && !hasStatus && !hasMetadata) {
     return null
   }
 
   return (
-    <MessageActions className="pointer-events-none absolute bottom-2 right-1 z-20 gap-1 text-foreground opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100">
+    <MessageActions
+      className={cn(
+        'pointer-events-none absolute bottom-2 right-1 z-20 gap-1 text-foreground opacity-0 transition-opacity',
+        hoverScope === 'content'
+          ? 'group-hover/content:pointer-events-auto group-hover/content:opacity-100'
+          : 'group-hover/message:pointer-events-auto group-hover/message:opacity-100',
+      )}
+    >
       {message.status === 'error' ? (
         <Badge variant="destructive">error</Badge>
       ) : null}
       {message.status === 'stopped' ? (
         <Badge
-          className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50"
+          className="border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
           variant="outline"
         >
           stopped
@@ -762,6 +768,22 @@ const MessageStatusActions = ({
 
 const overlayActionButtonClass =
   'h-6 gap-1 rounded-md bg-background/80 px-2 text-[11px] text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3'
+
+const ContextMetadataOverlay = ({
+  metadata,
+}: {
+  metadata?: AgentRunMessageMetadata
+}) => {
+  if (!metadata?.context) {
+    return null
+  }
+
+  return (
+    <div className="pointer-events-none absolute bottom-0 right-0 z-20 opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100">
+      <MetadataAction metadata={metadata} />
+    </div>
+  )
+}
 
 const MetadataAction = ({
   metadata,

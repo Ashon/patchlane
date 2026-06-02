@@ -33,6 +33,8 @@ import {
   ClipboardList,
   Loader2,
   MessageSquare,
+  Monitor,
+  Moon,
   Network,
   Plus,
   RefreshCw,
@@ -40,6 +42,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Sun,
   Terminal,
   Trash2,
   Wrench,
@@ -64,13 +67,6 @@ import { ProjectsListPage } from '@/components/issues/projects-list-page'
 import type { ProjectDetailTab } from '@/components/issues/types'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
 import {
@@ -101,6 +97,7 @@ type SandboxWorkspaceDraft = {
 }
 
 type AppView = 'chat' | 'projects' | 'workspaces' | 'sandbox' | 'settings'
+type ThemeMode = 'light' | 'dark' | 'system'
 
 const emptyDraft: EndpointDraft = {
   name: '',
@@ -159,6 +156,45 @@ const settingsPages = [
   path: string
 }>
 
+const themeStorageKey = 'agent-fleet-theme'
+const themeModes = ['light', 'dark', 'system'] satisfies ThemeMode[]
+
+const getStoredThemeMode = (): ThemeMode => {
+  if (typeof window === 'undefined') {
+    return 'system'
+  }
+
+  const stored = window.localStorage.getItem(themeStorageKey)
+
+  return themeModes.includes(stored as ThemeMode)
+    ? (stored as ThemeMode)
+    : 'system'
+}
+
+const getNextThemeMode = (mode: ThemeMode): ThemeMode => {
+  if (mode === 'light') {
+    return 'dark'
+  }
+
+  if (mode === 'dark') {
+    return 'system'
+  }
+
+  return 'light'
+}
+
+const getSystemPrefersDark = () => {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+const applyThemeMode = (mode: ThemeMode) => {
+  const shouldUseDark =
+    mode === 'dark' || (mode === 'system' && getSystemPrefersDark())
+
+  document.documentElement.classList.toggle('dark', shouldUseDark)
+  document.documentElement.dataset.theme = mode
+}
+
 export default function App() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -166,6 +202,10 @@ export default function App() {
   const fetchingCount = useIsFetching()
   const [selectedId, setSelectedId] = useQueryState(
     'endpoint',
+    parseAsString.withOptions({ history: 'replace', shallow: true }),
+  )
+  const [selectedChatEndpointId, setSelectedChatEndpointId] = useQueryState(
+    'chatEndpoint',
     parseAsString.withOptions({ history: 'replace', shallow: true }),
   )
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useQueryState(
@@ -180,6 +220,7 @@ export default function App() {
     'issue',
     parseAsString.withOptions({ history: 'replace', shallow: true }),
   )
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode)
   const [draft, setDraft] = useState<EndpointDraft>(emptyDraft)
   const [githubDraft, setGithubDraft] =
     useState<GitHubToolDraft>(emptyGitHubToolDraft)
@@ -278,6 +319,21 @@ export default function App() {
         : null,
     [endpoints, selectedId],
   )
+  const defaultEndpoint = useMemo(
+    () =>
+      endpoints.find((endpoint) => endpoint.enabled) ?? endpoints[0] ?? null,
+    [endpoints],
+  )
+  const selectedChatEndpoint = useMemo(() => {
+    if (!selectedChatEndpointId) {
+      return defaultEndpoint
+    }
+
+    return (
+      endpoints.find((endpoint) => endpoint.id === selectedChatEndpointId) ??
+      defaultEndpoint
+    )
+  }, [defaultEndpoint, endpoints, selectedChatEndpointId])
 
   const enabledCount = endpoints.filter((endpoint) => endpoint.enabled).length
   const githubReady = Boolean(
@@ -498,6 +554,22 @@ export default function App() {
   }, [queryClient])
 
   useEffect(() => {
+    window.localStorage.setItem(themeStorageKey, themeMode)
+    applyThemeMode(themeMode)
+
+    if (themeMode !== 'system') {
+      return
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const syncSystemTheme = () => applyThemeMode('system')
+
+    mediaQuery.addEventListener('change', syncSystemTheme)
+
+    return () => mediaQuery.removeEventListener('change', syncSystemTheme)
+  }, [themeMode])
+
+  useEffect(() => {
     if (!hasActiveAgentTasks) {
       return
     }
@@ -540,6 +612,15 @@ export default function App() {
       void setSelectedId(endpoints[0]!.id)
     }
   }, [endpoints, selectedId, setSelectedId])
+
+  useEffect(() => {
+    if (
+      selectedChatEndpointId &&
+      !endpoints.some((endpoint) => endpoint.id === selectedChatEndpointId)
+    ) {
+      void setSelectedChatEndpointId(null)
+    }
+  }, [endpoints, selectedChatEndpointId, setSelectedChatEndpointId])
 
   useEffect(() => {
     if (selectedEndpoint) {
@@ -598,14 +679,6 @@ export default function App() {
     setDraft(emptyDraft)
     setError(null)
     navigate(buildRoute('/settings/endpoints', { endpoint: 'new' }))
-  }
-
-  const selectEndpointById = (id: string) => {
-    const endpoint = endpoints.find((item) => item.id === id)
-
-    if (endpoint) {
-      selectEndpoint(endpoint)
-    }
   }
 
   const saveEndpoint = async (event: FormEvent<HTMLFormElement>) => {
@@ -768,7 +841,7 @@ export default function App() {
     try {
       const response = await api.createAgentRun({
         workspaceId: selectedWorkspace.id,
-        endpointId: selectedEndpoint?.id,
+        endpointId: defaultEndpoint?.id,
         title: getAgentRunTitle(agentTaskDraft),
         task: agentTaskDraft,
       })
@@ -927,7 +1000,7 @@ export default function App() {
       await api.streamAgentRun(
         run.id,
         {
-          endpointId: selectedEndpoint?.id,
+          endpointId: defaultEndpoint?.id,
         },
         {
           signal: controller.signal,
@@ -1121,7 +1194,7 @@ export default function App() {
     const project = projects.find((item) => item.id === issue.projectId)
     const response = await api.startIssue(issue.id, {
       endpointId:
-        issue.endpointId ?? project?.defaultEndpointId ?? selectedEndpoint?.id,
+        issue.endpointId ?? project?.defaultEndpointId ?? defaultEndpoint?.id,
     })
     upsertIssue(response.issue)
     upsertAgentRunsInCache(response.runs)
@@ -1198,7 +1271,7 @@ export default function App() {
         onStartIssueRun={startIssueRun}
         projectId={projectId}
         projects={projects}
-        selectedEndpoint={selectedEndpoint}
+        selectedEndpoint={defaultEndpoint}
         selectedIssueId={selectedIssueId}
         tab={selectedTab}
         workspaces={sandboxWorkspaces}
@@ -1210,7 +1283,7 @@ export default function App() {
     <main className="h-screen overflow-hidden bg-background">
       <div className="flex h-full min-h-0 flex-col">
         <header className="shrink-0 border-b bg-background">
-          <div className="flex min-h-10 flex-col gap-2 px-3 py-1.5 lg:flex-row lg:items-center">
+          <div className="grid min-h-11 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-1.5">
             <div className="flex min-w-0 shrink-0 items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
                 <Network className="h-4 w-4" />
@@ -1219,14 +1292,11 @@ export default function App() {
                 <h1 className="truncate text-sm font-semibold tracking-normal">
                   Agent Fleet
                 </h1>
-                <p className="hidden truncate text-xs text-muted-foreground sm:block">
-                  IDE-grade local coding agents
-                </p>
               </div>
             </div>
 
             <nav
-              className="flex h-7 max-w-full shrink-0 items-center gap-1 overflow-x-auto border-l pl-2 lg:ml-2"
+              className="flex h-8 min-w-0 items-center gap-1 overflow-x-auto border-l pl-3"
               aria-label="Primary"
             >
               {navigationItems.map((item) => {
@@ -1242,7 +1312,7 @@ export default function App() {
                   <NavLink
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex h-7 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
+                      'flex h-8 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
                       active && 'border-primary text-foreground',
                     )}
                     end={item.value !== 'settings'}
@@ -1256,28 +1326,7 @@ export default function App() {
               })}
             </nav>
 
-            <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-              <Select
-                disabled={!endpoints.length || loading}
-                onValueChange={selectEndpointById}
-                value={selectedEndpoint?.id ?? undefined}
-              >
-                <SelectTrigger className="h-8 w-full bg-background text-xs sm:w-[360px] 2xl:w-[460px]">
-                  <SelectValue
-                    placeholder={
-                      loading ? 'Loading endpoints...' : 'Select endpoint'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {endpoints.map((endpoint) => (
-                    <SelectItem key={endpoint.id} value={endpoint.id}>
-                      {endpoint.name} / {endpoint.defaultModel}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
+            <div className="flex shrink-0 items-center justify-end gap-1.5">
               <div className="hidden items-center gap-1 2xl:flex">
                 <StatusBadge online={apiOnline} />
                 <Badge variant="secondary">{endpoints.length} endpoints</Badge>
@@ -1293,12 +1342,14 @@ export default function App() {
               <Button
                 variant="outline"
                 size="icon"
+                className="h-8 w-8"
                 onClick={refreshData}
                 disabled={loading}
                 type="button"
               >
                 {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               </Button>
+              <ThemeToggle mode={themeMode} onChange={setThemeMode} />
             </div>
           </div>
         </header>
@@ -1310,7 +1361,14 @@ export default function App() {
               path="/"
             />
             <Route
-              element={<ChatPanel endpoint={selectedEndpoint} />}
+              element={
+                <ChatPanel
+                  endpoint={selectedChatEndpoint}
+                  endpoints={endpoints}
+                  loading={loading}
+                  onEndpointChange={(id) => void setSelectedChatEndpointId(id)}
+                />
+              }
               path="/chat"
             />
             <Route
@@ -1329,7 +1387,7 @@ export default function App() {
                     )
                   }
                   projects={projects}
-                  selectedEndpoint={selectedEndpoint}
+                  selectedEndpoint={defaultEndpoint}
                   workspaces={sandboxWorkspaces}
                 />
               }
@@ -1561,7 +1619,7 @@ export default function App() {
                   agentReplyDraft={agentReplyDraft}
                   agentRunning={agentRunning}
                   agentTaskDraft={agentTaskDraft}
-                  endpoint={selectedEndpoint}
+                  endpoint={defaultEndpoint}
                   error={sandboxLoadError}
                   onAgentReplyChange={setAgentReplyDraft}
                   onAgentTaskChange={setAgentTaskDraft}
@@ -1996,23 +2054,23 @@ const AgentRunCard = ({
   run: AgentRun
   selected: boolean
 }) => {
-  const promptPreview = getAgentRunPromptPreview(run)
+  const description = getAgentRunCardDescription(run, issue)
+  const scopeLabel = getAgentRunCardScope(run, issue)
 
   return (
     <div
       className={cn(
-        'grid w-full min-w-0 gap-1.5 border-l-2 border-l-transparent px-3 py-2 transition-colors hover:bg-muted/45',
+        'grid w-full min-w-0 border-l-2 border-l-transparent px-3 py-2.5 transition-colors hover:bg-muted/45',
         selected && 'border-l-primary bg-primary/5',
       )}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-1.5">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
         <button
           className="min-w-0 overflow-hidden text-left"
           onClick={onSelect}
           type="button"
         >
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Bot className="h-4 w-4 shrink-0 text-primary" />
+          <div className="flex min-w-0 items-center gap-2">
             <span className="shrink-0">
               <AgentRunKindBadge kind={run.kind} />
             </span>
@@ -2023,20 +2081,20 @@ const AgentRunCard = ({
               <AgentRunStatusBadge status={run.status} />
             </span>
           </div>
-          {promptPreview ? (
+          {description ? (
             <p className="mt-1 truncate text-xs text-muted-foreground">
-              {promptPreview}
+              {description}
             </p>
           ) : null}
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             <span className="shrink-0">{formatDateTime(run.updatedAt)}</span>
             {project ? (
               <span className="min-w-0 max-w-full truncate">
                 {project.name}
               </span>
             ) : null}
-            {issue ? (
-              <span className="min-w-0 max-w-full truncate">{issue.title}</span>
+            {scopeLabel ? (
+              <span className="min-w-0 max-w-full truncate">{scopeLabel}</span>
             ) : null}
             {run.context ? (
               <span className="shrink-0">
@@ -2115,7 +2173,7 @@ const AgentRunContextBadge = ({
       className={cn(
         'gap-1',
         context.strategy === 'compacted' &&
-          'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50',
+          'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
       )}
       variant={context.strategy === 'compacted' ? 'outline' : 'secondary'}
     >
@@ -2124,6 +2182,32 @@ const AgentRunContextBadge = ({
         ? ` · compacted ${context.summarizedMessages}`
         : ''}
     </Badge>
+  )
+}
+
+const ThemeToggle = ({
+  mode,
+  onChange,
+}: {
+  mode: ThemeMode
+  onChange: (mode: ThemeMode) => void
+}) => {
+  const nextMode = getNextThemeMode(mode)
+  const Icon = mode === 'light' ? Sun : mode === 'dark' ? Moon : Monitor
+  const label = `Theme: ${mode}. Switch to ${nextMode}.`
+
+  return (
+    <Button
+      aria-label={label}
+      className="h-8 w-8"
+      onClick={() => onChange(nextMode)}
+      size="icon"
+      title={label}
+      type="button"
+      variant="outline"
+    >
+      <Icon />
+    </Button>
   )
 }
 
@@ -2152,6 +2236,82 @@ const getAgentRunPromptPreview = (run: AgentRun) => {
       .find((line) => line.trim())
       ?.trim() ?? ''
   )
+}
+
+const getAgentRunCardDescription = (run: AgentRun, issue?: Issue) => {
+  const prompt = getAgentRunPromptPreview(run)
+
+  if (!prompt || isGeneratedAgentRunPrompt(prompt)) {
+    return ''
+  }
+
+  const description = stripAgentRunPromptLabel(prompt)
+
+  if (isRedundantAgentRunText(description, [run.title, issue?.title])) {
+    return ''
+  }
+
+  return description
+}
+
+const getAgentRunCardScope = (run: AgentRun, issue?: Issue) => {
+  if (!issue) {
+    return ''
+  }
+
+  if (isRedundantAgentRunText(issue.title, [run.title])) {
+    return ''
+  }
+
+  return `Issue: ${issue.title}`
+}
+
+const isGeneratedAgentRunPrompt = (value: string) => {
+  const normalized = normalizeAgentRunText(value)
+
+  return [
+    'analyze requirements for this issue',
+    'create a concrete work plan for the coding agent',
+    'implement the requested change run verification commit to a branch push and open a pr',
+  ].some((prefix) => normalized.startsWith(prefix))
+}
+
+const stripAgentRunPromptLabel = (value: string) => {
+  return value
+    .replace(/^(issue|task|prompt)\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const isRedundantAgentRunText = (
+  value: string,
+  candidates: Array<string | undefined>,
+) => {
+  const normalized = normalizeAgentRunText(value)
+
+  if (!normalized) {
+    return true
+  }
+
+  return candidates.some((candidate) => {
+    const candidateText = normalizeAgentRunText(candidate ?? '')
+
+    if (!candidateText) {
+      return false
+    }
+
+    return (
+      candidateText.includes(normalized) || normalized.includes(candidateText)
+    )
+  })
+}
+
+const normalizeAgentRunText = (value: string) => {
+  return value
+    .toLowerCase()
+    .replace(/^(work plan|requirements|issue|task|prompt)\s*:\s*/i, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
 }
 
 const getAgentRunContextUsage = (context: NonNullable<AgentRun['context']>) => {
@@ -2665,9 +2825,9 @@ const StateBadge = ({
       className={cn(
         'gap-1 hover:bg-current/0',
         tone === 'success' &&
-          'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50',
+          'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300',
         tone === 'warning' &&
-          'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50',
+          'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
       )}
       variant="outline"
     >
@@ -2683,7 +2843,7 @@ const StatusBadge = ({ online }: { online: boolean | null }) => {
 
   return online ? (
     <Badge
-      className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
+      className="gap-1 border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
       variant="outline"
     >
       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -2700,7 +2860,7 @@ const StatusBadge = ({ online }: { online: boolean | null }) => {
 const TestBadge = ({ result }: { result: LlmEndpointTestResult }) => {
   return result.ok ? (
     <Badge
-      className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
+      className="gap-1 border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
       variant="outline"
     >
       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -2717,7 +2877,7 @@ const TestBadge = ({ result }: { result: LlmEndpointTestResult }) => {
 const GitHubTestBadge = ({ result }: { result: GitHubToolTestResult }) => {
   return result.ok ? (
     <Badge
-      className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
+      className="gap-1 border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
       variant="outline"
     >
       <CheckCircle2 className="h-3.5 w-3.5" />

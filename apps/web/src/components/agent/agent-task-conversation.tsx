@@ -153,7 +153,6 @@ export const AgentTaskConversation = ({
 
   return (
     <ChatConversation
-      detectPullRequestLinks
       emptyState={
         <div className="flex min-h-[32vh] flex-col items-center justify-center gap-2.5 text-center">
           <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-card text-primary shadow-sm">

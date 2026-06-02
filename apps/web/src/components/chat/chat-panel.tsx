@@ -9,12 +9,22 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { PromptInputAction } from '@/components/ui/prompt-input'
 import { PromptSuggestion } from '@/components/ui/prompt-suggestion'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { splitThinking } from '@/lib/chat-format'
 import { cn } from '@/lib/utils'
 
 type ChatPanelProps = {
   endpoint: LlmEndpoint | null
+  endpoints: LlmEndpoint[]
+  loading?: boolean
+  onEndpointChange: (id: string) => void
 }
 
 type ChatMessage = ConversationMessage & {
@@ -28,7 +38,12 @@ const suggestions = [
   '이 프로젝트에서 agent fleet 기능을 어떻게 확장할지 제안해줘.',
 ]
 
-export const ChatPanel = ({ endpoint }: ChatPanelProps) => {
+export const ChatPanel = ({
+  endpoint,
+  endpoints,
+  loading = false,
+  onEndpointChange,
+}: ChatPanelProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -222,13 +237,33 @@ export const ChatPanel = ({ endpoint }: ChatPanelProps) => {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Select
+              disabled={!endpoints.length || loading || isStreaming}
+              onValueChange={onEndpointChange}
+              value={endpoint?.id ?? undefined}
+            >
+              <SelectTrigger className="h-8 w-full min-w-0 bg-background text-xs sm:w-[320px] xl:w-[400px]">
+                <SelectValue
+                  placeholder={
+                    loading ? 'Loading endpoints...' : 'Select model'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {endpoints.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name} / {item.defaultModel}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Badge
               className={cn(
                 'gap-1',
                 canChat
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
-                  : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50',
+                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300'
+                  : 'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
               )}
               variant="outline"
             >
