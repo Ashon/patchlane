@@ -1,213 +1,239 @@
-import type { AgentRunContext, AgentRunMessage } from "@agent-fleet/shared";
+import type { AgentRunContext, AgentRunMessage } from '@agent-fleet/shared'
 
-type ChatMessage = Record<string, unknown>;
+type ChatMessage = Record<string, unknown>
 
-const defaultContextTokenBudget = 24_000;
-const responseReserveTokens = 4_096;
-const messageOverheadTokens = 8;
-const summaryMaxChars = 8_000;
-const retainedMessageMaxChars = 12_000;
-const toolMessageMaxChars = 6_000;
-const minRetainedMessages = 6;
+const defaultContextTokenBudget = 24_000
+const responseReserveTokens = 4_096
+const messageOverheadTokens = 8
+const summaryMaxChars = 8_000
+const retainedMessageMaxChars = 12_000
+const toolMessageMaxChars = 6_000
+const minRetainedMessages = 6
 
 export type PreparedAgentContext = {
-  context: AgentRunContext;
-  messages: ChatMessage[];
-};
+  context: AgentRunContext
+  messages: ChatMessage[]
+}
 
 export const prepareAgentContext = ({
   messages,
   systemPrompt,
-  tokenBudget = defaultContextTokenBudget
+  tokenBudget = defaultContextTokenBudget,
 }: {
-  messages: AgentRunMessage[];
-  systemPrompt: string;
-  tokenBudget?: number;
+  messages: AgentRunMessage[]
+  systemPrompt: string
+  tokenBudget?: number
 }): PreparedAgentContext => {
-  const now = new Date().toISOString();
-  const inputBudget = Math.max(4_000, tokenBudget - responseReserveTokens);
-  const normalizedMessages = messages.map(toPromptMessage);
+  const now = new Date().toISOString()
+  const inputBudget = Math.max(4_000, tokenBudget - responseReserveTokens)
+  const normalizedMessages = messages.map(toPromptMessage)
   const systemMessage = {
-    role: "system",
-    content: systemPrompt
-  };
-  const fullPromptMessages = [systemMessage, ...normalizedMessages];
-  const fullEstimate = estimateChatTokens(fullPromptMessages);
+    role: 'system',
+    content: systemPrompt,
+  }
+  const fullPromptMessages = [systemMessage, ...normalizedMessages]
+  const fullEstimate = estimateChatTokens(fullPromptMessages)
 
   if (fullEstimate <= inputBudget) {
     return {
       context: {
-        strategy: "full",
+        strategy: 'full',
         tokenBudget: inputBudget,
         estimatedTokens: fullEstimate,
         retainedMessages: messages.length,
         summarizedMessages: 0,
-        updatedAt: now
+        updatedAt: now,
       },
-      messages: fullPromptMessages
-    };
+      messages: fullPromptMessages,
+    }
   }
 
-  const retainedMessages: ChatMessage[] = [];
-  let retainedTokens = estimateChatTokens([systemMessage]);
+  const retainedMessages: ChatMessage[] = []
+  let retainedTokens = estimateChatTokens([systemMessage])
 
   for (let index = normalizedMessages.length - 1; index >= 0; index -= 1) {
-    const candidate = normalizedMessages[index]!;
-    const candidateTokens = estimateChatTokens([candidate]);
-    const shouldKeepMinimum = retainedMessages.length < minRetainedMessages;
+    const candidate = normalizedMessages[index]!
+    const candidateTokens = estimateChatTokens([candidate])
+    const shouldKeepMinimum = retainedMessages.length < minRetainedMessages
 
-    if (!shouldKeepMinimum && retainedTokens + candidateTokens > inputBudget * 0.7) {
-      break;
+    if (
+      !shouldKeepMinimum &&
+      retainedTokens + candidateTokens > inputBudget * 0.7
+    ) {
+      break
     }
 
-    retainedMessages.unshift(candidate);
-    retainedTokens += candidateTokens;
+    retainedMessages.unshift(candidate)
+    retainedTokens += candidateTokens
   }
 
-  let retainedStartIndex = Math.max(0, messages.length - retainedMessages.length);
+  let retainedStartIndex = Math.max(
+    0,
+    messages.length - retainedMessages.length,
+  )
   let compactedPrompt = buildCompactedPrompt({
     messages,
     normalizedMessages,
     retainedStartIndex,
-    systemMessage
-  });
+    systemMessage,
+  })
 
-  while (compactedPrompt.promptMessages.length > 3 && estimateChatTokens(compactedPrompt.promptMessages) > inputBudget) {
-    retainedStartIndex += 1;
+  while (
+    compactedPrompt.promptMessages.length > 3 &&
+    estimateChatTokens(compactedPrompt.promptMessages) > inputBudget
+  ) {
+    retainedStartIndex += 1
     compactedPrompt = buildCompactedPrompt({
       messages,
       normalizedMessages,
       retainedStartIndex,
-      systemMessage
-    });
+      systemMessage,
+    })
   }
 
-  const estimatedTokens = estimateChatTokens(compactedPrompt.promptMessages);
+  const estimatedTokens = estimateChatTokens(compactedPrompt.promptMessages)
 
   return {
     context: {
-      strategy: "compacted",
+      strategy: 'compacted',
       tokenBudget: inputBudget,
       estimatedTokens,
       retainedMessages: compactedPrompt.retainedMessages,
       summarizedMessages: compactedPrompt.summarizedMessages,
       summary: compactedPrompt.summary,
-      updatedAt: now
+      updatedAt: now,
     },
-    messages: compactedPrompt.promptMessages
-  };
-};
+    messages: compactedPrompt.promptMessages,
+  }
+}
 
 const toPromptMessage = (message: AgentRunMessage): ChatMessage => {
-  if (message.role === "tool") {
+  if (message.role === 'tool') {
     return {
-      role: "system",
-      content: buildToolContextMessage(message)
-    };
+      role: 'system',
+      content: buildToolContextMessage(message),
+    }
   }
 
   return {
-    role: message.role === "user" ? "user" : "assistant",
-    content: truncateForPrompt(message.content, retainedMessageMaxChars)
-  };
-};
+    role: message.role === 'user' ? 'user' : 'assistant',
+    content: truncateForPrompt(message.content, retainedMessageMaxChars),
+  }
+}
 
 const buildToolContextMessage = (message: AgentRunMessage) => {
-  const toolName = message.toolName || "unknown";
-  const content = normalizeToolContentForPrompt(message.content);
+  const toolName = message.toolName || 'unknown'
+  const content = normalizeToolContentForPrompt(message.content)
 
   return [
     `Private tool result context for ${toolName}.`,
-    "Use this result only to continue the task. Do not quote this block, render raw tool JSON, or include tool transcripts in user-facing replies or reasoning.",
-    "",
-    truncateForPrompt(content, toolMessageMaxChars)
-  ].join("\n");
-};
+    'Use this result only to continue the task. Do not quote this block, render raw tool JSON, or include tool transcripts in user-facing replies or reasoning.',
+    '',
+    truncateForPrompt(content, toolMessageMaxChars),
+  ].join('\n')
+}
 
 const buildContextSummary = (messages: AgentRunMessage[]) => {
   if (!messages.length) {
-    return "No older messages were compacted.";
+    return 'No older messages were compacted.'
   }
 
   const lines = messages.map((message, index) => {
-    const label = message.role === "tool" ? `tool:${message.toolName || "unknown"}` : message.role;
-    const content = message.role === "tool" ? normalizeToolContentForPrompt(message.content) : message.content;
-    return `${index + 1}. ${label}: ${singleLine(truncateForPrompt(content, 700))}`;
-  });
+    const label =
+      message.role === 'tool'
+        ? `tool:${message.toolName || 'unknown'}`
+        : message.role
+    const content =
+      message.role === 'tool'
+        ? normalizeToolContentForPrompt(message.content)
+        : message.content
+    return `${index + 1}. ${label}: ${singleLine(truncateForPrompt(content, 700))}`
+  })
 
   return truncateForPrompt(
-    [`${messages.length} older message(s) were compacted before this turn.`, ...lines].join("\n"),
-    summaryMaxChars
-  );
-};
+    [
+      `${messages.length} older message(s) were compacted before this turn.`,
+      ...lines,
+    ].join('\n'),
+    summaryMaxChars,
+  )
+}
 
 const buildCompactedPrompt = ({
   messages,
   normalizedMessages,
   retainedStartIndex,
-  systemMessage
+  systemMessage,
 }: {
-  messages: AgentRunMessage[];
-  normalizedMessages: ChatMessage[];
-  retainedStartIndex: number;
-  systemMessage: ChatMessage;
+  messages: AgentRunMessage[]
+  normalizedMessages: ChatMessage[]
+  retainedStartIndex: number
+  systemMessage: ChatMessage
 }) => {
-  const safeRetainedStartIndex = Math.min(Math.max(0, retainedStartIndex), messages.length);
-  const summarizedMessages = safeRetainedStartIndex;
-  const summary = buildContextSummary(messages.slice(0, summarizedMessages));
+  const safeRetainedStartIndex = Math.min(
+    Math.max(0, retainedStartIndex),
+    messages.length,
+  )
+  const summarizedMessages = safeRetainedStartIndex
+  const summary = buildContextSummary(messages.slice(0, summarizedMessages))
   const summaryMessage = {
-    role: "system",
+    role: 'system',
     content: [
-      "Context memory:",
+      'Context memory:',
       summary,
-      "",
-      "Use this compressed memory as background. Prefer live recent messages when they conflict with this memory."
-    ].join("\n")
-  };
-  const retainedPromptMessages = normalizedMessages.slice(safeRetainedStartIndex);
+      '',
+      'Use this compressed memory as background. Prefer live recent messages when they conflict with this memory.',
+    ].join('\n'),
+  }
+  const retainedPromptMessages = normalizedMessages.slice(
+    safeRetainedStartIndex,
+  )
 
   return {
     promptMessages: [systemMessage, summaryMessage, ...retainedPromptMessages],
     retainedMessages: retainedPromptMessages.length,
     summarizedMessages,
-    summary
-  };
-};
+    summary,
+  }
+}
 
 const estimateChatTokens = (messages: ChatMessage[]) => {
   return messages.reduce(
-    (total, message) => total + messageOverheadTokens + estimateTextTokens(String(message.content ?? "")),
-    0
-  );
-};
+    (total, message) =>
+      total +
+      messageOverheadTokens +
+      estimateTextTokens(String(message.content ?? '')),
+    0,
+  )
+}
 
-const estimateTextTokens = (value: string) => {
-  return Math.ceil(Array.from(value).length / 3);
-};
+export const estimateTextTokens = (value: string) => {
+  return Math.ceil(Array.from(value).length / 3)
+}
 
 const truncateForPrompt = (value: string, maxChars: number) => {
   if (value.length <= maxChars) {
-    return value;
+    return value
   }
 
-  const omittedChars = value.length - maxChars;
-  return `${value.slice(0, maxChars)}\n\n[truncated ${omittedChars} characters for context budget]`;
-};
+  const omittedChars = value.length - maxChars
+  return `${value.slice(0, maxChars)}\n\n[truncated ${omittedChars} characters for context budget]`
+}
 
 const singleLine = (value: string) => {
-  return value.replace(/\s+/gu, " ").trim();
-};
+  return value.replace(/\s+/gu, ' ').trim()
+}
 
 const normalizeToolContentForPrompt = (content: string) => {
   try {
-    const parsed = JSON.parse(content) as unknown;
+    const parsed = JSON.parse(content) as unknown
 
-    if (typeof parsed === "string") {
-      return parsed;
+    if (typeof parsed === 'string') {
+      return parsed
     }
 
-    return JSON.stringify(parsed, null, 2);
+    return JSON.stringify(parsed, null, 2)
   } catch {
-    return content;
+    return content
   }
-};
+}

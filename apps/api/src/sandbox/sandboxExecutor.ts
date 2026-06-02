@@ -1,31 +1,33 @@
-import path from "node:path";
+import path from 'node:path'
 import {
   sandboxExecRequestSchema,
   sandboxSettingsSchema,
   type SandboxExecRequest,
   type SandboxSettings,
-  type SandboxWorkspace
-} from "@agent-fleet/shared";
-import { badRequest } from "../http/errors";
-import { ensureWithinRoot } from "./sandboxWorkspaceStore";
-import { runProcess } from "./processRunner";
+  type SandboxWorkspace,
+} from '@agent-fleet/shared'
+import { badRequest } from '../http/errors'
+import { ensureWithinRoot } from './sandboxWorkspaceStore'
+import { runProcess } from './processRunner'
 
 export const executeSandboxCommand = async (
   settingsInput: SandboxSettings,
   workspace: SandboxWorkspace,
   input: SandboxExecRequest,
-  extraEnv: NodeJS.ProcessEnv = {}
+  extraEnv: NodeJS.ProcessEnv = {},
 ) => {
-  const settings = sandboxSettingsSchema.parse(settingsInput);
-  const request = sandboxExecRequestSchema.parse(input);
-  const args = normalizeCommandArgs(request.command, request.args);
+  const settings = sandboxSettingsSchema.parse(settingsInput)
+  const request = sandboxExecRequestSchema.parse(input)
+  const args = normalizeCommandArgs(request.command, request.args)
 
   if (!settings.allowedCommands.includes(request.command)) {
-    throw badRequest(`Command '${request.command}' is not allowed in the sandbox`);
+    throw badRequest(
+      `Command '${request.command}' is not allowed in the sandbox`,
+    )
   }
 
-  const cwd = ensureWorkspacePath(workspace, request.cwd);
-  validateCommandRequest(workspace, request.command, args);
+  const cwd = ensureWorkspacePath(workspace, request.cwd)
+  validateCommandRequest(workspace, request.command, args)
 
   return runProcess({
     command: request.command,
@@ -33,148 +35,189 @@ export const executeSandboxCommand = async (
     cwd,
     env: buildSandboxEnv(settings.envAllowlist, extraEnv),
     timeoutMs: request.timeoutMs ?? settings.defaultTimeoutMs,
-    maxOutputBytes: settings.maxOutputBytes
-  });
-};
+    maxOutputBytes: settings.maxOutputBytes,
+  })
+}
 
-export const ensureWorkspacePath = (workspace: SandboxWorkspace, requestedPath?: string) => {
-  const candidate = requestedPath ? path.resolve(workspace.path, requestedPath) : workspace.path;
-  return ensureWithinRoot(workspace.path, candidate);
-};
+export const ensureWorkspacePath = (
+  workspace: SandboxWorkspace,
+  requestedPath?: string,
+) => {
+  const candidate = requestedPath
+    ? path.resolve(workspace.path, requestedPath)
+    : workspace.path
+  return ensureWithinRoot(workspace.path, candidate)
+}
 
-export const buildSandboxEnv = (allowlist: string[], extraEnv: NodeJS.ProcessEnv = {}) => {
+export const buildSandboxEnv = (
+  allowlist: string[],
+  extraEnv: NodeJS.ProcessEnv = {},
+) => {
   const env: NodeJS.ProcessEnv = {
-    CI: "true",
-    GIT_TERMINAL_PROMPT: "0"
-  };
+    CI: 'true',
+    GIT_TERMINAL_PROMPT: '0',
+  }
 
   for (const key of allowlist) {
-    const value = process.env[key];
+    const value = process.env[key]
 
     if (value !== undefined) {
-      env[key] = value;
+      env[key] = value
     }
   }
 
   return {
     ...env,
-    ...extraEnv
-  };
-};
+    ...extraEnv,
+  }
+}
 
-const validateCommandRequest = (workspace: SandboxWorkspace, command: string, args: string[]) => {
-  if (command === "git") {
-    validateGitCommand(args);
-    return;
+const validateCommandRequest = (
+  workspace: SandboxWorkspace,
+  command: string,
+  args: string[],
+) => {
+  if (command === 'git') {
+    validateGitCommand(args)
+    return
   }
 
-  if (command === "find") {
-    validateFindCommand(workspace, args);
-    return;
+  if (command === 'find') {
+    validateFindCommand(workspace, args)
+    return
   }
 
-  if (command === "rm") {
-    validateRmCommand(workspace, args);
-    return;
+  if (command === 'rm') {
+    validateRmCommand(workspace, args)
+    return
   }
 
-  if (command === "chmod") {
-    validateChmodCommand(workspace, args);
-    return;
+  if (command === 'chmod') {
+    validateChmodCommand(workspace, args)
+    return
   }
 
   if (pathGuardedCommands.has(command)) {
-    validatePathArgs(workspace, command, args);
+    validatePathArgs(workspace, command, args)
   }
-};
+}
 
 const normalizeCommandArgs = (command: string, args: string[]) => {
   if (args[0] === command) {
-    return args.slice(1);
+    return args.slice(1)
   }
 
-  return args;
-};
+  return args
+}
 
-const blockedGitSubcommands = new Set(["reset", "clean", "restore", "checkout", "switch", "rebase", "stash", "worktree"]);
-const blockedFindActions = new Set(["-delete", "-exec", "-execdir", "-ok", "-okdir"]);
-const pathGuardedCommands = new Set(["mkdir", "cp", "mv", "touch"]);
+const blockedGitSubcommands = new Set([
+  'reset',
+  'clean',
+  'restore',
+  'checkout',
+  'switch',
+  'rebase',
+  'stash',
+  'worktree',
+])
+const blockedFindActions = new Set([
+  '-delete',
+  '-exec',
+  '-execdir',
+  '-ok',
+  '-okdir',
+])
+const pathGuardedCommands = new Set(['mkdir', 'cp', 'mv', 'touch'])
 
 const validateGitCommand = (args: string[]) => {
-  const subcommand = args.find((arg) => !arg.startsWith("-"));
+  const subcommand = args.find((arg) => !arg.startsWith('-'))
 
   if (subcommand && blockedGitSubcommands.has(subcommand)) {
-    throw badRequest(`Git subcommand '${subcommand}' is blocked in the sandbox`);
+    throw badRequest(`Git subcommand '${subcommand}' is blocked in the sandbox`)
   }
-};
+}
 
 const validateFindCommand = (workspace: SandboxWorkspace, args: string[]) => {
   for (const arg of args) {
     if (blockedFindActions.has(arg)) {
-      throw badRequest(`find action '${arg}' is blocked in the sandbox`);
+      throw badRequest(`find action '${arg}' is blocked in the sandbox`)
     }
   }
 
   for (const arg of getFindPathArgs(args)) {
-    validateWorkspacePathArg(workspace, "find", arg);
+    validateWorkspacePathArg(workspace, 'find', arg)
   }
-};
+}
 
 const getFindPathArgs = (args: string[]) => {
-  const pathArgs: string[] = [];
+  const pathArgs: string[] = []
 
   for (const arg of args) {
-    if (arg.startsWith("-") || arg === "(" || arg === "!") {
-      break;
+    if (arg.startsWith('-') || arg === '(' || arg === '!') {
+      break
     }
 
-    pathArgs.push(arg);
+    pathArgs.push(arg)
   }
 
-  return pathArgs;
-};
+  return pathArgs
+}
 
 const validateRmCommand = (workspace: SandboxWorkspace, args: string[]) => {
   for (const arg of args) {
     if (isRecursiveRmFlag(arg)) {
-      throw badRequest("Recursive rm is blocked in the sandbox; use a dedicated cleanup action instead");
+      throw badRequest(
+        'Recursive rm is blocked in the sandbox; use a dedicated cleanup action instead',
+      )
     }
   }
 
-  validatePathArgs(workspace, "rm", args);
-};
+  validatePathArgs(workspace, 'rm', args)
+}
 
 const isRecursiveRmFlag = (arg: string) => {
-  if (arg === "--recursive") {
-    return true;
+  if (arg === '--recursive') {
+    return true
   }
 
-  return arg.startsWith("-") && !arg.startsWith("--") && /[rR]/u.test(arg);
-};
+  return arg.startsWith('-') && !arg.startsWith('--') && /[rR]/u.test(arg)
+}
 
 const validateChmodCommand = (workspace: SandboxWorkspace, args: string[]) => {
-  const paths = args.filter((arg) => !arg.startsWith("-")).slice(1);
-  validatePathArgs(workspace, "chmod", paths);
-};
+  const paths = args.filter((arg) => !arg.startsWith('-')).slice(1)
+  validatePathArgs(workspace, 'chmod', paths)
+}
 
-const validatePathArgs = (workspace: SandboxWorkspace, command: string, args: string[]) => {
+const validatePathArgs = (
+  workspace: SandboxWorkspace,
+  command: string,
+  args: string[],
+) => {
   for (const arg of args) {
-    if (arg === "--" || arg.startsWith("-")) {
-      continue;
+    if (arg === '--' || arg.startsWith('-')) {
+      continue
     }
 
-    validateWorkspacePathArg(workspace, command, arg);
+    validateWorkspacePathArg(workspace, command, arg)
   }
-};
+}
 
-const validateWorkspacePathArg = (workspace: SandboxWorkspace, command: string, arg: string) => {
+const validateWorkspacePathArg = (
+  workspace: SandboxWorkspace,
+  command: string,
+  arg: string,
+) => {
   if (path.isAbsolute(arg)) {
-    throw badRequest(`Command '${command}' cannot access absolute path '${arg}'`);
+    throw badRequest(
+      `Command '${command}' cannot access absolute path '${arg}'`,
+    )
   }
 
   try {
-    ensureWorkspacePath(workspace, arg);
+    ensureWorkspacePath(workspace, arg)
   } catch {
-    throw badRequest(`Command '${command}' cannot access path outside the workspace: '${arg}'`);
+    throw badRequest(
+      `Command '${command}' cannot access path outside the workspace: '${arg}'`,
+    )
   }
-};
+}

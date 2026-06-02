@@ -1,15 +1,15 @@
-"use client"
+'use client'
 
-import { cn } from "@/lib/utils"
-import { ChevronDownIcon } from "lucide-react"
+import { cn } from '@/lib/utils'
+import { ChevronDownIcon } from 'lucide-react'
 import React, {
   createContext,
   useContext,
   useEffect,
   useRef,
   useState,
-} from "react"
-import { Markdown } from "./markdown"
+} from 'react'
+import { Markdown } from './markdown'
 
 type ReasoningContextType = {
   isOpen: boolean
@@ -17,14 +17,14 @@ type ReasoningContextType = {
 }
 
 const ReasoningContext = createContext<ReasoningContextType | undefined>(
-  undefined
+  undefined,
 )
 
 function useReasoningContext() {
   const context = useContext(ReasoningContext)
   if (!context) {
     throw new Error(
-      "useReasoningContext must be used within a Reasoning provider"
+      'useReasoningContext must be used within a Reasoning provider',
     )
   }
   return context
@@ -61,7 +61,7 @@ function Reasoning({
         onOpenChange: handleOpenChange,
       }}
     >
-      <div className={cn("min-w-0", className)}>{children}</div>
+      <div className={cn('min-w-0', className)}>{children}</div>
     </ReasoningContext.Provider>
   )
 }
@@ -75,7 +75,7 @@ function ReasoningTrigger({
   children,
   className,
   onClick,
-  type = "button",
+  type = 'button',
   ...props
 }: ReasoningTriggerProps) {
   const { isOpen, onOpenChange } = useReasoningContext()
@@ -84,8 +84,8 @@ function ReasoningTrigger({
     <button
       aria-expanded={isOpen}
       className={cn(
-        "inline-flex h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-xs leading-none text-muted-foreground transition-colors hover:text-foreground",
-        className
+        'inline-flex h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-xs leading-none text-muted-foreground transition-colors hover:text-foreground',
+        className,
       )}
       onClick={(event) => {
         onClick?.(event)
@@ -102,8 +102,8 @@ function ReasoningTrigger({
       </span>
       <div
         className={cn(
-          "grid size-4 shrink-0 place-items-center transition-transform",
-          isOpen ? "rotate-180" : ""
+          'grid size-4 shrink-0 place-items-center transition-transform',
+          isOpen ? 'rotate-180' : '',
         )}
       >
         <ChevronDownIcon className="size-3.5" />
@@ -158,20 +158,20 @@ function ReasoningContent({
     <div
       ref={contentRef}
       className={cn(
-        "overflow-hidden transition-[max-height] duration-150 ease-out",
-        className
+        'overflow-hidden transition-[max-height] duration-150 ease-out',
+        className,
       )}
       style={{
-        maxHeight: isOpen ? contentRef.current?.scrollHeight : "0px",
+        maxHeight: isOpen ? contentRef.current?.scrollHeight : '0px',
       }}
       {...props}
     >
       <div
         ref={innerRef}
         className={cn(
-          "text-muted-foreground prose prose-sm dark:prose-invert",
-          "min-w-0 max-w-full break-words",
-          contentClassName
+          'text-muted-foreground prose prose-sm dark:prose-invert',
+          'min-w-0 max-w-full break-words',
+          contentClassName,
         )}
       >
         {content}

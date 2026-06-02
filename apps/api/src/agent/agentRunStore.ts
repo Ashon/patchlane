@@ -1,126 +1,137 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID } from 'node:crypto'
 import {
   agentRunListSchema,
   agentRunContextSchema,
   agentRunMessageSchema,
+  agentRunMessageMetadataSchema,
   agentRunSchema,
   createAgentRunSchema,
   type AgentRun,
   type AgentRunContext,
   type AgentRunMessage,
   type AgentRunStatus,
-  type CreateAgentRunInput
-} from "@agent-fleet/shared";
-import { AppDatabase, optionalString } from "../db/database";
-import { readLegacyJson } from "../db/legacyJson";
-import { notFound } from "../http/errors";
+  type CreateAgentRunInput,
+} from '@agent-fleet/shared'
+import { AppDatabase, optionalString } from '../db/database'
+import { readLegacyJson } from '../db/legacyJson'
+import { notFound } from '../http/errors'
 
 type AgentRunRow = {
-  id: string;
-  workspace_id: string;
-  endpoint_id: string | null;
-  model: string | null;
-  title: string;
-  kind: AgentRun["kind"];
-  project_id: string | null;
-  issue_id: string | null;
-  branch_name: string | null;
-  pr_url: string | null;
-  result_summary: string | null;
-  status: AgentRunStatus;
-  context_json: string | null;
-  error: string | null;
-  created_at: string;
-  updated_at: string;
-};
+  id: string
+  workspace_id: string
+  endpoint_id: string | null
+  model: string | null
+  title: string
+  kind: AgentRun['kind']
+  project_id: string | null
+  issue_id: string | null
+  branch_name: string | null
+  pr_url: string | null
+  result_summary: string | null
+  status: AgentRunStatus
+  context_json: string | null
+  error: string | null
+  created_at: string
+  updated_at: string
+}
 
 type AgentRunMessageRow = {
-  id: string;
-  run_id: string;
-  role: AgentRunMessage["role"];
-  content: string;
-  tool_name: string | null;
-  created_at: string;
-  sequence: number;
-};
+  id: string
+  run_id: string
+  role: AgentRunMessage['role']
+  content: string
+  tool_name: string | null
+  metadata_json: string | null
+  created_at: string
+  sequence: number
+}
 
 export class AgentRunStore {
   constructor(
     private readonly database: AppDatabase,
-    private readonly legacyFilePath?: string
+    private readonly legacyFilePath?: string,
   ) {
-    this.ensureSeeded();
+    this.ensureSeeded()
   }
 
   async list() {
     const rows = this.database.sqlite
-      .prepare("SELECT * FROM agent_runs ORDER BY created_at DESC")
-      .all() as unknown as AgentRunRow[];
+      .prepare('SELECT * FROM agent_runs ORDER BY created_at DESC')
+      .all() as unknown as AgentRunRow[]
 
-    return agentRunListSchema.parse(rows.map((row) => this.toRun(row)));
+    return agentRunListSchema.parse(rows.map((row) => this.toRun(row)))
   }
 
   async get(id: string) {
-    const run = this.getById(id);
+    const run = this.getById(id)
 
     if (!run) {
-      throw notFound(`Agent run '${id}' was not found`);
+      throw notFound(`Agent run '${id}' was not found`)
     }
 
-    return run;
+    return run
   }
 
   async find(id: string) {
-    return this.getById(id);
+    return this.getById(id)
   }
 
   async create(input: CreateAgentRunInput) {
-    const parsed = createAgentRunSchema.parse(input);
-    const now = new Date().toISOString();
+    const parsed = createAgentRunSchema.parse(input)
+    const now = new Date().toISOString()
     const run = agentRunSchema.parse({
       id: randomUUID(),
       workspaceId: parsed.workspaceId,
       endpointId: parsed.endpointId,
       model: parsed.model,
       title: parsed.title || getTitle(parsed.task),
-      kind: parsed.kind ?? "coding",
+      kind: parsed.kind ?? 'coding',
       projectId: parsed.projectId,
       issueId: parsed.issueId,
       branchName: parsed.branchName,
-      status: "idle",
+      status: 'idle',
       messages: [
         createMessage({
-          role: "user",
+          role: 'user',
           content: parsed.task,
-          createdAt: now
-        })
+          createdAt: now,
+        }),
       ],
       createdAt: now,
-      updatedAt: now
-    });
+      updatedAt: now,
+    })
 
     this.database.transaction(() => {
-      this.insertRunWithMessages(run);
-    });
+      this.insertRunWithMessages(run)
+    })
 
-    return run;
+    return run
   }
 
-  async appendMessage(id: string, message: Omit<AgentRunMessage, "id" | "createdAt">) {
+  async appendMessage(
+    id: string,
+    message: Omit<AgentRunMessage, 'id' | 'createdAt'>,
+  ) {
     return this.update(id, (run) => ({
       ...run,
       messages: [...run.messages, createMessage(message)],
-      status: message.role === "user" ? "idle" : run.status,
-      updatedAt: new Date().toISOString()
-    }));
+      status: message.role === 'user' ? 'idle' : run.status,
+      updatedAt: new Date().toISOString(),
+    }))
   }
 
-  async appendMessages(id: string, messages: Array<Omit<AgentRunMessage, "id" | "createdAt">>) {
+  async appendMessages(
+    id: string,
+    messages: Array<Omit<AgentRunMessage, 'id' | 'createdAt'>>,
+  ) {
     return this.update(id, (run) => ({
       ...run,
-      messages: [...run.messages, ...messages.map((message) => createMessage(message))],
-      updatedAt: new Date().toISOString()
-    }));
+      messages: [
+        ...run.messages,
+        ...messages.map((message) => createMessage(message)),
+      ],
+      updatedAt: new Date().toISOString(),
+    }))
   }
 
   async setStatus(id: string, status: AgentRunStatus, error?: string) {
@@ -128,40 +139,42 @@ export class AgentRunStore {
       ...run,
       status,
       error,
-      updatedAt: new Date().toISOString()
-    }));
+      updatedAt: new Date().toISOString(),
+    }))
   }
 
   async setContext(id: string, context: AgentRunContext) {
     return this.update(id, (run) => ({
       ...run,
       context,
-      updatedAt: new Date().toISOString()
-    }));
+      updatedAt: new Date().toISOString(),
+    }))
   }
 
   async setPullRequest(id: string, prUrl: string) {
     return this.update(id, (run) => ({
       ...run,
       prUrl,
-      updatedAt: new Date().toISOString()
-    }));
+      updatedAt: new Date().toISOString(),
+    }))
   }
 
   async setResultSummary(id: string, resultSummary: string) {
     return this.update(id, (run) => ({
       ...run,
       resultSummary,
-      updatedAt: new Date().toISOString()
-    }));
+      updatedAt: new Date().toISOString(),
+    }))
   }
 
   async rewind(id: string, messageId: string) {
     return this.update(id, (run) => {
-      const messageIndex = run.messages.findIndex((message) => message.id === messageId);
+      const messageIndex = run.messages.findIndex(
+        (message) => message.id === messageId,
+      )
 
       if (messageIndex < 0) {
-        throw notFound(`Agent run message '${messageId}' was not found`);
+        throw notFound(`Agent run message '${messageId}' was not found`)
       }
 
       return {
@@ -171,28 +184,30 @@ export class AgentRunStore {
         messages: run.messages.slice(0, messageIndex + 1),
         prUrl: undefined,
         resultSummary: undefined,
-        status: "idle",
-        updatedAt: new Date().toISOString()
-      };
-    });
+        status: 'idle',
+        updatedAt: new Date().toISOString(),
+      }
+    })
   }
 
   async remove(id: string) {
-    const result = this.database.sqlite.prepare("DELETE FROM agent_runs WHERE id = ?").run(id);
+    const result = this.database.sqlite
+      .prepare('DELETE FROM agent_runs WHERE id = ?')
+      .run(id)
 
     if (result.changes === 0) {
-      throw notFound(`Agent run '${id}' was not found`);
+      throw notFound(`Agent run '${id}' was not found`)
     }
   }
 
   private update(id: string, updater: (run: AgentRun) => AgentRun) {
-    const current = this.getById(id);
+    const current = this.getById(id)
 
     if (!current) {
-      throw notFound(`Agent run '${id}' was not found`);
+      throw notFound(`Agent run '${id}' was not found`)
     }
 
-    const updated = agentRunSchema.parse(updater(current));
+    const updated = agentRunSchema.parse(updater(current))
 
     this.database.transaction(() => {
       this.database.sqlite
@@ -202,7 +217,7 @@ export class AgentRunStore {
           SET workspace_id = ?, endpoint_id = ?, model = ?, title = ?, kind = ?, project_id = ?, issue_id = ?,
             branch_name = ?, pr_url = ?, result_summary = ?, status = ?, context_json = ?, error = ?, updated_at = ?
           WHERE id = ?
-        `
+        `,
         )
         .run(
           updated.workspaceId,
@@ -219,25 +234,31 @@ export class AgentRunStore {
           updated.context ? JSON.stringify(updated.context) : null,
           updated.error ?? null,
           updated.updatedAt,
-          updated.id
-        );
+          updated.id,
+        )
 
-      this.database.sqlite.prepare("DELETE FROM agent_run_messages WHERE run_id = ?").run(updated.id);
-      this.insertMessages(updated.id, updated.messages);
-    });
+      this.database.sqlite
+        .prepare('DELETE FROM agent_run_messages WHERE run_id = ?')
+        .run(updated.id)
+      this.insertMessages(updated.id, updated.messages)
+    })
 
-    return updated;
+    return updated
   }
 
   private getById(id: string) {
-    const row = this.database.sqlite.prepare("SELECT * FROM agent_runs WHERE id = ?").get(id) as unknown as AgentRunRow | undefined;
-    return row ? this.toRun(row) : undefined;
+    const row = this.database.sqlite
+      .prepare('SELECT * FROM agent_runs WHERE id = ?')
+      .get(id) as unknown as AgentRunRow | undefined
+    return row ? this.toRun(row) : undefined
   }
 
   private toRun(row: AgentRunRow) {
     const messageRows = this.database.sqlite
-      .prepare("SELECT * FROM agent_run_messages WHERE run_id = ? ORDER BY sequence ASC")
-      .all(row.id) as unknown as AgentRunMessageRow[];
+      .prepare(
+        'SELECT * FROM agent_run_messages WHERE run_id = ? ORDER BY sequence ASC',
+      )
+      .all(row.id) as unknown as AgentRunMessageRow[]
 
     return agentRunSchema.parse({
       id: row.id,
@@ -245,7 +266,7 @@ export class AgentRunStore {
       endpointId: optionalString(row.endpoint_id),
       model: optionalString(row.model),
       title: row.title,
-      kind: row.kind ?? "coding",
+      kind: row.kind ?? 'coding',
       projectId: optionalString(row.project_id),
       issueId: optionalString(row.issue_id),
       branchName: optionalString(row.branch_name),
@@ -256,28 +277,30 @@ export class AgentRunStore {
       context: parseContext(row.context_json),
       error: optionalString(row.error),
       createdAt: row.created_at,
-      updatedAt: row.updated_at
-    });
+      updatedAt: row.updated_at,
+    })
   }
 
   private ensureSeeded() {
-    const countRow = this.database.sqlite.prepare("SELECT COUNT(*) AS count FROM agent_runs").get() as { count: number };
+    const countRow = this.database.sqlite
+      .prepare('SELECT COUNT(*) AS count FROM agent_runs')
+      .get() as { count: number }
 
     if (countRow.count > 0) {
-      return;
+      return
     }
 
-    const legacyRuns = readLegacyJson(this.legacyFilePath, agentRunListSchema);
+    const legacyRuns = readLegacyJson(this.legacyFilePath, agentRunListSchema)
 
     if (!legacyRuns?.length) {
-      return;
+      return
     }
 
     this.database.transaction(() => {
       for (const run of legacyRuns) {
-        this.insertRunWithMessages(run);
+        this.insertRunWithMessages(run)
       }
-    });
+    })
   }
 
   private insertRunWithMessages(run: AgentRun) {
@@ -288,7 +311,7 @@ export class AgentRunStore {
           id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `
+      `,
       )
       .run(
         run.id,
@@ -306,24 +329,33 @@ export class AgentRunStore {
         run.context ? JSON.stringify(run.context) : null,
         run.error ?? null,
         run.createdAt,
-        run.updatedAt
-      );
+        run.updatedAt,
+      )
 
-    this.insertMessages(run.id, run.messages);
+    this.insertMessages(run.id, run.messages)
   }
 
   private insertMessages(runId: string, messages: AgentRunMessage[]) {
     const statement = this.database.sqlite.prepare(
       `
       INSERT INTO agent_run_messages (
-        id, run_id, role, content, tool_name, created_at, sequence
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `
-    );
+        id, run_id, role, content, tool_name, metadata_json, created_at, sequence
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    )
 
     messages.forEach((message, index) => {
-      statement.run(message.id, runId, message.role, message.content, message.toolName ?? null, message.createdAt, index);
-    });
+      statement.run(
+        message.id,
+        runId,
+        message.role,
+        message.content,
+        message.toolName ?? null,
+        message.metadata ? JSON.stringify(message.metadata) : null,
+        message.createdAt,
+        index,
+      )
+    })
   }
 }
 
@@ -333,31 +365,46 @@ const toMessage = (row: AgentRunMessageRow) => {
     role: row.role,
     content: row.content,
     toolName: optionalString(row.tool_name),
-    createdAt: row.created_at
-  });
-};
+    metadata: parseMessageMetadata(row.metadata_json),
+    createdAt: row.created_at,
+  })
+}
 
 const parseContext = (value: string | null) => {
   if (!value) {
-    return undefined;
+    return undefined
   }
 
   try {
-    return agentRunContextSchema.parse(JSON.parse(value));
+    return agentRunContextSchema.parse(JSON.parse(value))
   } catch {
-    return undefined;
+    return undefined
   }
-};
+}
 
-const createMessage = (message: Omit<AgentRunMessage, "id" | "createdAt"> & { createdAt?: string }) => {
+const parseMessageMetadata = (value: string | null) => {
+  if (!value) {
+    return undefined
+  }
+
+  try {
+    return agentRunMessageMetadataSchema.parse(JSON.parse(value))
+  } catch {
+    return undefined
+  }
+}
+
+const createMessage = (
+  message: Omit<AgentRunMessage, 'id' | 'createdAt'> & { createdAt?: string },
+) => {
   return agentRunMessageSchema.parse({
     ...message,
     id: randomUUID(),
-    createdAt: message.createdAt || new Date().toISOString()
-  });
-};
+    createdAt: message.createdAt || new Date().toISOString(),
+  })
+}
 
 const getTitle = (task: string) => {
-  const firstLine = task.split("\n").find(Boolean) || "Agent task";
-  return firstLine.slice(0, 80);
-};
+  const firstLine = task.split('\n').find(Boolean) || 'Agent task'
+  return firstLine.slice(0, 80)
+}

@@ -1,10 +1,10 @@
-import { cn } from "@/lib/utils"
-import { marked } from "marked"
-import { memo, useId, useMemo } from "react"
-import ReactMarkdown, { Components } from "react-markdown"
-import remarkBreaks from "remark-breaks"
-import remarkGfm from "remark-gfm"
-import { CodeBlock, CodeBlockCode } from "./code-block"
+import { cn } from '@/lib/utils'
+import { marked } from 'marked'
+import { memo, useId, useMemo } from 'react'
+import ReactMarkdown, { Components } from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
+import remarkGfm from 'remark-gfm'
+import { CodeBlock, CodeBlockCode } from './code-block'
 
 export type MarkdownProps = {
   children: string
@@ -19,9 +19,9 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
 }
 
 function extractLanguage(className?: string): string {
-  if (!className) return "plaintext"
+  if (!className) return 'plaintext'
   const match = className.match(/language-(\w+)/)
-  return match?.[1] ?? "plaintext"
+  return match?.[1] ?? 'plaintext'
 }
 
 const INITIAL_COMPONENTS: Partial<Components> = {
@@ -34,8 +34,8 @@ const INITIAL_COMPONENTS: Partial<Components> = {
       return (
         <span
           className={cn(
-            "rounded-sm bg-muted px-1 font-mono text-sm text-foreground",
-            className
+            'rounded-sm bg-muted px-1 font-mono text-sm text-foreground',
+            className,
           )}
           {...props}
         >
@@ -76,10 +76,10 @@ const MemoizedMarkdownBlock = memo(
   },
   function propsAreEqual(prevProps, nextProps) {
     return prevProps.content === nextProps.content
-  }
+  },
 )
 
-MemoizedMarkdownBlock.displayName = "MemoizedMarkdownBlock"
+MemoizedMarkdownBlock.displayName = 'MemoizedMarkdownBlock'
 
 function MarkdownComponent({
   children,
@@ -105,6 +105,6 @@ function MarkdownComponent({
 }
 
 const Markdown = memo(MarkdownComponent)
-Markdown.displayName = "Markdown"
+Markdown.displayName = 'Markdown'
 
 export { Markdown }

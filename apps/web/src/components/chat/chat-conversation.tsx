@@ -1,56 +1,102 @@
-import { type ReactNode, useState } from "react";
-import { Bot, Check, Copy, GitPullRequest, MessageSquare, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
-import { Message, MessageAction, MessageActions, MessageAvatar, MessageContent } from "@/components/ui/message";
-import { PromptInput, PromptInputActions, PromptInputTextarea } from "@/components/ui/prompt-input";
-import { Loader } from "@/components/ui/loader";
-import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ui/reasoning";
-import { ScrollButton } from "@/components/ui/scroll-button";
-import { SystemMessage } from "@/components/ui/system-message";
-import { ThinkingBar } from "@/components/ui/thinking-bar";
-import { Tool, type ToolPart } from "@/components/ui/tool";
-import { cn } from "@/lib/utils";
+import { type ReactNode, useCallback, useMemo, useState } from 'react'
+import type { AgentRunMessageMetadata } from '@agent-fleet/shared'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import {
+  Bot,
+  Check,
+  Copy,
+  GitPullRequest,
+  Info,
+  MessageSquare,
+  RotateCcw,
+} from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  ChatContainerContent,
+  ChatContainerRoot,
+  ChatContainerScrollAnchor,
+} from '@/components/ui/chat-container'
+import {
+  Message,
+  MessageAction,
+  MessageActions,
+  MessageAvatar,
+  MessageContent,
+} from '@/components/ui/message'
+import {
+  PromptInput,
+  PromptInputActions,
+  PromptInputTextarea,
+} from '@/components/ui/prompt-input'
+import { Loader } from '@/components/ui/loader'
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from '@/components/ui/reasoning'
+import { ScrollButton } from '@/components/ui/scroll-button'
+import { SystemMessage } from '@/components/ui/system-message'
+import { ThinkingBar } from '@/components/ui/thinking-bar'
+import { Tool, type ToolPart } from '@/components/ui/tool'
+import { cn } from '@/lib/utils'
+import type { StickToBottomContext } from 'use-stick-to-bottom'
 
 export type ConversationMessage = {
-  id: string;
-  role: "user" | "assistant" | "tool" | "system";
-  content: string;
-  reasoning?: string;
-  status?: "streaming" | "done" | "error" | "stopped";
-  finishReason?: string;
-  createdAt?: string;
-  toolName?: string;
-  toolCallId?: string;
-  toolInput?: Record<string, unknown>;
-  toolOutput?: unknown;
-  toolError?: string;
-};
+  id: string
+  role: 'user' | 'assistant' | 'tool' | 'system'
+  content: string
+  reasoning?: string
+  status?: 'streaming' | 'done' | 'error' | 'stopped'
+  finishReason?: string
+  createdAt?: string
+  toolName?: string
+  toolCallId?: string
+  toolInput?: Record<string, unknown>
+  toolOutput?: unknown
+  toolError?: string
+  metadata?: AgentRunMessageMetadata
+}
 
 type ConversationMessageGroup = {
-  id: string;
-  role: "user" | "assistant";
-  messages: ConversationMessage[];
-};
+  id: string
+  role: 'user' | 'assistant'
+  messages: ConversationMessage[]
+}
+
+type ConversationRenderItem =
+  | {
+      id: string
+      role: 'user'
+      message: ConversationMessage
+    }
+  | {
+      id: string
+      role: 'assistant'
+      message: ConversationMessage
+      metaMessage?: ConversationMessage
+    }
 
 type ChatConversationProps = {
-  detectPullRequestLinks?: boolean;
-  emptyState: ReactNode;
-  error?: string | null;
-  header?: ReactNode;
-  inputActions: ReactNode;
-  inputDisabled?: boolean;
-  inputFooter: ReactNode;
-  inputLoading: boolean;
-  inputPlaceholder: string;
-  inputValue: string;
-  messages: ConversationMessage[];
-  onInputChange: (value: string) => void;
-  onInputSubmit: () => void;
-  onRewindMessage?: (message: ConversationMessage) => void;
-  showMessageMeta?: boolean;
-};
+  detectPullRequestLinks?: boolean
+  emptyState: ReactNode
+  error?: string | null
+  header?: ReactNode
+  inputActions: ReactNode
+  inputDisabled?: boolean
+  inputFooter: ReactNode
+  inputLoading: boolean
+  inputPlaceholder: string
+  inputValue: string
+  messages: ConversationMessage[]
+  onInputChange: (value: string) => void
+  onInputSubmit: () => void
+  onRewindMessage?: (message: ConversationMessage) => void
+  showAssistantAvatar?: boolean
+  showInlineActivity?: boolean
+  showMessageMeta?: boolean
+  showStreamingPlaceholder?: boolean
+}
 
 export const ChatConversation = ({
   detectPullRequestLinks = false,
@@ -67,18 +113,51 @@ export const ChatConversation = ({
   onInputChange,
   onInputSubmit,
   onRewindMessage,
-  showMessageMeta = false
+  showAssistantAvatar = true,
+  showInlineActivity = true,
+  showMessageMeta = false,
+  showStreamingPlaceholder = true,
 }: ChatConversationProps) => {
-  const [reasoningOpen, setReasoningOpen] = useState<Record<string, boolean>>({});
-  const groups = groupMessages(messages);
-  const hasInlineActivity = messages.some((message) => message.status === "streaming");
+  const [reasoningOpen, setReasoningOpen] = useState<Record<string, boolean>>(
+    {},
+  )
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
+  const groups = useMemo(() => groupMessages(messages), [messages])
+  const renderItems = useMemo(
+    () => createConversationRenderItems(groups, showStreamingPlaceholder),
+    [groups, showStreamingPlaceholder],
+  )
+  const hasInlineActivity = useMemo(
+    () => messages.some((message) => message.status === 'streaming'),
+    [messages],
+  )
 
-  const setReasoningVisibility = (message: ConversationMessage, open: boolean) => {
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual owns scroll measurement state internally.
+  const virtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
+    count: renderItems.length,
+    estimateSize: (index) => getEstimatedRenderItemSize(renderItems[index]),
+    getItemKey: (index) => renderItems[index]?.id ?? index,
+    getScrollElement: () => scrollElement,
+    overscan: 8,
+  })
+
+  const setStickToBottomContext = useCallback(
+    (context: StickToBottomContext | null) => {
+      const element = context?.scrollRef.current ?? null
+      setScrollElement((current) => (current === element ? current : element))
+    },
+    [],
+  )
+
+  const setReasoningVisibility = (
+    message: ConversationMessage,
+    open: boolean,
+  ) => {
     setReasoningOpen((current) => ({
       ...current,
-      [message.id]: open
-    }));
-  };
+      [message.id]: open,
+    }))
+  }
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
@@ -91,33 +170,64 @@ export const ChatConversation = ({
       ) : null}
 
       <div className="min-h-0 flex-1">
-        <ChatContainerRoot className="relative h-full">
-          <ChatContainerContent className="w-full gap-1.5 px-3 py-2">
-            {messages.length === 0
-              ? emptyState
-              : groups.map((group) =>
-                  group.role === "user" ? (
-                    <UserMessageBubble
-                      key={group.id}
-                      message={group.messages[0]!}
-                      onRewind={onRewindMessage}
-                      rewindDisabled={inputLoading}
-                      showMeta={showMessageMeta}
-                    />
-                  ) : (
-                    <AssistantMessageGroup
-                      detectPullRequestLinks={detectPullRequestLinks}
-                      key={group.id}
-                      messages={group.messages}
-                      onReasoningOpenChange={setReasoningVisibility}
-                      onRewind={onRewindMessage}
-                      reasoningOpen={reasoningOpen}
-                      rewindDisabled={inputLoading}
-                      showMeta={showMessageMeta}
-                    />
+        <ChatContainerRoot
+          className="relative h-full"
+          contextRef={setStickToBottomContext}
+        >
+          <ChatContainerContent className="w-full px-3 py-2">
+            {messages.length === 0 ? (
+              emptyState
+            ) : (
+              <div
+                className="relative w-full shrink-0"
+                style={{ height: virtualizer.getTotalSize() }}
+              >
+                {virtualizer.getVirtualItems().map((virtualItem) => {
+                  const item = renderItems[virtualItem.index]
+
+                  if (!item) {
+                    return null
+                  }
+
+                  return (
+                    <div
+                      className="absolute left-0 top-0 w-full pb-2"
+                      data-index={virtualItem.index}
+                      key={virtualItem.key}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        transform: `translateY(${virtualItem.start}px)`,
+                      }}
+                    >
+                      {item.role === 'user' ? (
+                        <UserMessageBubble
+                          message={item.message}
+                          onRewind={onRewindMessage}
+                          rewindDisabled={inputLoading}
+                          showMeta={showMessageMeta}
+                        />
+                      ) : (
+                        <AssistantMessageRow
+                          detectPullRequestLinks={detectPullRequestLinks}
+                          message={item.message}
+                          metaMessage={item.metaMessage}
+                          onReasoningOpenChange={setReasoningVisibility}
+                          onRewind={onRewindMessage}
+                          reasoningOpen={reasoningOpen[item.message.id]}
+                          rewindDisabled={inputLoading}
+                          showAvatar={showAssistantAvatar}
+                          showMeta={showMessageMeta}
+                          showStreamingPlaceholder={showStreamingPlaceholder}
+                        />
+                      )}
+                    </div>
                   )
-                )}
-            {inputLoading && !hasInlineActivity ? <AssistantActivityIndicator /> : null}
+                })}
+              </div>
+            )}
+            {showInlineActivity && inputLoading && !hasInlineActivity ? (
+              <AssistantActivityIndicator showAvatar={showAssistantAvatar} />
+            ) : null}
             <ChatContainerScrollAnchor />
           </ChatContainerContent>
           <div className="absolute bottom-4 right-4">
@@ -128,7 +238,7 @@ export const ChatConversation = ({
 
       <div className="border-t bg-card p-2">
         <PromptInput
-          className="rounded-lg"
+          className="rounded-md"
           disabled={inputDisabled}
           isLoading={inputLoading}
           onSubmit={onInputSubmit}
@@ -136,9 +246,15 @@ export const ChatConversation = ({
           value={inputValue}
         >
           <PromptInputTextarea placeholder={inputPlaceholder} />
-          <div className="flex min-h-9 items-center justify-between gap-3 px-2 pb-1">
+          <div className="flex min-h-8 items-center justify-between gap-2 px-2 pb-1">
             <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-              {inputLoading ? <Loader className="text-primary" size="md" variant="pulse-dot" /> : null}
+              {inputLoading ? (
+                <Loader
+                  className="text-primary"
+                  size="md"
+                  variant="pulse-dot"
+                />
+              ) : null}
               <span className="truncate">{inputFooter}</span>
             </div>
             <PromptInputActions>{inputActions}</PromptInputActions>
@@ -146,60 +262,146 @@ export const ChatConversation = ({
         </PromptInput>
       </div>
     </section>
-  );
-};
+  )
+}
 
-const AssistantActivityIndicator = () => {
+const AssistantActivityIndicator = ({
+  showAvatar,
+}: {
+  showAvatar: boolean
+}) => {
   return (
     <Message className="group w-full min-w-0 gap-2">
-      <MessageAvatar alt="Assistant" className="h-7 w-7" fallback="AI" src="" />
-      <div className="flex h-8 min-w-0 items-center gap-2 text-xs text-muted-foreground">
+      {showAvatar ? (
+        <MessageAvatar
+          alt="Assistant"
+          className="h-7 w-7"
+          fallback="AI"
+          src=""
+        />
+      ) : null}
+      <div className="flex h-7 min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <Loader className="text-primary" size="md" variant="pulse-dot" />
         <span>Working</span>
       </div>
     </Message>
-  );
-};
+  )
+}
 
 const groupMessages = (messages: ConversationMessage[]) => {
   return messages.reduce<ConversationMessageGroup[]>((groups, message) => {
-    if (message.role === "user") {
-      groups.push({ id: message.id, role: "user", messages: [message] });
-      return groups;
+    if (message.role === 'user') {
+      groups.push({ id: message.id, role: 'user', messages: [message] })
+      return groups
     }
 
-    const previous = groups[groups.length - 1];
+    const previous = groups[groups.length - 1]
 
-    if (previous?.role === "assistant") {
-      previous.messages.push(message);
-      return groups;
+    if (previous?.role === 'assistant') {
+      previous.messages.push(message)
+      return groups
     }
 
-    groups.push({ id: message.id, role: "assistant", messages: [message] });
-    return groups;
-  }, []);
-};
+    groups.push({ id: message.id, role: 'assistant', messages: [message] })
+    return groups
+  }, [])
+}
+
+const createConversationRenderItems = (
+  groups: ConversationMessageGroup[],
+  showStreamingPlaceholder: boolean,
+) => {
+  return groups.flatMap<ConversationRenderItem>((group) => {
+    if (group.role === 'user') {
+      const message = group.messages[0]
+      return message ? [{ id: group.id, role: 'user', message }] : []
+    }
+
+    const visibleMessages = group.messages.filter((message) =>
+      shouldRenderAssistantPart(message, showStreamingPlaceholder),
+    )
+    const metaMessage =
+      group.messages.find(
+        (message) => message.role === 'assistant' || message.role === 'system',
+      ) ?? visibleMessages[0]
+
+    return visibleMessages.map((message, index) => ({
+      id: message.id,
+      role: 'assistant',
+      message,
+      metaMessage: index === 0 ? metaMessage : undefined,
+    }))
+  })
+}
+
+const shouldRenderAssistantPart = (
+  message: ConversationMessage,
+  showStreamingPlaceholder: boolean,
+) => {
+  const isTool = message.role === 'tool'
+  const isSystem = message.role === 'system'
+  const isAssistant = message.role === 'assistant' || isSystem
+  const content = message.content
+  const reasoning = message.reasoning ?? ''
+  const showThinkingPlaceholder =
+    showStreamingPlaceholder &&
+    isAssistant &&
+    message.status === 'streaming' &&
+    !content &&
+    !reasoning
+
+  return (
+    (isAssistant && Boolean(reasoning)) ||
+    showThinkingPlaceholder ||
+    isTool ||
+    Boolean(content)
+  )
+}
+
+const getEstimatedRenderItemSize = (item?: ConversationRenderItem) => {
+  if (!item) {
+    return 80
+  }
+
+  if (item.role === 'user') {
+    return item.message.content.length > 320 ? 120 : 72
+  }
+
+  if (item.message.role === 'tool') {
+    return 48
+  }
+
+  if (item.message.reasoning && item.message.content) {
+    return 120
+  }
+
+  if (item.message.reasoning) {
+    return 72
+  }
+
+  return item.message.content.length > 480 ? 140 : 80
+}
 
 const UserMessageBubble = ({
   message,
   onRewind,
   rewindDisabled,
-  showMeta
+  showMeta,
 }: {
-  message: ConversationMessage;
-  onRewind?: (message: ConversationMessage) => void;
-  rewindDisabled?: boolean;
-  showMeta: boolean;
+  message: ConversationMessage
+  onRewind?: (message: ConversationMessage) => void
+  rewindDisabled?: boolean
+  showMeta: boolean
 }) => {
-  const content = message.content;
+  const content = message.content
 
   return (
     <Message className="group w-full min-w-0 justify-end">
-      <div className="group/message relative flex w-full min-w-0 max-w-[960px] flex-col items-end space-y-1.5">
+      <div className="group/message relative flex w-full min-w-0 max-w-[920px] flex-col items-end space-y-1">
         {showMeta ? <MessageMeta message={message} /> : null}
         {content ? (
           <MessageContent
-            className="max-w-full overflow-hidden rounded-lg bg-primary px-3 py-2.5 text-sm leading-6 text-primary-foreground prose-invert prose-p:my-0 prose-pre:my-2 prose-ol:my-1.5 prose-ul:my-1.5 prose-li:my-0 prose-blockquote:my-2 prose-table:my-2 [&_*]:max-w-full [&_pre]:overflow-x-auto"
+            className="max-w-full overflow-hidden rounded-md bg-primary px-2.5 py-1.5 text-sm leading-5 text-primary-foreground prose-invert prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto"
             id={message.id}
             markdown
           >
@@ -213,48 +415,61 @@ const UserMessageBubble = ({
         />
       </div>
     </Message>
-  );
-};
+  )
+}
 
-const AssistantMessageGroup = ({
+const AssistantMessageRow = ({
   detectPullRequestLinks,
-  messages,
+  message,
+  metaMessage,
   onReasoningOpenChange,
   onRewind,
   reasoningOpen,
   rewindDisabled,
-  showMeta
+  showAvatar,
+  showMeta,
+  showStreamingPlaceholder,
 }: {
-  detectPullRequestLinks: boolean;
-  messages: ConversationMessage[];
-  onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void;
-  onRewind?: (message: ConversationMessage) => void;
-  reasoningOpen: Record<string, boolean>;
-  rewindDisabled?: boolean;
-  showMeta: boolean;
+  detectPullRequestLinks: boolean
+  message: ConversationMessage
+  metaMessage?: ConversationMessage
+  onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
+  onRewind?: (message: ConversationMessage) => void
+  reasoningOpen?: boolean
+  rewindDisabled?: boolean
+  showAvatar: boolean
+  showMeta: boolean
+  showStreamingPlaceholder: boolean
 }) => {
-  const metaMessage = messages.find((message) => message.role === "assistant" || message.role === "system") ?? messages[0]!;
-
   return (
     <Message className="group w-full min-w-0 gap-2">
-      <MessageAvatar alt="Assistant" className="h-7 w-7" fallback="AI" src="" />
+      {showAvatar && metaMessage ? (
+        <MessageAvatar
+          alt="Assistant"
+          className="h-7 w-7"
+          fallback="AI"
+          src=""
+        />
+      ) : showAvatar ? (
+        <div aria-hidden className="h-7 w-7 shrink-0" />
+      ) : null}
       <div className="w-full min-w-0 space-y-1 overflow-hidden">
-        {showMeta ? <AssistantGroupMeta message={metaMessage} /> : null}
-        {messages.map((message) => (
-          <AssistantMessagePart
-            detectPullRequestLinks={detectPullRequestLinks}
-            key={message.id}
-            message={message}
-            onReasoningOpenChange={onReasoningOpenChange}
-            onRewind={onRewind}
-            reasoningOpen={reasoningOpen[message.id]}
-            rewindDisabled={rewindDisabled}
-          />
-        ))}
+        {showMeta && metaMessage ? (
+          <AssistantGroupMeta message={metaMessage} />
+        ) : null}
+        <AssistantMessagePart
+          detectPullRequestLinks={detectPullRequestLinks}
+          message={message}
+          onReasoningOpenChange={onReasoningOpenChange}
+          onRewind={onRewind}
+          reasoningOpen={reasoningOpen}
+          rewindDisabled={rewindDisabled}
+          showStreamingPlaceholder={showStreamingPlaceholder}
+        />
       </div>
     </Message>
-  );
-};
+  )
+}
 
 const AssistantMessagePart = ({
   detectPullRequestLinks,
@@ -262,32 +477,48 @@ const AssistantMessagePart = ({
   onReasoningOpenChange,
   onRewind,
   reasoningOpen,
-  rewindDisabled
+  rewindDisabled,
+  showStreamingPlaceholder,
 }: {
-  detectPullRequestLinks: boolean;
-  message: ConversationMessage;
-  onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void;
-  onRewind?: (message: ConversationMessage) => void;
-  reasoningOpen?: boolean;
-  rewindDisabled?: boolean;
+  detectPullRequestLinks: boolean
+  message: ConversationMessage
+  onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
+  onRewind?: (message: ConversationMessage) => void
+  reasoningOpen?: boolean
+  rewindDisabled?: boolean
+  showStreamingPlaceholder: boolean
 }) => {
-  const isTool = message.role === "tool";
-  const isSystem = message.role === "system";
-  const isAssistant = message.role === "assistant" || isSystem;
-  const isStreaming = message.status === "streaming";
-  const content = message.content;
-  const reasoning = message.reasoning ?? "";
-  const isReasoningOpen = reasoningOpen ?? false;
+  const isTool = message.role === 'tool'
+  const isSystem = message.role === 'system'
+  const isAssistant = message.role === 'assistant' || isSystem
+  const isStreaming = message.status === 'streaming'
+  const content = message.content
+  const reasoning = message.reasoning ?? ''
+  const isReasoningOpen = reasoningOpen ?? false
+  const showReasoning = isAssistant && Boolean(reasoning)
+  const showThinkingPlaceholder =
+    showStreamingPlaceholder &&
+    isAssistant &&
+    isStreaming &&
+    !content &&
+    !reasoning
+  const showContent = Boolean(content)
+
+  if (!showReasoning && !showThinkingPlaceholder && !isTool && !showContent) {
+    return null
+  }
 
   return (
     <div className="group/message relative w-full min-w-0 space-y-0.5 overflow-hidden">
-      {isAssistant && reasoning ? (
+      {showReasoning ? (
         <Reasoning
           className="w-full min-w-0 overflow-hidden"
           onOpenChange={(open) => onReasoningOpenChange(message, open)}
           open={isReasoningOpen}
         >
-          <ReasoningTrigger className="max-w-full">Thinking trace</ReasoningTrigger>
+          <ReasoningTrigger className="max-w-full">
+            Thinking trace
+          </ReasoningTrigger>
           <ReasoningContent
             className="ml-1 mt-0.5 w-full min-w-0 border-l pl-2"
             contentClassName="w-full min-w-0 max-w-full overflow-hidden py-0.5 text-xs leading-5 break-words prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 [&_*]:max-w-full [&_pre]:overflow-x-auto"
@@ -298,22 +529,23 @@ const AssistantMessagePart = ({
         </Reasoning>
       ) : null}
 
-      {isAssistant && isStreaming && !content && !reasoning ? (
-        <ThinkingBar className="h-8 w-full max-w-[min(960px,100%)] py-0 text-xs" />
+      {showThinkingPlaceholder ? (
+        <ThinkingBar className="h-7 w-full max-w-[min(920px,100%)] py-0 text-xs" />
       ) : null}
 
       {isTool ? (
         <Tool
-          className="mt-0.5 w-full max-w-[min(760px,100%)] border-muted-foreground/20 bg-muted/20 shadow-none"
+          className="mt-0.5 w-full max-w-[min(720px,100%)] border-muted-foreground/20 bg-muted/20 shadow-none"
           defaultOpen={false}
           size="compact"
           toolPart={toToolPart(message)}
         />
-      ) : content ? (
+      ) : showContent ? (
         <MessageContent
           className={cn(
-            "w-full max-w-[min(960px,100%)] overflow-hidden rounded-lg px-3 py-2 text-sm leading-6 prose-p:my-0 prose-pre:my-2 prose-ol:my-1.5 prose-ul:my-1.5 prose-li:my-0 prose-blockquote:my-2 prose-table:my-2 [&_*]:max-w-full [&_pre]:overflow-x-auto",
-            isSystem && "border-destructive/25 bg-destructive/10 text-destructive"
+            'w-full max-w-[min(920px,100%)] overflow-hidden rounded-md px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+            isSystem &&
+              'border-destructive/25 bg-destructive/10 text-destructive',
           )}
           id={message.id}
           markdown={isAssistant}
@@ -322,7 +554,7 @@ const AssistantMessagePart = ({
         </MessageContent>
       ) : null}
 
-      {detectPullRequestLinks && content.includes("https://github.com/") ? (
+      {detectPullRequestLinks && content.includes('https://github.com/') ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <GitPullRequest className="h-3.5 w-3.5" />
           PR/reference detected
@@ -336,73 +568,187 @@ const AssistantMessagePart = ({
         rewindDisabled={rewindDisabled}
       />
     </div>
-  );
-};
+  )
+}
+
+const getMessageMetadataItems = (metadata?: AgentRunMessageMetadata) => {
+  if (!metadata) {
+    return []
+  }
+
+  const items: Array<{ label: string; title?: string }> = []
+
+  if (metadata.context) {
+    const usage = Math.min(
+      100,
+      Math.round(
+        (metadata.context.estimatedTokens / metadata.context.tokenBudget) * 100,
+      ),
+    )
+
+    items.push({
+      label: `ctx ${usage}% · ${formatCompactNumber(metadata.context.estimatedTokens)}/${formatCompactNumber(metadata.context.tokenBudget)} tok`,
+      title: [
+        `strategy: ${metadata.context.strategy}`,
+        `estimated tokens: ${metadata.context.estimatedTokens.toLocaleString()}`,
+        `budget: ${metadata.context.tokenBudget.toLocaleString()}`,
+      ].join('\n'),
+    })
+
+    if (metadata.context.promptMessages !== undefined) {
+      items.push({
+        label: `prompt ${metadata.context.promptMessages.toLocaleString()} msgs`,
+      })
+    }
+
+    if (metadata.context.summarizedMessages > 0) {
+      items.push({
+        label: `compact ${metadata.context.summarizedMessages.toLocaleString()} · keep ${metadata.context.retainedMessages.toLocaleString()}`,
+      })
+    }
+  }
+
+  if (metadata.request?.attempt || metadata.request?.iteration) {
+    const attempt = metadata.request.attempt
+      ? `a${metadata.request.attempt}`
+      : null
+    const iteration = metadata.request.iteration
+      ? `i${metadata.request.iteration}`
+      : null
+
+    items.push({
+      label: [attempt, iteration].filter(Boolean).join(' · '),
+      title: [
+        metadata.request.model ? `model: ${metadata.request.model}` : null,
+        metadata.request.maxOutputTokens
+          ? `max output tokens: ${metadata.request.maxOutputTokens.toLocaleString()}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    })
+  }
+
+  if (metadata.content) {
+    items.push({
+      label: `out ${formatCompactNumber(metadata.content.estimatedTokens)} tok · ${formatCompactNumber(metadata.content.characters)} ch`,
+      title: `content characters: ${metadata.content.characters.toLocaleString()}`,
+    })
+  }
+
+  if (metadata.tool?.input) {
+    items.push({
+      label: `tool in ${formatCompactNumber(metadata.tool.input.estimatedTokens)} tok`,
+      title: `tool input characters: ${metadata.tool.input.characters.toLocaleString()}`,
+    })
+  }
+
+  if (metadata.tool?.output) {
+    items.push({
+      label: `tool out ${formatCompactNumber(metadata.tool.output.estimatedTokens)} tok · ${formatCompactNumber(metadata.tool.output.characters)} ch`,
+      title: `tool output characters: ${metadata.tool.output.characters.toLocaleString()}`,
+    })
+  }
+
+  return items
+}
+
+const formatCompactNumber = (value: number) => {
+  if (value >= 1_000_000) {
+    return `${trimTrailingZero((value / 1_000_000).toFixed(1))}m`
+  }
+
+  if (value >= 1_000) {
+    return `${trimTrailingZero((value / 1_000).toFixed(1))}k`
+  }
+
+  return value.toLocaleString()
+}
+
+const trimTrailingZero = (value: string) => value.replace(/\.0$/u, '')
 
 const toToolPart = (message: ConversationMessage): ToolPart => {
-  const isStreaming = message.status === "streaming";
-  const isError = message.status === "error";
-  const contentOutput = message.content && !isStreaming && !isError ? message.content : undefined;
-  const output = message.toolOutput ?? contentOutput;
+  const isStreaming = message.status === 'streaming'
+  const isError = message.status === 'error'
+  const contentOutput =
+    message.content && !isStreaming && !isError ? message.content : undefined
+  const output = message.toolOutput ?? contentOutput
 
   return {
-    type: message.toolName || "tool",
-    state: isError ? "output-error" : isStreaming ? "input-streaming" : output ? "output-available" : "input-available",
+    type: message.toolName || 'tool',
+    state: isError
+      ? 'output-error'
+      : isStreaming
+        ? 'input-streaming'
+        : output
+          ? 'output-available'
+          : 'input-available',
     input: message.toolInput,
     output,
     toolCallId: message.toolCallId ?? message.id,
-    errorText: message.toolError ?? (isError ? message.content : undefined)
-  };
-};
+    errorText: message.toolError ?? (isError ? message.content : undefined),
+  }
+}
 
 const AssistantGroupMeta = ({ message }: { message: ConversationMessage }) => {
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <Bot className="h-3.5 w-3.5" />
-      <span>{message.role === "system" ? "system" : "assistant"}</span>
-      {message.createdAt ? <span>{formatDateTime(message.createdAt)}</span> : null}
+      <span>{message.role === 'system' ? 'system' : 'assistant'}</span>
+      {message.createdAt ? (
+        <span>{formatDateTime(message.createdAt)}</span>
+      ) : null}
     </div>
-  );
-};
+  )
+}
 
 const MessageMeta = ({ message }: { message: ConversationMessage }) => {
   return (
     <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
       <MessageSquare className="h-3.5 w-3.5" />
       <span>{message.role}</span>
-      {message.createdAt ? <span>{formatDateTime(message.createdAt)}</span> : null}
+      {message.createdAt ? (
+        <span>{formatDateTime(message.createdAt)}</span>
+      ) : null}
     </div>
-  );
-};
+  )
+}
 
 const MessageStatusActions = ({
   allowCopy = true,
   message,
   onRewind,
-  rewindDisabled
+  rewindDisabled,
 }: {
-  allowCopy?: boolean;
-  message: ConversationMessage;
-  onRewind?: (message: ConversationMessage) => void;
-  rewindDisabled?: boolean;
+  allowCopy?: boolean
+  message: ConversationMessage
+  onRewind?: (message: ConversationMessage) => void
+  rewindDisabled?: boolean
 }) => {
-  const content = message.content;
-  const hasStatus = message.status === "error" || message.status === "stopped";
-  const canCopy = allowCopy && Boolean(content);
-  const canRewind = Boolean(onRewind) && message.status !== "streaming";
+  const content = message.content
+  const hasStatus = message.status === 'error' || message.status === 'stopped'
+  const canCopy = allowCopy && Boolean(content)
+  const canRewind = Boolean(onRewind) && message.status !== 'streaming'
+  const hasMetadata = getMessageMetadataItems(message.metadata).length > 0
 
-  if (!canCopy && !canRewind && !hasStatus) {
-    return null;
+  if (!canCopy && !canRewind && !hasStatus && !hasMetadata) {
+    return null
   }
 
   return (
     <MessageActions className="pointer-events-none absolute bottom-1 right-1 z-20 gap-1 text-foreground opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100">
-      {message.status === "error" ? <Badge variant="destructive">error</Badge> : null}
-      {message.status === "stopped" ? (
-        <Badge className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50" variant="outline">
+      {message.status === 'error' ? (
+        <Badge variant="destructive">error</Badge>
+      ) : null}
+      {message.status === 'stopped' ? (
+        <Badge
+          className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50"
+          variant="outline"
+        >
           stopped
         </Badge>
       ) : null}
+      <MetadataAction metadata={message.metadata} />
       {canRewind ? (
         <RewindAction
           disabled={rewindDisabled}
@@ -411,15 +757,91 @@ const MessageStatusActions = ({
       ) : null}
       {canCopy ? <CopyAction value={content} /> : null}
     </MessageActions>
-  );
-};
+  )
+}
 
-const RewindAction = ({ disabled, onClick }: { disabled?: boolean; onClick: () => void }) => {
+const overlayActionButtonClass =
+  'h-6 gap-1 rounded-md bg-background/80 px-2 text-[11px] text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3'
+
+const MetadataAction = ({
+  metadata,
+}: {
+  metadata?: AgentRunMessageMetadata
+}) => {
+  const items = getMessageMetadataItems(metadata)
+
+  if (!items.length) {
+    return null
+  }
+
+  return (
+    <MessageAction
+      className="max-w-[360px]"
+      tooltip={<MetadataTooltip items={items} />}
+    >
+      <Button
+        aria-label="Show message metadata"
+        className={overlayActionButtonClass}
+        size="xs"
+        type="button"
+        variant="ghost"
+      >
+        <Info />
+        <span>{getMetadataActionLabel(metadata)}</span>
+      </Button>
+    </MessageAction>
+  )
+}
+
+const MetadataTooltip = ({
+  items,
+}: {
+  items: Array<{ label: string; title?: string }>
+}) => {
+  return (
+    <div className="grid gap-1.5">
+      <div className="font-semibold">Event metadata</div>
+      <div className="grid gap-1">
+        {items.map((item) => (
+          <div className="leading-4" key={item.label}>
+            <div className="font-semibold">{item.label}</div>
+            {item.title ? (
+              <div className="whitespace-pre-line">{item.title}</div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const getMetadataActionLabel = (metadata?: AgentRunMessageMetadata) => {
+  if (metadata?.context) {
+    const usage = Math.min(
+      100,
+      Math.round(
+        (metadata.context.estimatedTokens / metadata.context.tokenBudget) * 100,
+      ),
+    )
+
+    return `ctx ${usage}%`
+  }
+
+  return 'Meta'
+}
+
+const RewindAction = ({
+  disabled,
+  onClick,
+}: {
+  disabled?: boolean
+  onClick: () => void
+}) => {
   return (
     <MessageAction tooltip="Rewind to here">
       <Button
         aria-label="Rewind to this message"
-        className="h-6 gap-1 rounded-md bg-background/80 px-2 text-[11px] text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3"
+        className={overlayActionButtonClass}
         disabled={disabled}
         onClick={onClick}
         size="xs"
@@ -430,41 +852,41 @@ const RewindAction = ({ disabled, onClick }: { disabled?: boolean; onClick: () =
         <span>Rewind</span>
       </Button>
     </MessageAction>
-  );
-};
+  )
+}
 
 const CopyAction = ({ value }: { value: string }) => {
-  const { copied, copy } = useCopyState();
+  const { copied, copy } = useCopyState()
 
   return (
-    <MessageAction tooltip={copied ? "Copied" : "Copy message"}>
+    <MessageAction tooltip={copied ? 'Copied' : 'Copy message'}>
       <Button
-        aria-label={copied ? "Copied" : "Copy message"}
-        className="h-6 gap-1 rounded-md bg-background/80 px-2 text-[11px] text-muted-foreground shadow-none backdrop-blur hover:bg-accent hover:text-foreground [&_svg]:size-3"
+        aria-label={copied ? 'Copied' : 'Copy message'}
+        className={overlayActionButtonClass}
         onClick={() => void copy(value)}
         size="xs"
         type="button"
         variant="ghost"
       >
         {copied ? <Check /> : <Copy />}
-        <span>{copied ? "Copied" : "Copy"}</span>
+        <span>{copied ? 'Copied' : 'Copy'}</span>
       </Button>
     </MessageAction>
-  );
-};
+  )
+}
 
 const useCopyState = () => {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false)
 
   const copy = async (value: string) => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  };
+    await navigator.clipboard.writeText(value)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
 
-  return { copied, copy };
-};
+  return { copied, copy }
+}
 
 const formatDateTime = (value: string) => {
-  return new Date(value).toLocaleString();
-};
+  return new Date(value).toLocaleString()
+}

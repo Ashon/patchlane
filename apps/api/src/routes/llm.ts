@@ -1,68 +1,77 @@
-import { Router, type Response } from "express";
-import { llmChatRequestSchema } from "@agent-fleet/shared";
-import type { LlmEndpointStore } from "../llm/endpointStore";
-import { createChatCompletion, createStreamingChatCompletion, testEndpointConnection } from "../llm/openaiClient";
-import { asyncHandler } from "../http/asyncHandler";
-import { badRequest } from "../http/errors";
+import { Router, type Response } from 'express'
+import { llmChatRequestSchema } from '@agent-fleet/shared'
+import type { LlmEndpointStore } from '../llm/endpointStore'
+import {
+  createChatCompletion,
+  createStreamingChatCompletion,
+  testEndpointConnection,
+} from '../llm/openaiClient'
+import { asyncHandler } from '../http/asyncHandler'
+import { badRequest } from '../http/errors'
 
 type LlmRouterOptions = {
-  store: LlmEndpointStore;
-};
+  store: LlmEndpointStore
+}
 
 export const createLlmRouter = ({ store }: LlmRouterOptions) => {
-  const router = Router();
+  const router = Router()
 
   router.get(
-    "/endpoints",
+    '/endpoints',
     asyncHandler(async (_request, response) => {
-      response.json({ endpoints: await store.list() });
-    })
-  );
+      response.json({ endpoints: await store.list() })
+    }),
+  )
 
   router.post(
-    "/endpoints",
+    '/endpoints',
     asyncHandler(async (request, response) => {
-      const endpoint = await store.create(request.body);
-      response.status(201).json({ endpoint });
-    })
-  );
+      const endpoint = await store.create(request.body)
+      response.status(201).json({ endpoint })
+    }),
+  )
 
   router.patch(
-    "/endpoints/:id",
+    '/endpoints/:id',
     asyncHandler(async (request, response) => {
-      const endpoint = await store.update(getRouteParam(request.params.id, "id"), request.body);
-      response.json({ endpoint });
-    })
-  );
+      const endpoint = await store.update(
+        getRouteParam(request.params.id, 'id'),
+        request.body,
+      )
+      response.json({ endpoint })
+    }),
+  )
 
   router.delete(
-    "/endpoints/:id",
+    '/endpoints/:id',
     asyncHandler(async (request, response) => {
-      await store.remove(getRouteParam(request.params.id, "id"));
-      response.status(204).send();
-    })
-  );
+      await store.remove(getRouteParam(request.params.id, 'id'))
+      response.status(204).send()
+    }),
+  )
 
   router.post(
-    "/endpoints/:id/test",
+    '/endpoints/:id/test',
     asyncHandler(async (request, response) => {
-      const endpoint = await store.get(getRouteParam(request.params.id, "id"));
-      const result = await testEndpointConnection(endpoint);
-      response.json({ result });
-    })
-  );
+      const endpoint = await store.get(getRouteParam(request.params.id, 'id'))
+      const result = await testEndpointConnection(endpoint)
+      response.json({ result })
+    }),
+  )
 
   router.post(
-    "/chat",
+    '/chat',
     asyncHandler(async (request, response) => {
-      const parsed = llmChatRequestSchema.parse(request.body);
-      const endpoint = parsed.endpointId ? await store.get(parsed.endpointId) : await store.getDefault();
+      const parsed = llmChatRequestSchema.parse(request.body)
+      const endpoint = parsed.endpointId
+        ? await store.get(parsed.endpointId)
+        : await store.getDefault()
 
       if (!endpoint.enabled) {
-        throw badRequest(`LLM endpoint '${endpoint.id}' is disabled`);
+        throw badRequest(`LLM endpoint '${endpoint.id}' is disabled`)
       }
 
-      const completion = await createChatCompletion(endpoint, parsed);
+      const completion = await createChatCompletion(endpoint, parsed)
 
       response.json({
         endpointId: endpoint.id,
@@ -70,132 +79,134 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
         choices: completion.choices.map((choice) => ({
           index: choice.index,
           message: choice.message,
-          finishReason: choice.finish_reason
-        }))
-      });
-    })
-  );
+          finishReason: choice.finish_reason,
+        })),
+      })
+    }),
+  )
 
-  router.post("/chat/stream", async (request, response, next) => {
-    let streaming = false;
+  router.post('/chat/stream', async (request, response, next) => {
+    let streaming = false
 
     try {
-      const parsed = llmChatRequestSchema.parse(request.body);
-      const endpoint = parsed.endpointId ? await store.get(parsed.endpointId) : await store.getDefault();
+      const parsed = llmChatRequestSchema.parse(request.body)
+      const endpoint = parsed.endpointId
+        ? await store.get(parsed.endpointId)
+        : await store.getDefault()
 
       if (!endpoint.enabled) {
-        throw badRequest(`LLM endpoint '${endpoint.id}' is disabled`);
+        throw badRequest(`LLM endpoint '${endpoint.id}' is disabled`)
       }
 
-      response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-      response.setHeader("Cache-Control", "no-cache, no-transform");
-      response.setHeader("Connection", "keep-alive");
-      response.setHeader("X-Accel-Buffering", "no");
-      response.flushHeaders();
-      streaming = true;
+      response.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+      response.setHeader('Cache-Control', 'no-cache, no-transform')
+      response.setHeader('Connection', 'keep-alive')
+      response.setHeader('X-Accel-Buffering', 'no')
+      response.flushHeaders()
+      streaming = true
 
       sendSse(response, {
-        type: "meta",
+        type: 'meta',
         endpointId: endpoint.id,
-        model: parsed.model || endpoint.defaultModel
-      });
+        model: parsed.model || endpoint.defaultModel,
+      })
 
-      let closed = false;
-      request.on("close", () => {
-        closed = true;
-      });
+      let closed = false
+      request.on('close', () => {
+        closed = true
+      })
 
-      const stream = await createStreamingChatCompletion(endpoint, parsed);
+      const stream = await createStreamingChatCompletion(endpoint, parsed)
 
       for await (const chunk of stream) {
         if (closed) {
-          break;
+          break
         }
 
-        const choice = chunk.choices[0];
-        const delta = choice?.delta;
-        const content = typeof delta?.content === "string" ? delta.content : "";
-        const reasoning = getReasoningDelta(delta);
+        const choice = chunk.choices[0]
+        const delta = choice?.delta
+        const content = typeof delta?.content === 'string' ? delta.content : ''
+        const reasoning = getReasoningDelta(delta)
 
         if (content || reasoning) {
           sendSse(response, {
-            type: "delta",
+            type: 'delta',
             content,
-            reasoning
-          });
+            reasoning,
+          })
         }
 
         if (choice?.finish_reason) {
           sendSse(response, {
-            type: "finish",
-            finishReason: choice.finish_reason
-          });
+            type: 'finish',
+            finishReason: choice.finish_reason,
+          })
         }
       }
 
       if (!closed) {
-        sendSse(response, { type: "done" });
-        response.end();
+        sendSse(response, { type: 'done' })
+        response.end()
       }
     } catch (error) {
       if (streaming) {
         sendSse(response, {
-          type: "error",
-          error: getErrorMessage(error)
-        });
-        response.end();
-        return;
+          type: 'error',
+          error: getErrorMessage(error),
+        })
+        response.end()
+        return
       }
 
-      next(error);
+      next(error)
     }
-  });
+  })
 
-  return router;
-};
+  return router
+}
 
 const getRouteParam = (value: string | string[] | undefined, name: string) => {
-  if (typeof value === "string" && value.length > 0) {
-    return value;
+  if (typeof value === 'string' && value.length > 0) {
+    return value
   }
 
-  throw badRequest(`Route parameter '${name}' is required`);
-};
+  throw badRequest(`Route parameter '${name}' is required`)
+}
 
 const sendSse = (response: Response, payload: unknown) => {
-  response.write(`data: ${JSON.stringify(payload)}\n\n`);
-};
+  response.write(`data: ${JSON.stringify(payload)}\n\n`)
+}
 
 const getReasoningDelta = (delta: unknown) => {
-  if (!delta || typeof delta !== "object") {
-    return "";
+  if (!delta || typeof delta !== 'object') {
+    return ''
   }
 
   const candidate = delta as {
-    reasoning?: unknown;
-    reasoning_content?: unknown;
-    reasoningContent?: unknown;
-  };
-
-  if (typeof candidate.reasoning === "string") {
-    return candidate.reasoning;
+    reasoning?: unknown
+    reasoning_content?: unknown
+    reasoningContent?: unknown
   }
 
-  if (typeof candidate.reasoning_content === "string") {
-    return candidate.reasoning_content;
+  if (typeof candidate.reasoning === 'string') {
+    return candidate.reasoning
   }
 
-  if (typeof candidate.reasoningContent === "string") {
-    return candidate.reasoningContent;
+  if (typeof candidate.reasoning_content === 'string') {
+    return candidate.reasoning_content
   }
 
-  return "";
-};
+  if (typeof candidate.reasoningContent === 'string') {
+    return candidate.reasoningContent
+  }
+
+  return ''
+}
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) {
-    return error.message;
+    return error.message
   }
 
-  return "Unknown streaming error";
-};
+  return 'Unknown streaming error'
+}

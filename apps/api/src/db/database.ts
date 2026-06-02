@@ -1,29 +1,29 @@
-import { mkdirSync } from "node:fs";
-import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 
 export class AppDatabase {
-  readonly sqlite: DatabaseSync;
+  readonly sqlite: DatabaseSync
 
   constructor(filePath: string) {
-    mkdirSync(path.dirname(filePath), { recursive: true });
+    mkdirSync(path.dirname(filePath), { recursive: true })
 
-    this.sqlite = new DatabaseSync(filePath);
-    this.sqlite.exec("PRAGMA foreign_keys = ON");
-    this.sqlite.exec("PRAGMA journal_mode = WAL");
-    this.migrate();
+    this.sqlite = new DatabaseSync(filePath)
+    this.sqlite.exec('PRAGMA foreign_keys = ON')
+    this.sqlite.exec('PRAGMA journal_mode = WAL')
+    this.migrate()
   }
 
   transaction<T>(callback: () => T) {
-    this.sqlite.exec("BEGIN IMMEDIATE");
+    this.sqlite.exec('BEGIN IMMEDIATE')
 
     try {
-      const result = callback();
-      this.sqlite.exec("COMMIT");
-      return result;
+      const result = callback()
+      this.sqlite.exec('COMMIT')
+      return result
     } catch (error) {
-      this.sqlite.exec("ROLLBACK");
-      throw error;
+      this.sqlite.exec('ROLLBACK')
+      throw error
     }
   }
 
@@ -107,6 +107,7 @@ export class AppDatabase {
         role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool', 'system')),
         content TEXT NOT NULL,
         tool_name TEXT,
+        metadata_json TEXT,
         created_at TEXT NOT NULL,
         sequence INTEGER NOT NULL,
         UNIQUE (run_id, sequence)
@@ -173,30 +174,39 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_issue_events_issue_created_at
         ON issue_events (issue_id, created_at ASC);
-    `);
-    this.ensureColumn("agent_runs", "kind", "TEXT NOT NULL DEFAULT 'coding'");
-    this.ensureColumn("agent_runs", "project_id", "TEXT");
-    this.ensureColumn("agent_runs", "issue_id", "TEXT");
-    this.ensureColumn("agent_runs", "branch_name", "TEXT");
-    this.ensureColumn("agent_runs", "pr_url", "TEXT");
-    this.ensureColumn("agent_runs", "result_summary", "TEXT");
-    this.ensureColumn("agent_runs", "context_json", "TEXT");
-    this.ensureColumn("agent_projects", "repository_url", "TEXT");
-    this.ensureColumn("agent_projects", "repository_ref", "TEXT");
-    this.ensureColumn("agent_projects", "workspace_id", "TEXT");
-    this.ensureColumn("sandbox_workspaces", "kind", "TEXT NOT NULL DEFAULT 'manual'");
-    this.ensureColumn("sandbox_workspaces", "project_id", "TEXT");
-    this.ensureColumn("sandbox_workspaces", "issue_id", "TEXT");
-    this.ensureColumn("sandbox_workspaces", "agent_run_id", "TEXT");
-    this.ensureColumn("sandbox_workspaces", "parent_workspace_id", "TEXT");
-    this.ensureColumn("sandbox_workspaces", "base_ref", "TEXT");
-    this.ensureColumn("sandbox_workspaces", "branch_name", "TEXT");
-    this.ensureColumn("sandbox_workspaces", "cleanup_status", "TEXT NOT NULL DEFAULT 'active'");
-    this.ensureColumn("issues", "requirement_run_id", "TEXT");
-    this.ensureColumn("issues", "planning_run_id", "TEXT");
-    this.ensureColumn("issues", "pr_url", "TEXT");
-    this.rebuildAgentRunsIfNeeded();
-    this.rebuildIssuesIfNeeded();
+    `)
+    this.ensureColumn('agent_runs', 'kind', "TEXT NOT NULL DEFAULT 'coding'")
+    this.ensureColumn('agent_runs', 'project_id', 'TEXT')
+    this.ensureColumn('agent_runs', 'issue_id', 'TEXT')
+    this.ensureColumn('agent_runs', 'branch_name', 'TEXT')
+    this.ensureColumn('agent_runs', 'pr_url', 'TEXT')
+    this.ensureColumn('agent_runs', 'result_summary', 'TEXT')
+    this.ensureColumn('agent_runs', 'context_json', 'TEXT')
+    this.ensureColumn('agent_run_messages', 'metadata_json', 'TEXT')
+    this.ensureColumn('agent_projects', 'repository_url', 'TEXT')
+    this.ensureColumn('agent_projects', 'repository_ref', 'TEXT')
+    this.ensureColumn('agent_projects', 'workspace_id', 'TEXT')
+    this.ensureColumn(
+      'sandbox_workspaces',
+      'kind',
+      "TEXT NOT NULL DEFAULT 'manual'",
+    )
+    this.ensureColumn('sandbox_workspaces', 'project_id', 'TEXT')
+    this.ensureColumn('sandbox_workspaces', 'issue_id', 'TEXT')
+    this.ensureColumn('sandbox_workspaces', 'agent_run_id', 'TEXT')
+    this.ensureColumn('sandbox_workspaces', 'parent_workspace_id', 'TEXT')
+    this.ensureColumn('sandbox_workspaces', 'base_ref', 'TEXT')
+    this.ensureColumn('sandbox_workspaces', 'branch_name', 'TEXT')
+    this.ensureColumn(
+      'sandbox_workspaces',
+      'cleanup_status',
+      "TEXT NOT NULL DEFAULT 'active'",
+    )
+    this.ensureColumn('issues', 'requirement_run_id', 'TEXT')
+    this.ensureColumn('issues', 'planning_run_id', 'TEXT')
+    this.ensureColumn('issues', 'pr_url', 'TEXT')
+    this.rebuildAgentRunsIfNeeded()
+    this.rebuildIssuesIfNeeded()
     this.sqlite.exec(`
       CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at
         ON agent_runs (created_at DESC);
@@ -254,27 +264,37 @@ export class AppDatabase {
       )
       WHERE repository_ref IS NULL
         AND workspace_id IS NOT NULL;
-    `);
+    `)
   }
 
-  private ensureColumn(tableName: string, columnName: string, definition: string) {
-    const columns = this.sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  private ensureColumn(
+    tableName: string,
+    columnName: string,
+    definition: string,
+  ) {
+    const columns = this.sqlite
+      .prepare(`PRAGMA table_info(${tableName})`)
+      .all() as Array<{ name: string }>
 
     if (!columns.some((column) => column.name === columnName)) {
-      this.sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+      this.sqlite.exec(
+        `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`,
+      )
     }
   }
 
   private rebuildAgentRunsIfNeeded() {
     const row = this.sqlite
-      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_runs'")
-      .get() as { sql?: string } | undefined;
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_runs'",
+      )
+      .get() as { sql?: string } | undefined
 
     if (row?.sql?.includes("'verification'")) {
-      return;
+      return
     }
 
-    this.sqlite.exec("PRAGMA foreign_keys = OFF");
+    this.sqlite.exec('PRAGMA foreign_keys = OFF')
     try {
       this.sqlite.exec(`
         CREATE TABLE agent_runs_new (
@@ -307,22 +327,27 @@ export class AppDatabase {
 
         DROP TABLE agent_runs;
         ALTER TABLE agent_runs_new RENAME TO agent_runs;
-      `);
+      `)
     } finally {
-      this.sqlite.exec("PRAGMA foreign_keys = ON");
+      this.sqlite.exec('PRAGMA foreign_keys = ON')
     }
   }
 
   private rebuildIssuesIfNeeded() {
     const row = this.sqlite
-      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'issues'")
-      .get() as { sql?: string } | undefined;
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'issues'",
+      )
+      .get() as { sql?: string } | undefined
 
-    if (row?.sql?.includes("'planning'") && row.sql.includes("'awaiting_user'")) {
-      return;
+    if (
+      row?.sql?.includes("'planning'") &&
+      row.sql.includes("'awaiting_user'")
+    ) {
+      return
     }
 
-    this.sqlite.exec("PRAGMA foreign_keys = OFF");
+    this.sqlite.exec('PRAGMA foreign_keys = OFF')
     try {
       this.sqlite.exec(`
         CREATE TABLE issues_new (
@@ -355,15 +380,16 @@ export class AppDatabase {
 
         DROP TABLE issues;
         ALTER TABLE issues_new RENAME TO issues;
-      `);
+      `)
     } finally {
-      this.sqlite.exec("PRAGMA foreign_keys = ON");
+      this.sqlite.exec('PRAGMA foreign_keys = ON')
     }
   }
 }
 
-export const toSqlBoolean = (value: boolean) => (value ? 1 : 0);
+export const toSqlBoolean = (value: boolean) => (value ? 1 : 0)
 
-export const fromSqlBoolean = (value: unknown) => Number(value) === 1;
+export const fromSqlBoolean = (value: unknown) => Number(value) === 1
 
-export const optionalString = (value: unknown) => (typeof value === "string" && value.length > 0 ? value : undefined);
+export const optionalString = (value: unknown) =>
+  typeof value === 'string' && value.length > 0 ? value : undefined
