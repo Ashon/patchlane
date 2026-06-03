@@ -9,6 +9,7 @@ import {
   supervisorChatStorageKey,
   themeStorageKey,
 } from '@/components/app/app-theme'
+import { AppCommandPalette } from '@/components/app/app-command-palette'
 import type { ThemeMode } from '@/components/app/app-types'
 import { ChatPanel } from '@/components/chat/chat-panel'
 import { AppShell } from '@/components/layout/app-shell'
@@ -51,6 +52,7 @@ const AppContent = () => {
   const [supervisorChatOpen, setSupervisorChatOpen] = useState(
     getInitialSupervisorChatOpen,
   )
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false)
 
   const healthQuery = useQuery({
     queryKey: queryKeys.health,
@@ -188,78 +190,112 @@ const AppContent = () => {
     }
   }, [endpoints, selectedChatEndpointId, setSelectedChatEndpointId])
 
-  return (
-    <AppShell
-      apiOnline={apiOnline}
-      buildRoute={buildRoute}
-      enabledEndpointCount={enabledCount}
-      endpointCount={endpoints.length}
-      githubReady={githubReady}
-      onSupervisorChatOpenChange={setSupervisorChatOpen}
-      onThemeModeChange={setThemeMode}
-      projectCount={projects.length}
-      supervisorChatOpen={supervisorChatOpen}
-      supervisorPanel={
-        <ChatPanel
-          contextLabel={supervisorContextLabel}
-          endpoint={selectedChatEndpoint}
-          endpoints={endpoints}
-          loading={loading}
-          onEndpointChange={(id) => void setSelectedChatEndpointId(id)}
-          systemPrompt={supervisorChatSystemPrompt}
-          title="Supervisor Chat"
-          variant="sidebar"
-        />
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        (!event.metaKey && !event.ctrlKey) ||
+        event.key.toLowerCase() !== 'k'
+      ) {
+        return
       }
-      themeMode={themeMode}
-    >
-      <Routes>
-        <Route
-          element={<Navigate replace to={buildRoute('/projects')} />}
-          path="/"
+
+      event.preventDefault()
+      setCommandMenuOpen(true)
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  return (
+    <>
+      <AppShell
+        apiOnline={apiOnline}
+        buildRoute={buildRoute}
+        enabledEndpointCount={enabledCount}
+        endpointCount={endpoints.length}
+        githubReady={githubReady}
+        onCommandMenuOpen={() => setCommandMenuOpen(true)}
+        onSupervisorChatOpenChange={setSupervisorChatOpen}
+        onThemeModeChange={setThemeMode}
+        projectCount={projects.length}
+        supervisorChatOpen={supervisorChatOpen}
+        supervisorPanel={
+          <ChatPanel
+            contextLabel={supervisorContextLabel}
+            endpoint={selectedChatEndpoint}
+            endpoints={endpoints}
+            loading={loading}
+            onEndpointChange={(id) => void setSelectedChatEndpointId(id)}
+            systemPrompt={supervisorChatSystemPrompt}
+            title="Supervisor Chat"
+            variant="sidebar"
+          />
+        }
+        themeMode={themeMode}
+      >
+        <Routes>
+          <Route
+            element={<Navigate replace to={buildRoute('/projects')} />}
+            path="/"
+          />
+          <Route
+            element={<Navigate replace to={buildRoute('/projects')} />}
+            path="/chat"
+          />
+          <Route element={<ProjectsListPage />} path="/projects" />
+          <Route element={<ProjectDetailPage />} path="/projects/:projectId" />
+          <Route
+            element={<ProjectDetailPage />}
+            path="/projects/:projectId/:tab"
+          />
+          <Route
+            element={<Navigate replace to={buildRoute('/projects')} />}
+            path="/issues"
+          />
+          <Route
+            element={
+              <Navigate replace to={buildRoute('/settings/endpoints')} />
+            }
+            path="/settings"
+          />
+          <Route
+            element={
+              <SettingsShell>
+                <EndpointSettingsPage />
+              </SettingsShell>
+            }
+            path="/settings/endpoints"
+          />
+          <Route
+            element={
+              <SettingsShell>
+                <ToolSettingsPage />
+              </SettingsShell>
+            }
+            path="/settings/tools"
+          />
+          <Route element={<WorkspaceManagementPage />} path="/workspaces" />
+          <Route element={<AgentTasksPage />} path="/agent" />
+          <Route element={<StatisticsPage />} path="/stats" />
+          <Route
+            element={<Navigate replace to={buildRoute('/projects')} />}
+            path="*"
+          />
+        </Routes>
+      </AppShell>
+      {commandMenuOpen ? (
+        <AppCommandPalette
+          defaultEndpoint={defaultEndpoint}
+          endpoints={endpoints}
+          issues={issues}
+          onOpenChange={setCommandMenuOpen}
+          open={commandMenuOpen}
+          projects={projects}
         />
-        <Route
-          element={<Navigate replace to={buildRoute('/projects')} />}
-          path="/chat"
-        />
-        <Route element={<ProjectsListPage />} path="/projects" />
-        <Route element={<ProjectDetailPage />} path="/projects/:projectId" />
-        <Route
-          element={<ProjectDetailPage />}
-          path="/projects/:projectId/:tab"
-        />
-        <Route
-          element={<Navigate replace to={buildRoute('/projects')} />}
-          path="/issues"
-        />
-        <Route
-          element={<Navigate replace to={buildRoute('/settings/endpoints')} />}
-          path="/settings"
-        />
-        <Route
-          element={
-            <SettingsShell>
-              <EndpointSettingsPage />
-            </SettingsShell>
-          }
-          path="/settings/endpoints"
-        />
-        <Route
-          element={
-            <SettingsShell>
-              <ToolSettingsPage />
-            </SettingsShell>
-          }
-          path="/settings/tools"
-        />
-        <Route element={<WorkspaceManagementPage />} path="/workspaces" />
-        <Route element={<AgentTasksPage />} path="/agent" />
-        <Route element={<StatisticsPage />} path="/stats" />
-        <Route
-          element={<Navigate replace to={buildRoute('/projects')} />}
-          path="*"
-        />
-      </Routes>
-    </AppShell>
+      ) : null}
+    </>
   )
 }

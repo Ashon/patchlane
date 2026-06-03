@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Bot, GitPullRequestArrow, Monitor, Moon, Sun } from 'lucide-react'
+import {
+  Bot,
+  Command,
+  GitPullRequestArrow,
+  Monitor,
+  Moon,
+  Sun,
+} from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { navigationItems } from '@/components/app/app-navigation'
 import { getNextThemeMode } from '@/components/app/app-theme'
@@ -30,6 +37,7 @@ export const AppShell = ({
   enabledEndpointCount,
   endpointCount,
   githubReady,
+  onCommandMenuOpen,
   onSupervisorChatOpenChange,
   onThemeModeChange,
   projectCount,
@@ -43,6 +51,7 @@ export const AppShell = ({
   enabledEndpointCount: number
   endpointCount: number
   githubReady: boolean
+  onCommandMenuOpen: () => void
   onSupervisorChatOpenChange: Dispatch<SetStateAction<boolean>>
   onThemeModeChange: (mode: ThemeMode) => void
   projectCount: number
@@ -90,7 +99,7 @@ export const AppShell = ({
             </div>
 
             <nav
-              className="flex h-6 min-w-0 items-center gap-0.5 overflow-x-auto pl-2"
+              className="flex h-6 min-w-0 items-center gap-1 overflow-x-auto pl-2"
               aria-label="Primary"
             >
               {navigationItems.map((item) => {
@@ -136,6 +145,16 @@ export const AppShell = ({
                 <Badge variant="secondary">{projectCount} projects</Badge>
               </div>
 
+              <Button
+                aria-label="Open command menu"
+                onClick={onCommandMenuOpen}
+                size="icon-xs"
+                title="Open command menu (Cmd/Ctrl+K)"
+                type="button"
+                variant="outline"
+              >
+                <Command />
+              </Button>
               <Button
                 aria-label={
                   supervisorChatOpen ? 'Close supervisor' : 'Open supervisor'
