@@ -200,12 +200,13 @@ const AgentTaskListPane = ({
             onClick={onStartNewAgentRun}
             size="sm"
             type="button"
-            variant="secondary"
+            variant="outline"
           >
             <Plus />
             New
           </Button>
         }
+        description="Coding agent runs and task history"
         icon={<Bot className="h-4 w-4" />}
         title="Agent tasks"
       />

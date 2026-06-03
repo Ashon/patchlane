@@ -203,7 +203,7 @@ export const EndpointSettingsPage = () => {
               onClick={startNewEndpoint}
               size="sm"
               type="button"
-              variant="secondary"
+              variant="outline"
             >
               <Plus />
               New

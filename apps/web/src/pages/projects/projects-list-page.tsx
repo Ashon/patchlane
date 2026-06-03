@@ -192,7 +192,7 @@ export const ProjectsListPage = () => {
               onClick={resetDraft}
               size="sm"
               type="button"
-              variant="secondary"
+              variant="outline"
             >
               <Plus />
               New

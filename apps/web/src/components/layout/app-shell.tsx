@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import {
+  Bot,
   GitPullRequestArrow,
   Loader2,
-  MessageSquare,
   Monitor,
   Moon,
   RefreshCw,
@@ -150,15 +150,29 @@ export const AppShell = ({
               </div>
 
               <Button
-                variant={supervisorChatOpen ? 'secondary' : 'outline'}
-                size="xs"
+                aria-label={
+                  supervisorChatOpen
+                    ? 'Close supervisor'
+                    : 'Open supervisor'
+                }
+                aria-pressed={supervisorChatOpen}
+                className={cn(
+                  supervisorChatOpen &&
+                    'border-primary/35 bg-primary/10 text-primary shadow-inner hover:bg-primary/15 hover:text-primary dark:border-primary/45 dark:bg-primary/15 dark:hover:bg-primary/20',
+                )}
                 onClick={() =>
                   onSupervisorChatOpenChange((current) => !current)
                 }
+                size="icon-xs"
+                title={
+                  supervisorChatOpen
+                    ? 'Close supervisor'
+                    : 'Open supervisor'
+                }
                 type="button"
+                variant="outline"
               >
-                <MessageSquare className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Supervisor</span>
+                <Bot />
               </Button>
               <Button
                 variant="outline"
