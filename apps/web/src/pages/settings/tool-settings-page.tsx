@@ -3,7 +3,8 @@ import type {
   PublicToolSettings,
   UpdateGitHubToolSettingsInput,
 } from '@agent-fleet/shared'
-import type { FormEvent } from 'react'
+import { type FormEvent, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Github,
   KeyRound,
@@ -12,6 +13,10 @@ import {
   Save,
   ShieldCheck,
 } from 'lucide-react'
+import {
+  emptyGitHubToolDraft,
+  type GitHubToolDraft,
+} from '@/components/app/app-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -20,34 +25,80 @@ import {
   ToolStatusRow,
 } from '@/components/app/panel-primitives'
 import { GitHubTestBadge, StateBadge } from '@/components/app/status-badges'
-import type { GitHubToolDraft } from '@/components/app/app-types'
+import { api } from '@/lib/api'
+import { getErrorMessage, getQueryErrorMessage } from '@/lib/errors'
+import { queryKeys } from '@/lib/query-client'
 
-export const ToolSettingsPage = ({
-  draft,
-  error,
-  formatDateTime,
-  onChange,
-  onSubmit,
-  onTest,
-  saving,
-  settings,
-  testResult,
-  testing,
-}: {
-  draft: GitHubToolDraft
-  error: string | null
-  formatDateTime: (value?: string) => string
-  onChange: (draft: GitHubToolDraft) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
-  onTest: () => void
-  saving: boolean
-  settings: PublicToolSettings | null
-  testResult: GitHubToolTestResult | null
-  testing: boolean
-}) => {
+export const ToolSettingsPage = () => {
+  const queryClient = useQueryClient()
+  const [draftOverride, setDraftOverride] =
+    useState<GitHubToolDraft | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] =
+    useState<GitHubToolTestResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.toolSettings,
+    queryFn: api.getToolSettings,
+  })
+  const settings = settingsQuery.data?.settings ?? null
   const github = settings?.github
+  const draft = draftOverride ?? {
+    ...emptyGitHubToolDraft,
+    enabled: github?.enabled ?? emptyGitHubToolDraft.enabled,
+  }
+  const visibleError = error ?? getQueryErrorMessage(settingsQuery.error)
   const tokenInputDisabled = draft.clearToken && !draft.token
   const ready = Boolean(github?.enabled && github.tokenConfigured)
+
+  const applyToolSettings = (settings: PublicToolSettings) => {
+    queryClient.setQueryData<{ settings: PublicToolSettings }>(
+      queryKeys.toolSettings,
+      { settings },
+    )
+    setDraftOverride({
+      enabled: settings.github.enabled,
+      token: '',
+      clearToken: false,
+    })
+  }
+
+  const saveGitHubToolSettings = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault()
+    setSaving(true)
+    setError(null)
+
+    try {
+      const response = await api.updateGitHubToolSettings(
+        normalizeGitHubToolDraft(draft),
+      )
+      applyToolSettings(response.settings)
+      setTestResult(null)
+    } catch (saveError) {
+      setError(getErrorMessage(saveError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const testGitHubTool = async () => {
+    setTesting(true)
+    setError(null)
+
+    try {
+      const response = await api.testGitHubTool()
+      setTestResult(response.result)
+      applyToolSettings(response.settings)
+    } catch (testError) {
+      setTestResult(null)
+      setError(getErrorMessage(testError))
+    } finally {
+      setTesting(false)
+    }
+  }
 
   return (
     <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
@@ -68,14 +119,17 @@ export const ToolSettingsPage = ({
           </div>
         </div>
         <div className="p-3">
-          <form className="space-y-2.5" onSubmit={onSubmit}>
+          <form className="space-y-2.5" onSubmit={saveGitHubToolSettings}>
             <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
               <span className="font-medium">Enabled</span>
               <input
                 checked={draft.enabled}
                 className="h-4 w-4 accent-primary"
                 onChange={(event) =>
-                  onChange({ ...draft, enabled: event.target.checked })
+                  setDraftOverride({
+                    ...draft,
+                    enabled: event.target.checked,
+                  })
                 }
                 type="checkbox"
               />
@@ -86,7 +140,7 @@ export const ToolSettingsPage = ({
                 autoComplete="off"
                 disabled={tokenInputDisabled}
                 onChange={(event) =>
-                  onChange({
+                  setDraftOverride({
                     ...draft,
                     clearToken: false,
                     token: event.target.value,
@@ -111,16 +165,19 @@ export const ToolSettingsPage = ({
                   className="h-4 w-4 accent-primary"
                   disabled={Boolean(draft.token.trim())}
                   onChange={(event) =>
-                    onChange({ ...draft, clearToken: event.target.checked })
+                    setDraftOverride({
+                      ...draft,
+                      clearToken: event.target.checked,
+                    })
                   }
                   type="checkbox"
                 />
               </label>
             ) : null}
 
-            {error ? (
+            {visibleError ? (
               <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
+                {visibleError}
               </div>
             ) : null}
 
@@ -135,7 +192,7 @@ export const ToolSettingsPage = ({
               </Button>
               <Button
                 disabled={testing || !github?.tokenConfigured || !draft.enabled}
-                onClick={onTest}
+                onClick={() => void testGitHubTool()}
                 type="button"
                 variant="outline"
               >
@@ -202,3 +259,10 @@ export const normalizeGitHubToolDraft = (
   return input
 }
 
+const formatDateTime = (value?: string) => {
+  if (!value) {
+    return 'Never'
+  }
+
+  return new Date(value).toLocaleString()
+}

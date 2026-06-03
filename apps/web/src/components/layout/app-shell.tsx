@@ -9,13 +9,13 @@ import {
   Sun,
 } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
+import { navigationItems } from '@/components/app/app-navigation'
+import { getNextThemeMode } from '@/components/app/app-theme'
+import type { ThemeMode } from '@/components/app/app-types'
+import { StateBadge, StatusBadge } from '@/components/app/status-badges'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { navigationItems } from './app-navigation'
-import { getNextThemeMode } from './app-theme'
-import type { ThemeMode } from './app-types'
-import { StateBadge, StatusBadge } from './status-badges'
 
 type AppRoute = {
   pathname: string
@@ -191,4 +191,3 @@ const ThemeToggle = ({
     </Button>
   )
 }
-

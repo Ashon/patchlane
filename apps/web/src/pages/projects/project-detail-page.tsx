@@ -1,6 +1,6 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import type { Issue } from '@agent-fleet/shared'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ClipboardList,
@@ -9,6 +9,13 @@ import {
   Pencil,
   RefreshCw,
 } from 'lucide-react'
+import { parseAsString, useQueryState } from 'nuqs'
+import {
+  Navigate,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,14 +25,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { api } from '@/lib/api'
-import { queryKeys } from '@/lib/query-client'
-import { emptyIssueDraft } from './constants'
-import { EmptyState, ProjectRepositoryBadge } from './common'
-import { ProjectForm } from './project-form'
-import { ProjectIssuesView } from './project-issues-view'
-import { ProjectTasksView } from './project-tasks-view'
-import type { IssueDraft, ProjectDetailPageProps, ProjectDraft } from './types'
+import { EmptyState, ProjectRepositoryBadge } from '@/components/issues/common'
+import { emptyIssueDraft } from '@/components/issues/constants'
+import { ProjectForm } from '@/components/issues/project-form'
+import { ProjectIssuesView } from '@/components/issues/project-issues-view'
+import { ProjectTasksView } from '@/components/issues/project-tasks-view'
+import type {
+  IssueDraft,
+  ProjectDetailTab,
+  ProjectDraft,
+} from '@/components/issues/types'
 import {
   getErrorMessage,
   getProjectLinkedRunIds,
@@ -35,27 +44,27 @@ import {
   upsertAgentRuns,
   upsertIssue,
   upsertProject,
-} from './utils'
+} from '@/components/issues/utils'
+import { api } from '@/lib/api'
+import { getQueryErrorMessage } from '@/lib/errors'
+import { queryKeys } from '@/lib/query-client'
+import { useAgentRunController } from '@/pages/agent/agent-run-controller'
 
-export const ProjectDetailPage = ({
-  agentRuns,
-  endpoints,
-  error,
-  issues,
-  loading,
-  onBack,
-  onNavigateTab,
-  onOpenRun,
-  onSelectIssue,
-  onStartIssueRun,
-  projectId,
-  projects,
-  selectedEndpoint,
-  selectedIssueId,
-  tab,
-  workspaces,
-}: ProjectDetailPageProps) => {
+export const ProjectDetailPage = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { projectId, tab } = useParams<{ projectId: string; tab?: string }>()
+  const [selectedIssueId, setSelectedIssueId] = useQueryState(
+    'issue',
+    parseAsString.withOptions({ history: 'replace', shallow: true }),
+  )
   const queryClient = useQueryClient()
+  const {
+    agentRunning,
+    onOpenAgentRun,
+    onStartIssueRun,
+    runs: agentRuns,
+  } = useAgentRunController()
   const [localError, setLocalError] = useState<string | null>(null)
   const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(null)
   const [issueDraft, setIssueDraft] = useState<IssueDraft>(emptyIssueDraft)
@@ -63,11 +72,76 @@ export const ProjectDetailPage = ({
   const [savingIssue, setSavingIssue] = useState(false)
   const [runningIssueId, setRunningIssueId] = useState<string | null>(null)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
+  const endpointsQuery = useQuery({
+    queryKey: queryKeys.endpoints,
+    queryFn: api.listEndpoints,
+  })
+  const projectsQuery = useQuery({
+    queryKey: queryKeys.projects,
+    queryFn: api.listProjects,
+  })
+  const issuesQuery = useQuery({
+    queryKey: queryKeys.issues,
+    queryFn: api.listIssues,
+    enabled: !agentRunning,
+  })
+  const workspacesQuery = useQuery({
+    queryKey: queryKeys.sandboxWorkspaces,
+    queryFn: api.listSandboxWorkspaces,
+  })
+  const endpoints = useMemo(
+    () => endpointsQuery.data?.endpoints ?? [],
+    [endpointsQuery.data?.endpoints],
+  )
+  const projects = useMemo(
+    () => projectsQuery.data?.projects ?? [],
+    [projectsQuery.data?.projects],
+  )
+  const issues = useMemo(
+    () => issuesQuery.data?.issues ?? [],
+    [issuesQuery.data?.issues],
+  )
+  const workspaces = useMemo(
+    () => workspacesQuery.data?.workspaces ?? [],
+    [workspacesQuery.data?.workspaces],
+  )
+  const selectedEndpoint = useMemo(
+    () =>
+      endpoints.find((endpoint) => endpoint.enabled) ?? endpoints[0] ?? null,
+    [endpoints],
+  )
+  const loading =
+    endpointsQuery.isFetching ||
+    projectsQuery.isFetching ||
+    issuesQuery.isFetching ||
+    workspacesQuery.isFetching
+  const error = getQueryErrorMessage(projectsQuery.error, issuesQuery.error)
+  const activeProjectId = projectId ?? ''
+  const selectedTab: ProjectDetailTab = tab === 'tasks' ? 'tasks' : 'issues'
 
-  const project = projects.find((item) => item.id === projectId) ?? null
+  const buildRoute = (
+    pathname: string,
+    updates: Record<string, string | null> = {},
+  ) => {
+    const params = new URLSearchParams(location.search)
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) {
+        params.set(key, value)
+      } else {
+        params.delete(key)
+      }
+    }
+
+    const search = params.toString()
+    return { pathname, search: search ? `?${search}` : '' }
+  }
+
+  const projectExists = projects.some((project) => project.id === activeProjectId)
+  const project = projects.find((item) => item.id === activeProjectId) ?? null
   const projectIssues = useMemo(
-    () => issues.filter((issue) => issue.projectId === projectId),
-    [issues, projectId],
+    () => issues.filter((issue) => issue.projectId === activeProjectId),
+    [activeProjectId, issues],
   )
   const selectedIssue =
     projectIssues.find((issue) => issue.id === selectedIssueId) ?? null
@@ -82,18 +156,42 @@ export const ProjectDetailPage = ({
   const projectRuns = useMemo(
     () =>
       agentRuns.filter(
-        (run) => run.projectId === projectId || linkedRunIds.has(run.id),
+        (run) => run.projectId === activeProjectId || linkedRunIds.has(run.id),
       ),
-    [agentRuns, linkedRunIds, projectId],
+    [activeProjectId, agentRuns, linkedRunIds],
   )
   const workspace = project?.workspaceId
     ? workspaces.find((item) => item.id === project.workspaceId)
     : undefined
   const visibleError = localError ?? error
   const activeProjectDraft =
-    projectDraft?.targetId === projectId
+    projectDraft?.targetId === activeProjectId
       ? projectDraft
       : toProjectDraft(project, selectedEndpoint?.id)
+
+  if (!projectId) {
+    return <Navigate replace to={buildRoute('/projects')} />
+  }
+
+  if (!tab) {
+    return (
+      <Navigate
+        replace
+        to={buildRoute(`/projects/${activeProjectId}/issues`, {
+          project: null,
+        })}
+      />
+    )
+  }
+
+  if (!loading && projects.length > 0 && !projectExists) {
+    return (
+      <Navigate
+        replace
+        to={buildRoute('/projects', { issue: null, project: null })}
+      />
+    )
+  }
 
   const refreshProject = async () => {
     const [
@@ -115,9 +213,9 @@ export const ProjectDetailPage = ({
 
   const updateProjectDraft = (patch: Partial<ProjectDraft>) => {
     setProjectDraft((current) => ({
-      ...(current?.targetId === projectId ? current : activeProjectDraft),
+      ...(current?.targetId === activeProjectId ? current : activeProjectDraft),
       ...patch,
-      targetId: projectId,
+      targetId: activeProjectId,
     }))
   }
 
@@ -169,7 +267,7 @@ export const ProjectDetailPage = ({
         ),
       )
       upsertIssue(queryClient, response.issue)
-      onSelectIssue(response.issue.id)
+      void setSelectedIssueId(response.issue.id)
       setIssueDraft((current) => ({
         ...emptyIssueDraft,
         endpointId: current.endpointId,
@@ -196,8 +294,8 @@ export const ProjectDetailPage = ({
       })
       upsertIssue(queryClient, response.issue)
       upsertAgentRuns(queryClient, response.runs)
-      onSelectIssue(response.issue.id)
-      onNavigateTab('tasks')
+      void setSelectedIssueId(response.issue.id)
+      navigate(buildRoute(`/projects/${activeProjectId}/tasks`))
     } catch (actionError) {
       setLocalError(getErrorMessage(actionError))
     } finally {
@@ -210,7 +308,7 @@ export const ProjectDetailPage = ({
     setLocalError(null)
 
     try {
-      onSelectIssue(issue.id)
+      void setSelectedIssueId(issue.id)
       await onStartIssueRun(issue)
     } catch (actionError) {
       setLocalError(getErrorMessage(actionError))
@@ -233,7 +331,16 @@ export const ProjectDetailPage = ({
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <header className="flex min-h-10 flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          <Button onClick={onBack} size="icon-sm" type="button" variant="ghost">
+          <Button
+            onClick={() =>
+              navigate(
+                buildRoute('/projects', { issue: null, project: null }),
+              )
+            }
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0">
@@ -281,19 +388,19 @@ export const ProjectDetailPage = ({
       <div className="border-b bg-muted/20 px-3 py-1.5">
         <div className="flex flex-wrap items-center gap-1">
           <Button
-            onClick={() => onNavigateTab('issues')}
+            onClick={() => navigate(buildRoute(`/projects/${activeProjectId}/issues`))}
             size="sm"
             type="button"
-            variant={tab === 'issues' ? 'secondary' : 'ghost'}
+            variant={selectedTab === 'issues' ? 'secondary' : 'ghost'}
           >
             <ClipboardList className="h-4 w-4" />
             Issues
           </Button>
           <Button
-            onClick={() => onNavigateTab('tasks')}
+            onClick={() => navigate(buildRoute(`/projects/${activeProjectId}/tasks`))}
             size="sm"
             type="button"
-            variant={tab === 'tasks' ? 'secondary' : 'ghost'}
+            variant={selectedTab === 'tasks' ? 'secondary' : 'ghost'}
           >
             <ListChecks className="h-4 w-4" />
             Tasks
@@ -320,7 +427,7 @@ export const ProjectDetailPage = ({
           </DialogContent>
         </Dialog>
 
-        {tab === 'issues' ? (
+        {selectedTab === 'issues' ? (
           <ProjectIssuesView
             createIssue={createIssue}
             endpoints={endpoints}
@@ -328,8 +435,8 @@ export const ProjectDetailPage = ({
             issues={projectIssues}
             onAnalyze={analyzeIssue}
             onIssueDraftChange={setIssueDraft}
-            onOpenRun={onOpenRun}
-            onSelectIssue={onSelectIssue}
+            onOpenRun={onOpenAgentRun}
+            onSelectIssue={(id) => void setSelectedIssueId(id)}
             onStart={startIssue}
             project={project}
             runById={runById}
@@ -342,7 +449,7 @@ export const ProjectDetailPage = ({
         ) : (
           <ProjectTasksView
             issues={projectIssues}
-            onOpenRun={onOpenRun}
+            onOpenRun={onOpenAgentRun}
             runs={projectRuns}
           />
         )}

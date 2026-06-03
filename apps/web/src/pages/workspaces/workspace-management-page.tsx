@@ -1,6 +1,16 @@
-import type { SandboxSettings, SandboxWorkspace } from '@agent-fleet/shared'
+import type {
+  CreateSandboxWorkspaceInput,
+  SandboxWorkspace,
+} from '@agent-fleet/shared'
 import type { FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Folder, Loader2, Plus, Trash2 } from 'lucide-react'
+import { parseAsString, useQueryState } from 'nuqs'
+import {
+  emptySandboxWorkspaceDraft,
+  type SandboxWorkspaceDraft,
+} from '@/components/app/app-types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,32 +21,109 @@ import {
   ToolStatusRow,
 } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
-import type { SandboxWorkspaceDraft } from '@/components/app/app-types'
+import { api } from '@/lib/api'
+import { getErrorMessage, getQueryErrorMessage } from '@/lib/errors'
+import { queryKeys } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
 
-export const WorkspaceManagementPage = ({
-  error,
-  onCreateWorkspace,
-  onDeleteWorkspace,
-  onSelectWorkspace,
-  onWorkspaceDraftChange,
-  selectedWorkspace,
-  settings,
-  workspaceCreating,
-  workspaceDraft,
-  workspaces,
-}: {
-  error: string | null
-  onCreateWorkspace: (event: FormEvent<HTMLFormElement>) => void
-  onDeleteWorkspace: (workspace: SandboxWorkspace) => void
-  onSelectWorkspace: (workspace: SandboxWorkspace) => void
-  onWorkspaceDraftChange: (draft: SandboxWorkspaceDraft) => void
-  selectedWorkspace: SandboxWorkspace | null
-  settings: SandboxSettings | null
-  workspaceCreating: boolean
-  workspaceDraft: SandboxWorkspaceDraft
-  workspaces: SandboxWorkspace[]
-}) => {
+export const WorkspaceManagementPage = () => {
+  const queryClient = useQueryClient()
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useQueryState(
+    'workspace',
+    parseAsString.withOptions({ history: 'replace', shallow: true }),
+  )
+  const [workspaceDraft, setWorkspaceDraft] = useState<SandboxWorkspaceDraft>(
+    emptySandboxWorkspaceDraft,
+  )
+  const [workspaceCreating, setWorkspaceCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const sandboxSettingsQuery = useQuery({
+    queryKey: queryKeys.sandboxSettings,
+    queryFn: api.getSandboxSettings,
+  })
+  const sandboxWorkspacesQuery = useQuery({
+    queryKey: queryKeys.sandboxWorkspaces,
+    queryFn: api.listSandboxWorkspaces,
+  })
+
+  const settings = sandboxSettingsQuery.data?.settings ?? null
+  const workspaces = useMemo(
+    () => sandboxWorkspacesQuery.data?.workspaces ?? [],
+    [sandboxWorkspacesQuery.data?.workspaces],
+  )
+  const selectedWorkspace = useMemo(
+    () =>
+      workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ??
+      null,
+    [selectedWorkspaceId, workspaces],
+  )
+  const visibleError =
+    error ??
+    getQueryErrorMessage(sandboxSettingsQuery.error, sandboxWorkspacesQuery.error)
+
+  const selectWorkspace = (workspace: SandboxWorkspace) => {
+    void setSelectedWorkspaceId(workspace.id)
+  }
+
+  const createWorkspace = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setWorkspaceCreating(true)
+    setError(null)
+
+    try {
+      const response = await api.createSandboxWorkspace(
+        normalizeWorkspaceDraft(workspaceDraft),
+      )
+      const listResponse = await api.listSandboxWorkspaces()
+      queryClient.setQueryData(queryKeys.sandboxWorkspaces, listResponse)
+      selectWorkspace(response.workspace)
+      setWorkspaceDraft(emptySandboxWorkspaceDraft)
+    } catch (createError) {
+      setError(getErrorMessage(createError))
+
+      try {
+        const listResponse = await api.listSandboxWorkspaces()
+        queryClient.setQueryData(queryKeys.sandboxWorkspaces, listResponse)
+      } catch {
+        // Keep the original create error visible.
+      }
+    } finally {
+      setWorkspaceCreating(false)
+    }
+  }
+
+  const deleteWorkspace = async (workspace: SandboxWorkspace) => {
+    setWorkspaceCreating(true)
+    setError(null)
+
+    try {
+      await api.deleteSandboxWorkspace(workspace.id)
+      const response = await api.listSandboxWorkspaces()
+      queryClient.setQueryData(queryKeys.sandboxWorkspaces, response)
+    } catch (deleteError) {
+      setError(getErrorMessage(deleteError))
+    } finally {
+      setWorkspaceCreating(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!workspaces.length) {
+      if (selectedWorkspaceId) {
+        void setSelectedWorkspaceId(null)
+      }
+      return
+    }
+
+    if (
+      !selectedWorkspaceId ||
+      !workspaces.some((workspace) => workspace.id === selectedWorkspaceId)
+    ) {
+      void setSelectedWorkspaceId(workspaces[0]!.id)
+    }
+  }, [selectedWorkspaceId, setSelectedWorkspaceId, workspaces])
+
   return (
     <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
       <div className="flex min-h-[320px] flex-col lg:min-h-0">
@@ -49,9 +136,9 @@ export const WorkspaceManagementPage = ({
         </div>
         <ScrollArea className="min-h-0 flex-1" viewportClassName="p-2">
           <div className="grid gap-1.5">
-            {error ? (
+            {visibleError ? (
               <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
+                {visibleError}
               </div>
             ) : null}
 
@@ -59,8 +146,8 @@ export const WorkspaceManagementPage = ({
               workspaces.map((workspace) => (
                 <SandboxWorkspaceCard
                   key={workspace.id}
-                  onDelete={() => onDeleteWorkspace(workspace)}
-                  onSelect={() => onSelectWorkspace(workspace)}
+                  onDelete={() => void deleteWorkspace(workspace)}
+                  onSelect={() => selectWorkspace(workspace)}
                   selected={selectedWorkspace?.id === workspace.id}
                   workspace={workspace}
                 />
@@ -75,11 +162,11 @@ export const WorkspaceManagementPage = ({
       <ScrollArea className="min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0">
         <section className="border-b p-3">
           <h2 className="mb-2 text-sm font-semibold">New workspace</h2>
-          <form className="space-y-2.5" onSubmit={onCreateWorkspace}>
+          <form className="space-y-2.5" onSubmit={createWorkspace}>
             <Field label="Name">
               <Input
                 onChange={(event) =>
-                  onWorkspaceDraftChange({
+                  setWorkspaceDraft({
                     ...workspaceDraft,
                     name: event.target.value,
                   })
@@ -91,7 +178,7 @@ export const WorkspaceManagementPage = ({
             <Field label="Repository URL">
               <Input
                 onChange={(event) =>
-                  onWorkspaceDraftChange({
+                  setWorkspaceDraft({
                     ...workspaceDraft,
                     repositoryUrl: event.target.value,
                   })
@@ -103,7 +190,7 @@ export const WorkspaceManagementPage = ({
             <Field label="Ref">
               <Input
                 onChange={(event) =>
-                  onWorkspaceDraftChange({
+                  setWorkspaceDraft({
                     ...workspaceDraft,
                     ref: event.target.value,
                   })
@@ -233,3 +320,10 @@ const SandboxWorkspaceCard = ({
   )
 }
 
+const normalizeWorkspaceDraft = (
+  draft: SandboxWorkspaceDraft,
+): CreateSandboxWorkspaceInput => ({
+  name: draft.name.trim() || undefined,
+  repositoryUrl: draft.repositoryUrl.trim() || undefined,
+  ref: draft.ref.trim() || undefined,
+})

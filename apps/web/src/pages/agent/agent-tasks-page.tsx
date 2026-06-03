@@ -1,5 +1,8 @@
-import type { AgentProject, AgentRun, Issue, LlmEndpoint, SandboxWorkspace } from '@agent-fleet/shared'
-import type { FormEvent } from 'react'
+import type {
+  AgentProject,
+  AgentRun,
+  Issue,
+} from '@agent-fleet/shared'
 import { useMemo } from 'react'
 import { Bot, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -8,56 +11,35 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
+import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import { cn } from '@/lib/utils'
-import { AgentTaskConversation } from './agent-task-conversation'
+import { useAgentRunController } from './agent-run-controller'
 
-export const AgentTasksPage = ({
-  agentReplyDraft,
-  agentRunning,
-  agentTaskDraft,
-  endpoint,
-  error,
-  onAgentReplyChange,
-  onAgentTaskChange,
-  onContinueAgentRun,
-  onDeleteAgentRun,
-  onCreateAgentRun,
-  onRewindAgentRun,
-  onSendAgentMessage,
-  onSelectAgentRun,
-  onStartNewAgentRun,
-  onStopAgentRun,
-  issues,
-  projects,
-  runs,
-  runDeletingId,
-  selectedRun,
-  selectedRunStreaming,
-  selectedWorkspace,
-}: {
-  agentReplyDraft: string
-  agentRunning: boolean
-  agentTaskDraft: string
-  endpoint: LlmEndpoint | null
-  error: string | null
-  onAgentReplyChange: (value: string) => void
-  onAgentTaskChange: (value: string) => void
-  onContinueAgentRun: (run: AgentRun) => void
-  onDeleteAgentRun: (run: AgentRun) => void
-  onCreateAgentRun: (event: FormEvent<HTMLFormElement>) => void
-  onRewindAgentRun: (run: AgentRun, messageId: string) => void
-  onSendAgentMessage: () => void
-  onSelectAgentRun: (run: AgentRun) => void
-  onStartNewAgentRun: () => void
-  onStopAgentRun: () => void
-  issues: Issue[]
-  projects: AgentProject[]
-  runs: AgentRun[]
-  runDeletingId: string | null
-  selectedRun: AgentRun | null
-  selectedRunStreaming: boolean
-  selectedWorkspace: SandboxWorkspace | null
-}) => {
+export const AgentTasksPage = () => {
+  const {
+    agentReplyDraft,
+    agentRunning,
+    agentTaskDraft,
+    endpoint,
+    error,
+    issues,
+    onAgentReplyChange,
+    onAgentTaskChange,
+    onContinueAgentRun,
+    onCreateAgentRun,
+    onDeleteAgentRun,
+    onRewindAgentRun,
+    onSelectAgentRun,
+    onSendAgentMessage,
+    onStartNewAgentRun,
+    onStopAgentRun,
+    projects,
+    runDeletingId,
+    runs,
+    selectedRun,
+    selectedRunStreaming,
+    selectedWorkspace,
+  } = useAgentRunController()
   const issueById = useMemo(
     () => new Map(issues.map((issue) => [issue.id, issue])),
     [issues],
@@ -451,4 +433,3 @@ const formatDateTime = (value?: string) => {
 
   return new Date(value).toLocaleString()
 }
-

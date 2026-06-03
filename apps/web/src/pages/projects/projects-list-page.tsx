@@ -1,7 +1,8 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useMemo, useState } from 'react'
 import type { CreateAgentProjectInput } from '@agent-fleet/shared'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Layers3, Loader2, Plus, RefreshCw } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,36 +13,107 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { api } from '@/lib/api'
-import { queryKeys } from '@/lib/query-client'
-import { EmptyState, MetricBadge, ProjectRepositoryBadge } from './common'
-import { ProjectForm } from './project-form'
-import type { ProjectDraft, ProjectsListPageProps } from './types'
+import {
+  EmptyState,
+  MetricBadge,
+  ProjectRepositoryBadge,
+} from '@/components/issues/common'
+import { ProjectForm } from '@/components/issues/project-form'
+import type { ProjectDraft } from '@/components/issues/types'
 import {
   getErrorMessage,
   normalizeProjectDraft,
   toProjectDraft,
   upsertProject,
-} from './utils'
+} from '@/components/issues/utils'
+import { api } from '@/lib/api'
+import { getQueryErrorMessage } from '@/lib/errors'
+import { queryKeys } from '@/lib/query-client'
+import { useAgentRunController } from '@/pages/agent/agent-run-controller'
 
-export const ProjectsListPage = ({
-  endpoints,
-  error,
-  issues,
-  loading,
-  onOpenProject,
-  projects,
-  selectedEndpoint,
-  workspaces,
-}: ProjectsListPageProps) => {
+export const ProjectsListPage = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { agentRunning } = useAgentRunController()
   const [localError, setLocalError] = useState<string | null>(null)
+  const endpointsQuery = useQuery({
+    queryKey: queryKeys.endpoints,
+    queryFn: api.listEndpoints,
+  })
+  const projectsQuery = useQuery({
+    queryKey: queryKeys.projects,
+    queryFn: api.listProjects,
+  })
+  const issuesQuery = useQuery({
+    queryKey: queryKeys.issues,
+    queryFn: api.listIssues,
+    enabled: !agentRunning,
+  })
+  const workspacesQuery = useQuery({
+    queryKey: queryKeys.sandboxWorkspaces,
+    queryFn: api.listSandboxWorkspaces,
+  })
+  const endpoints = useMemo(
+    () => endpointsQuery.data?.endpoints ?? [],
+    [endpointsQuery.data?.endpoints],
+  )
+  const projects = useMemo(
+    () => projectsQuery.data?.projects ?? [],
+    [projectsQuery.data?.projects],
+  )
+  const issues = useMemo(
+    () => issuesQuery.data?.issues ?? [],
+    [issuesQuery.data?.issues],
+  )
+  const workspaces = useMemo(
+    () => workspacesQuery.data?.workspaces ?? [],
+    [workspacesQuery.data?.workspaces],
+  )
+  const selectedEndpoint = useMemo(
+    () =>
+      endpoints.find((endpoint) => endpoint.enabled) ?? endpoints[0] ?? null,
+    [endpoints],
+  )
+  const loading =
+    endpointsQuery.isFetching ||
+    projectsQuery.isFetching ||
+    issuesQuery.isFetching ||
+    workspacesQuery.isFetching
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>(() =>
     toProjectDraft(null, selectedEndpoint?.id),
   )
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [savingProject, setSavingProject] = useState(false)
-  const visibleError = localError ?? error
+  const visibleError =
+    localError ?? getQueryErrorMessage(projectsQuery.error, issuesQuery.error)
+
+  const buildRoute = (
+    pathname: string,
+    updates: Record<string, string | null>,
+  ) => {
+    const params = new URLSearchParams(location.search)
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) {
+        params.set(key, value)
+      } else {
+        params.delete(key)
+      }
+    }
+
+    const search = params.toString()
+    return { pathname, search: search ? `?${search}` : '' }
+  }
+
+  const openProject = (id: string) => {
+    navigate(
+      buildRoute(`/projects/${id}/issues`, {
+        issue: null,
+        project: null,
+      }),
+    )
+  }
 
   const refreshProjects = async () => {
     const [
@@ -82,7 +154,7 @@ export const ProjectsListPage = ({
       queryClient.setQueryData(queryKeys.sandboxWorkspaces, workspaceResponse)
       setProjectDraft(toProjectDraft(null, selectedEndpoint?.id))
       setProjectDialogOpen(false)
-      onOpenProject(response.project.id)
+      openProject(response.project.id)
     } catch (saveError) {
       setLocalError(getErrorMessage(saveError))
     } finally {
@@ -152,7 +224,7 @@ export const ProjectsListPage = ({
                   <button
                     className="grid w-full gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/70 md:grid-cols-[minmax(0,1fr)_auto]"
                     key={project.id}
-                    onClick={() => onOpenProject(project.id)}
+                    onClick={() => openProject(project.id)}
                     type="button"
                   >
                     <div className="min-w-0">

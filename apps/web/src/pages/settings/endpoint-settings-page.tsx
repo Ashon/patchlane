@@ -1,57 +1,195 @@
 import type {
+  CreateLlmEndpointInput,
   LlmEndpoint,
   LlmEndpointTestResult,
 } from '@agent-fleet/shared'
-import type { FormEvent } from 'react'
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, RefreshCw, Save, Server, Trash2 } from 'lucide-react'
+import { parseAsString, useQueryState } from 'nuqs'
+import {
+  emptyEndpointDraft as emptyDraft,
+  type EndpointDraft,
+} from '@/components/app/app-types'
+import { EmptyState, Field } from '@/components/app/panel-primitives'
+import { StateBadge, TestBadge } from '@/components/app/status-badges'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { EmptyState, Field } from '@/components/app/panel-primitives'
-import { StateBadge, TestBadge } from '@/components/app/status-badges'
-import type { EndpointDraft } from '@/components/app/app-types'
+import { api } from '@/lib/api'
+import { getErrorMessage, getQueryErrorMessage } from '@/lib/errors'
+import { queryKeys } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
 
-export const EndpointSettingsPage = ({
-  draft,
-  endpointError,
-  endpoints,
-  loading,
-  onDeleteEndpoint,
-  onDraftChange,
-  onSaveEndpoint,
-  onSelectEndpoint,
-  onStartNewEndpoint,
-  onTestEndpoint,
-  saving,
-  selectedEndpoint,
-  selectedEndpointId,
-  testingId,
-  testResults,
-}: {
-  draft: EndpointDraft
-  endpointError: string | null
-  endpoints: LlmEndpoint[]
-  loading: boolean
-  onDeleteEndpoint: () => void
-  onDraftChange: (draft: EndpointDraft) => void
-  onSaveEndpoint: (event: FormEvent<HTMLFormElement>) => void
-  onSelectEndpoint: (endpoint: LlmEndpoint) => void
-  onStartNewEndpoint: () => void
-  onTestEndpoint: (endpoint: LlmEndpoint) => void
-  saving: boolean
-  selectedEndpoint: LlmEndpoint | null
-  selectedEndpointId: string | null
-  testingId: string | null
-  testResults: Record<string, LlmEndpointTestResult>
-}) => {
+export const EndpointSettingsPage = () => {
+  const queryClient = useQueryClient()
+  const [selectedEndpointId, setSelectedEndpointId] = useQueryState(
+    'endpoint',
+    parseAsString.withOptions({ history: 'replace', shallow: true }),
+  )
+  const [draft, setDraft] = useState<EndpointDraft>(emptyDraft)
+  const [saving, setSaving] = useState(false)
+  const [testingId, setTestingId] = useState<string | null>(null)
+  const [testResults, setTestResults] = useState<
+    Record<string, LlmEndpointTestResult>
+  >({})
+  const [error, setError] = useState<string | null>(null)
+
+  const healthQuery = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: api.health,
+  })
+  const endpointsQuery = useQuery({
+    queryKey: queryKeys.endpoints,
+    queryFn: api.listEndpoints,
+  })
+
+  const endpoints = useMemo(
+    () => endpointsQuery.data?.endpoints ?? [],
+    [endpointsQuery.data?.endpoints],
+  )
+  const selectedEndpoint = useMemo(
+    () =>
+      selectedEndpointId && selectedEndpointId !== 'new'
+        ? (endpoints.find((endpoint) => endpoint.id === selectedEndpointId) ??
+          null)
+        : null,
+    [endpoints, selectedEndpointId],
+  )
+  const endpointError =
+    error ?? getQueryErrorMessage(healthQuery.error, endpointsQuery.error)
+  const loading = endpointsQuery.isFetching
+
+  const selectEndpoint = useCallback(
+    (endpoint: LlmEndpoint) => {
+      void setSelectedEndpointId(endpoint.id)
+      setDraft(toEndpointDraft(endpoint))
+    },
+    [setSelectedEndpointId],
+  )
+
+  const startNewEndpoint = () => {
+    setDraft(emptyDraft)
+    setError(null)
+    void setSelectedEndpointId('new')
+  }
+
+  const saveEndpoint = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    setError(null)
+
+    try {
+      const input = normalizeEndpointDraft(draft)
+      const response = selectedEndpoint
+        ? await api.updateEndpoint(selectedEndpoint.id, input)
+        : await api.createEndpoint(input)
+
+      const endpointResponse = await api.listEndpoints()
+      queryClient.setQueryData(queryKeys.endpoints, endpointResponse)
+      selectEndpoint(response.endpoint)
+    } catch (saveError) {
+      setError(getErrorMessage(saveError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const deleteEndpoint = async () => {
+    if (!selectedEndpoint) {
+      return
+    }
+
+    setSaving(true)
+    setError(null)
+
+    try {
+      await api.deleteEndpoint(selectedEndpoint.id)
+      const response = await api.listEndpoints()
+      queryClient.setQueryData(queryKeys.endpoints, response)
+
+      if (response.endpoints[0]) {
+        selectEndpoint(response.endpoints[0])
+      } else {
+        startNewEndpoint()
+      }
+    } catch (deleteError) {
+      setError(getErrorMessage(deleteError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const testEndpoint = async (endpoint: LlmEndpoint) => {
+    setTestingId(endpoint.id)
+    setError(null)
+
+    try {
+      const response = await api.testEndpoint(endpoint.id)
+      setTestResults((current) => ({
+        ...current,
+        [endpoint.id]: response.result,
+      }))
+    } catch (testError) {
+      setTestResults((current) => ({
+        ...current,
+        [endpoint.id]: {
+          ok: false,
+          latencyMs: 0,
+          models: [],
+          error: getErrorMessage(testError),
+        },
+      }))
+    } finally {
+      setTestingId(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!endpoints.length) {
+      if (selectedEndpointId && selectedEndpointId !== 'new') {
+        void setSelectedEndpointId(null)
+      }
+      return
+    }
+
+    if (!selectedEndpointId) {
+      void setSelectedEndpointId(endpoints[0]!.id)
+      return
+    }
+
+    if (
+      selectedEndpointId !== 'new' &&
+      !endpoints.some((endpoint) => endpoint.id === selectedEndpointId)
+    ) {
+      void setSelectedEndpointId(endpoints[0]!.id)
+    }
+  }, [endpoints, selectedEndpointId, setSelectedEndpointId])
+
+  useEffect(() => {
+    if (selectedEndpoint) {
+      setDraft(toEndpointDraft(selectedEndpoint))
+      return
+    }
+
+    if (selectedEndpointId === 'new' || !selectedEndpointId) {
+      setDraft(emptyDraft)
+    }
+  }, [selectedEndpoint, selectedEndpointId])
+
   return (
     <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
       <div className="flex min-h-[320px] flex-col lg:min-h-0">
         <div className="flex min-h-10 items-center justify-between border-b px-3 py-2">
           <h2 className="text-sm font-semibold">Endpoints</h2>
-          <Button variant="secondary" onClick={onStartNewEndpoint} size="sm">
+          <Button variant="secondary" onClick={startNewEndpoint} size="sm">
             <Plus />
             New
           </Button>
@@ -82,8 +220,8 @@ export const EndpointSettingsPage = ({
                     selected={endpoint.id === selectedEndpointId}
                     testResult={testResults[endpoint.id]}
                     testing={testingId === endpoint.id}
-                    onSelect={() => onSelectEndpoint(endpoint)}
-                    onTest={() => onTestEndpoint(endpoint)}
+                    onSelect={() => selectEndpoint(endpoint)}
+                    onTest={() => void testEndpoint(endpoint)}
                   />
                 ))}
               </div>
@@ -103,12 +241,12 @@ export const EndpointSettingsPage = ({
             {selectedEndpoint ? 'Endpoint settings' : 'New endpoint'}
           </h2>
         </div>
-        <form className="space-y-2.5" onSubmit={onSaveEndpoint}>
+        <form className="space-y-2.5" onSubmit={saveEndpoint}>
           <Field label="Name">
             <Input
               value={draft.name}
               onChange={(event) =>
-                onDraftChange({
+                setDraft({
                   ...draft,
                   name: event.target.value,
                 })
@@ -122,7 +260,7 @@ export const EndpointSettingsPage = ({
             <Input
               value={draft.baseUrl}
               onChange={(event) =>
-                onDraftChange({
+                setDraft({
                   ...draft,
                   baseUrl: event.target.value,
                 })
@@ -136,7 +274,7 @@ export const EndpointSettingsPage = ({
             <Input
               value={draft.defaultModel}
               onChange={(event) =>
-                onDraftChange({
+                setDraft({
                   ...draft,
                   defaultModel: event.target.value,
                 })
@@ -150,7 +288,7 @@ export const EndpointSettingsPage = ({
             <Input
               value={draft.apiKeyEnvVar || ''}
               onChange={(event) =>
-                onDraftChange({
+                setDraft({
                   ...draft,
                   apiKeyEnvVar: event.target.value,
                 })
@@ -165,7 +303,7 @@ export const EndpointSettingsPage = ({
               checked={draft.enabled}
               className="h-4 w-4 accent-primary"
               onChange={(event) =>
-                onDraftChange({
+                setDraft({
                   ...draft,
                   enabled: event.target.checked,
                 })
@@ -182,7 +320,7 @@ export const EndpointSettingsPage = ({
             {selectedEndpoint ? (
               <Button
                 disabled={saving}
-                onClick={onDeleteEndpoint}
+                onClick={() => void deleteEndpoint()}
                 type="button"
                 variant="destructive"
               >
@@ -270,3 +408,20 @@ const EndpointCard = ({
   )
 }
 
+const toEndpointDraft = (endpoint: LlmEndpoint): EndpointDraft => ({
+  name: endpoint.name,
+  baseUrl: endpoint.baseUrl,
+  defaultModel: endpoint.defaultModel,
+  apiKeyEnvVar: endpoint.apiKeyEnvVar || '',
+  enabled: endpoint.enabled,
+})
+
+const normalizeEndpointDraft = (
+  draft: EndpointDraft,
+): CreateLlmEndpointInput => ({
+  ...draft,
+  apiKeyEnvVar: draft.apiKeyEnvVar?.trim() || undefined,
+  baseUrl: draft.baseUrl.trim(),
+  defaultModel: draft.defaultModel.trim(),
+  name: draft.name.trim(),
+})
