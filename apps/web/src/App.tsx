@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useIsFetching, useQuery } from '@tanstack/react-query'
 import { parseAsString, useQueryState } from 'nuqs'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   applyThemeMode,
   getInitialSupervisorChatOpen,
   getStoredThemeMode,
+  supervisorChatStorageKey,
   themeStorageKey,
 } from '@/components/app/app-theme'
 import type { ThemeMode } from '@/components/app/app-types'
@@ -21,6 +22,7 @@ import { ProjectDetailPage } from '@/pages/projects/project-detail-page'
 import { ProjectsListPage } from '@/pages/projects/projects-list-page'
 import { EndpointSettingsPage } from '@/pages/settings/endpoint-settings-page'
 import { ToolSettingsPage } from '@/pages/settings/tool-settings-page'
+import { StatisticsPage } from '@/pages/stats/statistics-page'
 import { WorkspaceManagementPage } from '@/pages/workspaces/workspace-management-page'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/lib/query-client'
@@ -35,13 +37,8 @@ export default function App() {
 
 const AppContent = () => {
   const location = useLocation()
-  const queryClient = useQueryClient()
   const fetchingCount = useIsFetching()
-  const {
-    issues,
-    projects,
-    selectedRun,
-  } = useAgentRunController()
+  const { issues, projects, selectedRun } = useAgentRunController()
   const [selectedChatEndpointId, setSelectedChatEndpointId] = useQueryState(
     'chatEndpoint',
     parseAsString.withOptions({ history: 'replace', shallow: true }),
@@ -119,6 +116,10 @@ const AppContent = () => {
       return 'Settings'
     }
 
+    if (location.pathname.startsWith('/stats')) {
+      return 'Statistics'
+    }
+
     if (location.pathname.startsWith('/workspaces')) {
       return 'Workspaces'
     }
@@ -155,10 +156,6 @@ const AppContent = () => {
     [location.search],
   )
 
-  const refreshData = useCallback(() => {
-    void queryClient.invalidateQueries()
-  }, [queryClient])
-
   useEffect(() => {
     window.localStorage.setItem(themeStorageKey, themeMode)
     applyThemeMode(themeMode)
@@ -176,6 +173,13 @@ const AppContent = () => {
   }, [themeMode])
 
   useEffect(() => {
+    window.localStorage.setItem(
+      supervisorChatStorageKey,
+      String(supervisorChatOpen),
+    )
+  }, [supervisorChatOpen])
+
+  useEffect(() => {
     if (
       selectedChatEndpointId &&
       !endpoints.some((endpoint) => endpoint.id === selectedChatEndpointId)
@@ -191,8 +195,6 @@ const AppContent = () => {
       enabledEndpointCount={enabledCount}
       endpointCount={endpoints.length}
       githubReady={githubReady}
-      loading={loading}
-      onRefresh={refreshData}
       onSupervisorChatOpenChange={setSupervisorChatOpen}
       onThemeModeChange={setThemeMode}
       projectCount={projects.length}
@@ -212,12 +214,24 @@ const AppContent = () => {
       themeMode={themeMode}
     >
       <Routes>
-        <Route element={<Navigate replace to={buildRoute('/projects')} />} path="/" />
-        <Route element={<Navigate replace to={buildRoute('/projects')} />} path="/chat" />
+        <Route
+          element={<Navigate replace to={buildRoute('/projects')} />}
+          path="/"
+        />
+        <Route
+          element={<Navigate replace to={buildRoute('/projects')} />}
+          path="/chat"
+        />
         <Route element={<ProjectsListPage />} path="/projects" />
         <Route element={<ProjectDetailPage />} path="/projects/:projectId" />
-        <Route element={<ProjectDetailPage />} path="/projects/:projectId/:tab" />
-        <Route element={<Navigate replace to={buildRoute('/projects')} />} path="/issues" />
+        <Route
+          element={<ProjectDetailPage />}
+          path="/projects/:projectId/:tab"
+        />
+        <Route
+          element={<Navigate replace to={buildRoute('/projects')} />}
+          path="/issues"
+        />
         <Route
           element={<Navigate replace to={buildRoute('/settings/endpoints')} />}
           path="/settings"
@@ -240,7 +254,11 @@ const AppContent = () => {
         />
         <Route element={<WorkspaceManagementPage />} path="/workspaces" />
         <Route element={<AgentTasksPage />} path="/agent" />
-        <Route element={<Navigate replace to={buildRoute('/projects')} />} path="*" />
+        <Route element={<StatisticsPage />} path="/stats" />
+        <Route
+          element={<Navigate replace to={buildRoute('/projects')} />}
+          path="*"
+        />
       </Routes>
     </AppShell>
   )

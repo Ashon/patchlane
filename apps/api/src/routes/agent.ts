@@ -4,6 +4,7 @@ import {
   continueAgentRunSchema,
   createAgentRunSchema,
   rewindAgentRunSchema,
+  type SandboxSettings,
 } from '@patchlane/shared'
 import { AgentRuntime } from '../agent/agentRuntime'
 import type { AgentRunStore } from '../agent/agentRunStore'
@@ -12,9 +13,9 @@ import { badRequest } from '../http/errors'
 import { reconcileIssueAfterAgentRun } from '../issues/issueReconciliation'
 import type { IssueStore } from '../issues/issueStore'
 import type { LlmEndpointStore } from '../llm/endpointStore'
+import { createChatCompletion } from '../llm/openaiClient'
 import { removeWorktreeFromCache } from '../sandbox/gitSandbox'
 import type { SandboxWorkspaceStore } from '../sandbox/sandboxWorkspaceStore'
-import type { SandboxSettings } from '@patchlane/shared'
 import type { ToolSettingsStore } from '../tools/toolSettingsStore'
 
 type AgentRouterOptions = {
@@ -123,7 +124,15 @@ export const createAgentRouter = ({
       const input = createAgentRunSchema.parse(request.body)
       await workspaceStore.get(input.workspaceId)
 
-      const run = await runStore.create(input)
+      const title =
+        input.title ??
+        (await generateAgentRunTitle({
+          endpointId: input.endpointId,
+          endpointStore,
+          model: input.model,
+          task: input.task,
+        }))
+      const run = await runStore.create({ ...input, title })
 
       response.status(201).json({ run })
     }),
@@ -232,6 +241,95 @@ const sendSse = (response: Response, payload: unknown) => {
   if (flush) {
     flush.call(response)
   }
+}
+
+const generateAgentRunTitle = async ({
+  endpointId,
+  endpointStore,
+  model,
+  task,
+}: {
+  endpointId?: string
+  endpointStore: LlmEndpointStore
+  model?: string
+  task: string
+}) => {
+  const endpoint = await getTitleEndpoint(endpointStore, endpointId)
+
+  if (!endpoint) {
+    return undefined
+  }
+
+  try {
+    const completion = await createChatCompletion(endpoint, {
+      maxTokens: 32,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You write concise titles for coding agent runs.',
+            'Return only one title, no markdown, no quotes, no trailing punctuation.',
+            'Use the same language as the task when it is clear.',
+            'Keep it under 60 characters and prefer 3 to 8 words.',
+          ].join('\n'),
+        },
+        {
+          role: 'user',
+          content: `Task:\n${task.slice(0, 4_000)}`,
+        },
+      ],
+      model,
+      temperature: 0.2,
+    })
+
+    return cleanGeneratedAgentRunTitle(completion.choices[0]?.message?.content)
+  } catch {
+    return undefined
+  }
+}
+
+const getTitleEndpoint = async (
+  endpointStore: LlmEndpointStore,
+  endpointId?: string,
+) => {
+  try {
+    const endpoint = endpointId
+      ? await endpointStore.get(endpointId)
+      : await endpointStore.getDefault()
+
+    return endpoint.enabled ? endpoint : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const cleanGeneratedAgentRunTitle = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const content = value
+    .replace(/<think>[\s\S]*?<\/think>/giu, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/giu, '')
+    .trim()
+  const title = content
+    .split('\n')
+    .map((line) => line.trim())
+    .find(Boolean)
+
+  if (!title) {
+    return undefined
+  }
+
+  const cleaned = title
+    .replace(/^[-*#\d.)\s]+/u, '')
+    .replace(/^(title|제목)\s*[:：]\s*/iu, '')
+    .replace(/^["'`“”‘’]+|["'`“”‘’.。]+$/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+
+  return cleaned.length >= 2 ? cleaned : undefined
 }
 
 const getErrorMessage = (error: unknown) => {

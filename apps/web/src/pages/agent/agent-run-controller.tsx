@@ -70,8 +70,9 @@ type AgentRunControllerValue = {
   workspaces: SandboxWorkspace[]
 }
 
-const AgentRunControllerContext =
-  createContext<AgentRunControllerValue | null>(null)
+const AgentRunControllerContext = createContext<AgentRunControllerValue | null>(
+  null,
+)
 
 export const AgentRunControllerProvider = ({
   children,
@@ -166,8 +167,7 @@ export const AgentRunControllerProvider = ({
   const selectedRunStreaming =
     Boolean(streamingAgentRunId) && selectedAgentRunId === streamingAgentRunId
   const hasActiveAgentTasks = useMemo(
-    () =>
-      runs.some((run) => run.status === 'running' || run.status === 'idle'),
+    () => runs.some((run) => run.status === 'running' || run.status === 'idle'),
     [runs],
   )
   const loading =
@@ -185,7 +185,10 @@ export const AgentRunControllerProvider = ({
     getQueryErrorMessage(sandboxWorkspacesQuery.error, agentRunsQuery.error)
 
   const buildRoute = useCallback(
-    (pathname: string, updates: Record<string, string | null> = {}): AppRoute => {
+    (
+      pathname: string,
+      updates: Record<string, string | null> = {},
+    ): AppRoute => {
       const params = new URLSearchParams(location.search)
 
       for (const [key, value] of Object.entries(updates)) {
@@ -509,7 +512,9 @@ export const AgentRunControllerProvider = ({
               if (event.type === 'run') {
                 syncActiveAssistantSegmentFromServer(event.run.messages)
                 upsertAgentRunPreservingVisibleMessages(event.run, {
-                  skipServerAssistantMessages: Boolean(activeAssistantMessageId),
+                  skipServerAssistantMessages: Boolean(
+                    activeAssistantMessageId,
+                  ),
                 })
                 return
               }
@@ -691,7 +696,6 @@ export const AgentRunControllerProvider = ({
         const response = await api.createAgentRun({
           workspaceId: selectedWorkspace.id,
           endpointId: endpoint?.id,
-          title: getAgentRunTitle(agentTaskDraft),
           task: agentTaskDraft,
         })
 
@@ -704,7 +708,13 @@ export const AgentRunControllerProvider = ({
         setAgentRunning(false)
       }
     },
-    [agentTaskDraft, endpoint, selectedWorkspace, streamAgentRun, upsertAgentRun],
+    [
+      agentTaskDraft,
+      endpoint,
+      selectedWorkspace,
+      streamAgentRun,
+      upsertAgentRun,
+    ],
   )
 
   const continueAgentRun = useCallback(
@@ -796,7 +806,8 @@ export const AgentRunControllerProvider = ({
 
       const project = projects.find((item) => item.id === issue.projectId)
       const response = await api.startIssue(issue.id, {
-        endpointId: issue.endpointId ?? project?.defaultEndpointId ?? endpoint?.id,
+        endpointId:
+          issue.endpointId ?? project?.defaultEndpointId ?? endpoint?.id,
       })
       upsertIssue(response.issue)
       upsertAgentRunsInCache(response.runs)
@@ -869,7 +880,10 @@ export const AgentRunControllerProvider = ({
   }, [selectedWorkspaceId, setSelectedWorkspaceId, workspaces])
 
   useEffect(() => {
-    if (selectedAgentRunId && !runs.some((run) => run.id === selectedAgentRunId)) {
+    if (
+      selectedAgentRunId &&
+      !runs.some((run) => run.id === selectedAgentRunId)
+    ) {
       void setSelectedAgentRunId(null)
     }
   }, [runs, selectedAgentRunId, setSelectedAgentRunId])
@@ -946,14 +960,12 @@ export const useAgentRunController = () => {
   const controller = useContext(AgentRunControllerContext)
 
   if (!controller) {
-    throw new Error('useAgentRunController must be used inside AgentRunControllerProvider')
+    throw new Error(
+      'useAgentRunController must be used inside AgentRunControllerProvider',
+    )
   }
 
   return controller
-}
-
-const getAgentRunTitle = (task: string) => {
-  return task.split('\n').find(Boolean)?.slice(0, 80) || 'Agent task'
 }
 
 const getIssueStatusFromRun = (run: AgentRun): IssueStatus => {

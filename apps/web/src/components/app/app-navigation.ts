@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  ChartColumn,
   ClipboardList,
   Server,
   Settings,
@@ -16,6 +17,12 @@ export const navigationItems = [
     path: '/projects',
   },
   { value: 'sandbox', label: 'Agent Tasks', icon: Terminal, path: '/agent' },
+  {
+    value: 'stats',
+    label: 'Statistics',
+    icon: ChartColumn,
+    path: '/stats',
+  },
   {
     value: 'settings',
     label: 'Settings',
@@ -43,4 +50,3 @@ export const settingsPages = [
   icon: LucideIcon
   path: string
 }>
-

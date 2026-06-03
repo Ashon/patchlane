@@ -1,6 +1,7 @@
 import type { ThemeMode } from './app-types'
 
 export const themeStorageKey = 'patchlane-theme'
+export const supervisorChatStorageKey = 'patchlane-supervisor-chat-open'
 export const themeModes = ['light', 'dark', 'system'] satisfies ThemeMode[]
 
 export const getStoredThemeMode = (): ThemeMode => {
@@ -36,6 +37,16 @@ export const getInitialSupervisorChatOpen = () => {
     return true
   }
 
+  const stored = window.localStorage.getItem(supervisorChatStorageKey)
+
+  if (stored === 'true') {
+    return true
+  }
+
+  if (stored === 'false') {
+    return false
+  }
+
   return window.matchMedia('(min-width: 1280px)').matches
 }
 
@@ -46,4 +57,3 @@ export const applyThemeMode = (mode: ThemeMode) => {
   document.documentElement.classList.toggle('dark', shouldUseDark)
   document.documentElement.dataset.theme = mode
 }
-

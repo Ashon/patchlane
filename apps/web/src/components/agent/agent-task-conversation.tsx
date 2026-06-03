@@ -202,57 +202,8 @@ const AgentContextMemoryPanel = ({
   )
 }
 
-const getVisibleAgentTaskMessages = (
-  run: AgentRun,
-  isStreaming: boolean,
-) => {
-  const messages = getAgentTaskConversationMessages(run, isStreaming)
-  const firstMessage = messages[0]
-
-  if (
-    firstMessage?.role !== 'user' ||
-    !isRedundantInitialPrompt(firstMessage.content, run.title)
-  ) {
-    return messages
-  }
-
-  return messages.slice(1)
-}
-
-const isRedundantInitialPrompt = (content: string, title: string) => {
-  const prompt = content.trim()
-  const normalizedPrompt = normalizeAgentTaskText(prompt)
-  const normalizedTitle = normalizeAgentTaskText(title)
-
-  if (!normalizedPrompt || !normalizedTitle) {
-    return false
-  }
-
-  if (normalizedPrompt === normalizedTitle) {
-    return true
-  }
-
-  const lines = prompt
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  return (
-    lines.length === 1 &&
-    normalizeAgentTaskText(stripAgentTaskPromptLabel(lines[0]!)) ===
-      normalizedTitle
-  )
-}
-
-const stripAgentTaskPromptLabel = (value: string) => {
-  return value.replace(/^(issue|task|prompt)\s*:\s*/i, '').trim()
-}
-
-const normalizeAgentTaskText = (value: string) => {
-  return stripAgentTaskPromptLabel(value)
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
+const getVisibleAgentTaskMessages = (run: AgentRun, isStreaming: boolean) => {
+  return getAgentTaskConversationMessages(run, isStreaming)
 }
 
 const formatContextMemoryMarkdown = (

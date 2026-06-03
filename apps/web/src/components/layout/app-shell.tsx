@@ -1,14 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import {
-  Bot,
-  GitPullRequestArrow,
-  Loader2,
-  Monitor,
-  Moon,
-  RefreshCw,
-  Sun,
-} from 'lucide-react'
+import { Bot, GitPullRequestArrow, Monitor, Moon, Sun } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { navigationItems } from '@/components/app/app-navigation'
 import { getNextThemeMode } from '@/components/app/app-theme'
@@ -38,8 +30,6 @@ export const AppShell = ({
   enabledEndpointCount,
   endpointCount,
   githubReady,
-  loading,
-  onRefresh,
   onSupervisorChatOpenChange,
   onThemeModeChange,
   projectCount,
@@ -53,8 +43,6 @@ export const AppShell = ({
   enabledEndpointCount: number
   endpointCount: number
   githubReady: boolean
-  loading: boolean
-  onRefresh: () => void
   onSupervisorChatOpenChange: Dispatch<SetStateAction<boolean>>
   onThemeModeChange: (mode: ThemeMode) => void
   projectCount: number
@@ -72,8 +60,7 @@ export const AppShell = ({
       ? true
       : window.matchMedia('(min-width: 1280px)').matches,
   )
-  const showResizableSupervisor =
-    supervisorChatOpen && resizableLayoutEnabled
+  const showResizableSupervisor = supervisorChatOpen && resizableLayoutEnabled
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(min-width: 1280px)')
@@ -151,9 +138,7 @@ export const AppShell = ({
 
               <Button
                 aria-label={
-                  supervisorChatOpen
-                    ? 'Close supervisor'
-                    : 'Open supervisor'
+                  supervisorChatOpen ? 'Close supervisor' : 'Open supervisor'
                 }
                 aria-pressed={supervisorChatOpen}
                 className={cn(
@@ -165,23 +150,12 @@ export const AppShell = ({
                 }
                 size="icon-xs"
                 title={
-                  supervisorChatOpen
-                    ? 'Close supervisor'
-                    : 'Open supervisor'
+                  supervisorChatOpen ? 'Close supervisor' : 'Open supervisor'
                 }
                 type="button"
                 variant="outline"
               >
                 <Bot />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-xs"
-                onClick={onRefresh}
-                disabled={loading}
-                type="button"
-              >
-                {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               </Button>
               <ThemeToggle mode={themeMode} onChange={onThemeModeChange} />
             </div>
@@ -203,9 +177,7 @@ export const AppShell = ({
                 id="main"
                 minSize="520px"
               >
-                <div className="h-full min-w-0 overflow-hidden">
-                  {children}
-                </div>
+                <div className="h-full min-w-0 overflow-hidden">{children}</div>
               </ResizablePanel>
               <ResizableHandle />
               <ResizablePanel
