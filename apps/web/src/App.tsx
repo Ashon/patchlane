@@ -62,7 +62,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import { ChatPanel } from '@/components/chat/chat-panel'
-import { TextShimmerTestPage } from '@/components/debug/text-shimmer-test-page'
 import { ProjectDetailPage } from '@/components/issues/project-detail-page'
 import { ProjectsListPage } from '@/components/issues/projects-list-page'
 import type { ProjectDetailTab } from '@/components/issues/types'
@@ -102,7 +101,7 @@ type SandboxWorkspaceDraft = {
   ref: string
 }
 
-type AppView = 'chat' | 'projects' | 'workspaces' | 'sandbox' | 'settings'
+type AppView = 'projects' | 'workspaces' | 'sandbox' | 'settings'
 type ThemeMode = 'light' | 'dark' | 'system'
 
 const emptyDraft: EndpointDraft = {
@@ -126,7 +125,6 @@ const emptySandboxWorkspaceDraft: SandboxWorkspaceDraft = {
 }
 
 const navigationItems = [
-  { value: 'chat', label: 'Chat', icon: MessageSquare, path: '/chat' },
   {
     value: 'projects',
     label: 'Projects',
@@ -193,6 +191,14 @@ const getSystemPrefersDark = () => {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
+const getInitialSupervisorChatOpen = () => {
+  if (typeof window === 'undefined') {
+    return true
+  }
+
+  return window.matchMedia('(min-width: 1280px)').matches
+}
+
 const applyThemeMode = (mode: ThemeMode) => {
   const shouldUseDark =
     mode === 'dark' || (mode === 'system' && getSystemPrefersDark())
@@ -227,6 +233,9 @@ export default function App() {
     parseAsString.withOptions({ history: 'replace', shallow: true }),
   )
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode)
+  const [supervisorChatOpen, setSupervisorChatOpen] = useState(
+    getInitialSupervisorChatOpen,
+  )
   const [draft, setDraft] = useState<EndpointDraft>(emptyDraft)
   const [githubDraft, setGithubDraft] =
     useState<GitHubToolDraft>(emptyGitHubToolDraft)
@@ -360,6 +369,48 @@ export default function App() {
   const selectedAgentRun = useMemo(
     () => agentRuns.find((run) => run.id === selectedAgentRunId) ?? null,
     [agentRuns, selectedAgentRunId],
+  )
+  const supervisorContextLabel = useMemo(() => {
+    if (location.pathname.startsWith('/projects')) {
+      const selectedIssue =
+        issues.find((issue) => issue.id === selectedIssueId) ?? null
+
+      if (selectedIssue) {
+        const issueProject =
+          projects.find((project) => project.id === selectedIssue.projectId) ??
+          null
+
+        return `Projects / ${issueProject?.name ?? 'Unknown project'} / ${selectedIssue.title}`
+      }
+
+      return 'Projects'
+    }
+
+    if (location.pathname.startsWith('/agent')) {
+      return selectedAgentRun
+        ? `Agent Tasks / ${selectedAgentRun.title}`
+        : 'Agent Tasks'
+    }
+
+    if (location.pathname.startsWith('/settings')) {
+      return 'Settings'
+    }
+
+    if (location.pathname.startsWith('/workspaces')) {
+      return 'Workspaces'
+    }
+
+    return 'Agent Fleet'
+  }, [issues, location.pathname, projects, selectedAgentRun, selectedIssueId])
+  const supervisorChatSystemPrompt = useMemo(
+    () =>
+      [
+        'You are the Supervisor Chat for Agent Fleet.',
+        'Help coordinate project issues, agent tasks, workspace setup, endpoints, and verification across the whole app.',
+        `Current app context: ${supervisorContextLabel}.`,
+        'If the user asks for an app action you cannot perform through this chat endpoint, explain the exact page or control they should use.',
+      ].join('\n'),
+    [supervisorContextLabel],
   )
   const isSelectedAgentRunStreaming =
     Boolean(streamingAgentRunId) && selectedAgentRunId === streamingAgentRunId
@@ -1424,6 +1475,16 @@ export default function App() {
               </div>
 
               <Button
+                variant={supervisorChatOpen ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-8"
+                onClick={() => setSupervisorChatOpen((current) => !current)}
+                type="button"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="hidden sm:inline">Supervisor</span>
+              </Button>
+              <Button
                 variant="outline"
                 size="icon"
                 className="h-8 w-8"
@@ -1438,67 +1499,61 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <Routes>
-            <Route
-              element={<Navigate replace to={buildRoute('/chat')} />}
-              path="/"
-            />
-            <Route
-              element={
-                <ChatPanel
-                  endpoint={selectedChatEndpoint}
-                  endpoints={endpoints}
-                  loading={loading}
-                  onEndpointChange={(id) => void setSelectedChatEndpointId(id)}
-                />
-              }
-              path="/chat"
-            />
-            <Route
-              element={
-                <ProjectsListPage
-                  endpoints={endpoints}
-                  error={issuesLoadError}
-                  issues={issues}
-                  loading={loading}
-                  onOpenProject={(id) =>
-                    navigate(
-                      buildRoute(`/projects/${id}/issues`, {
-                        issue: null,
-                        project: null,
-                      }),
-                    )
-                  }
-                  projects={projects}
-                  selectedEndpoint={defaultEndpoint}
-                  workspaces={sandboxWorkspaces}
-                />
-              }
-              path="/projects"
-            />
-            <Route
-              element={<ProjectDetailRoute />}
-              path="/projects/:projectId"
-            />
-            <Route
-              element={<ProjectDetailRoute />}
-              path="/projects/:projectId/:tab"
-            />
-            <Route
-              element={<Navigate replace to={buildRoute('/projects')} />}
-              path="/issues"
-            />
-            <Route
-              element={
-                <Navigate replace to={buildRoute('/settings/endpoints')} />
-              }
-              path="/settings"
-            />
-            <Route
-              element={
-                <SettingsShell>
-                  <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <Routes>
+              <Route
+                element={<Navigate replace to={buildRoute('/projects')} />}
+                path="/"
+              />
+              <Route
+                element={<Navigate replace to={buildRoute('/projects')} />}
+                path="/chat"
+              />
+              <Route
+                element={
+                  <ProjectsListPage
+                    endpoints={endpoints}
+                    error={issuesLoadError}
+                    issues={issues}
+                    loading={loading}
+                    onOpenProject={(id) =>
+                      navigate(
+                        buildRoute(`/projects/${id}/issues`, {
+                          issue: null,
+                          project: null,
+                        }),
+                      )
+                    }
+                    projects={projects}
+                    selectedEndpoint={defaultEndpoint}
+                    workspaces={sandboxWorkspaces}
+                  />
+                }
+                path="/projects"
+              />
+              <Route
+                element={<ProjectDetailRoute />}
+                path="/projects/:projectId"
+              />
+              <Route
+                element={<ProjectDetailRoute />}
+                path="/projects/:projectId/:tab"
+              />
+              <Route
+                element={<Navigate replace to={buildRoute('/projects')} />}
+                path="/issues"
+              />
+              <Route
+                element={
+                  <Navigate replace to={buildRoute('/settings/endpoints')} />
+                }
+                path="/settings"
+              />
+              <Route
+                element={
+                  <SettingsShell>
+                    <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
                     <div className="flex min-h-[320px] flex-col lg:min-h-0">
                       <div className="flex min-h-10 items-center justify-between border-b px-3 py-2">
                         <h2 className="text-sm font-semibold">Endpoints</h2>
@@ -1728,12 +1783,35 @@ export default function App() {
               }
               path="/agent"
             />
-            <Route element={<TextShimmerTestPage />} path="/debug/text-shimmer" />
             <Route
-              element={<Navigate replace to={buildRoute('/chat')} />}
+              element={<Navigate replace to={buildRoute('/projects')} />}
               path="*"
             />
           </Routes>
+          </div>
+
+          {supervisorChatOpen ? (
+            <>
+              <button
+                aria-label="Close supervisor chat backdrop"
+                className="absolute inset-0 z-30 bg-background/60 backdrop-blur-sm xl:hidden"
+                onClick={() => setSupervisorChatOpen(false)}
+                type="button"
+              />
+              <aside className="absolute inset-y-0 right-0 z-40 flex w-full max-w-[420px] min-h-0 border-l bg-background shadow-xl xl:relative xl:z-auto xl:w-[380px] xl:max-w-none xl:shrink-0 xl:shadow-none 2xl:w-[420px]">
+                <ChatPanel
+                  contextLabel={supervisorContextLabel}
+                  endpoint={selectedChatEndpoint}
+                  endpoints={endpoints}
+                  loading={loading}
+                  onEndpointChange={(id) => void setSelectedChatEndpointId(id)}
+                  systemPrompt={supervisorChatSystemPrompt}
+                  title="Supervisor Chat"
+                  variant="sidebar"
+                />
+              </aside>
+            </>
+          ) : null}
         </div>
       </div>
     </main>

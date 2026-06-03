@@ -152,7 +152,7 @@ export const ProjectDetailPage = ({
     event.preventDefault()
 
     if (!project) {
-      return
+      return false
     }
 
     setSavingIssue(true)
@@ -174,8 +174,10 @@ export const ProjectDetailPage = ({
         ...emptyIssueDraft,
         endpointId: current.endpointId,
       }))
+      return true
     } catch (saveError) {
       setLocalError(getErrorMessage(saveError))
+      return false
     } finally {
       setSavingIssue(false)
     }

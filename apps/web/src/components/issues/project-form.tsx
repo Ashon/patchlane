@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react'
 import type { LlmEndpoint, SandboxWorkspace } from '@agent-fleet/shared'
-import { Loader2, Save } from 'lucide-react'
+import { Loader2, Plus, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { NO_WORKSPACE_VALUE } from './constants'
 import { Field } from './common'
 import type { ProjectDraft } from './types'
@@ -30,93 +31,109 @@ export const ProjectForm = ({
   saving: boolean
   submitLabel: string
   workspaces: SandboxWorkspace[]
-}) => (
-  <form className="grid gap-2.5" onSubmit={onSubmit}>
-    <div className="grid gap-2 lg:grid-cols-[minmax(180px,260px)_minmax(260px,1fr)_140px_140px]">
-      <Field label="Name">
-        <Input
-          onChange={(event) => onChange({ name: event.target.value })}
-          placeholder="agent-fleet"
-          required
-          value={draft.name}
-        />
-      </Field>
-      <Field label="GitHub repository URL">
-        <Input
-          onChange={(event) => onChange({ repositoryUrl: event.target.value })}
-          placeholder="https://github.com/org/repository.git"
-          value={draft.repositoryUrl}
-        />
-      </Field>
-      <Field label="Default ref">
-        <Input
-          onChange={(event) => onChange({ repositoryRef: event.target.value })}
-          placeholder="main"
-          value={draft.repositoryRef}
-        />
-      </Field>
-      <Field label="Branch prefix">
-        <Input
-          onChange={(event) => onChange({ branchPrefix: event.target.value })}
-          placeholder="agent"
-          required
-          value={draft.branchPrefix}
-        />
-      </Field>
-    </div>
+}) => {
+  const SubmitIcon = submitLabel === 'Create' ? Plus : Save
 
-    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_220px_260px_140px]">
+  return (
+    <form className="grid gap-4" onSubmit={onSubmit}>
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+        <Field label="Name">
+          <Input
+            onChange={(event) => onChange({ name: event.target.value })}
+            placeholder="agent-fleet"
+            required
+            value={draft.name}
+          />
+        </Field>
+        <Field label="Branch prefix">
+          <Input
+            onChange={(event) => onChange({ branchPrefix: event.target.value })}
+            placeholder="agent"
+            required
+            value={draft.branchPrefix}
+          />
+        </Field>
+      </div>
+
       <Field label="Description">
-        <Input
+        <Textarea
+          className="min-h-20 resize-none"
           onChange={(event) => onChange({ description: event.target.value })}
           placeholder="Issue intake, isolated coding runs, verification, and PR handoff."
           required
           value={draft.description}
         />
       </Field>
-      <Field label="Sandbox workspace">
-        <Select
-          onValueChange={(value) =>
-            onChange({ workspaceId: value === NO_WORKSPACE_VALUE ? '' : value })
-          }
-          value={draft.workspaceId || NO_WORKSPACE_VALUE}
-        >
-          <SelectTrigger className="bg-background">
-            <SelectValue placeholder="No workspace" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NO_WORKSPACE_VALUE}>No workspace</SelectItem>
-            {workspaces.map((workspace) => (
-              <SelectItem key={workspace.id} value={workspace.id}>
-                {workspace.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field label="Default endpoint">
-        <Select
-          onValueChange={(value) => onChange({ defaultEndpointId: value })}
-          value={draft.defaultEndpointId || undefined}
-        >
-          <SelectTrigger className="bg-background">
-            <SelectValue placeholder="Default" />
-          </SelectTrigger>
-          <SelectContent>
-            {endpoints.map((endpoint) => (
-              <SelectItem key={endpoint.id} value={endpoint.id}>
-                {endpoint.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field label="Action">
-        <Button className="w-full" disabled={saving} type="submit">
-          {saving ? <Loader2 className="animate-spin" /> : <Save />}
+
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
+        <Field label="GitHub repository URL">
+          <Input
+            onChange={(event) =>
+              onChange({ repositoryUrl: event.target.value })
+            }
+            placeholder="https://github.com/org/repository.git"
+            value={draft.repositoryUrl}
+          />
+        </Field>
+        <Field label="Default ref">
+          <Input
+            onChange={(event) =>
+              onChange({ repositoryRef: event.target.value })
+            }
+            placeholder="main"
+            value={draft.repositoryRef}
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Sandbox workspace">
+          <Select
+            onValueChange={(value) =>
+              onChange({
+                workspaceId: value === NO_WORKSPACE_VALUE ? '' : value,
+              })
+            }
+            value={draft.workspaceId || NO_WORKSPACE_VALUE}
+          >
+            <SelectTrigger className="bg-background">
+              <SelectValue placeholder="No workspace" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_WORKSPACE_VALUE}>No workspace</SelectItem>
+              {workspaces.map((workspace) => (
+                <SelectItem key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Default endpoint">
+          <Select
+            onValueChange={(value) => onChange({ defaultEndpointId: value })}
+            value={draft.defaultEndpointId || undefined}
+          >
+            <SelectTrigger className="bg-background">
+              <SelectValue placeholder="Default" />
+            </SelectTrigger>
+            <SelectContent>
+              {endpoints.map((endpoint) => (
+                <SelectItem key={endpoint.id} value={endpoint.id}>
+                  {endpoint.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+
+      <div className="flex justify-end border-t pt-4">
+        <Button className="min-w-28" disabled={saving} type="submit">
+          {saving ? <Loader2 className="animate-spin" /> : <SubmitIcon />}
           {submitLabel}
         </Button>
-      </Field>
-    </div>
-  </form>
-)
+      </div>
+    </form>
+  )
+}

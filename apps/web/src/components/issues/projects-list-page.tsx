@@ -193,7 +193,7 @@ export const ProjectsListPage = ({
       </main>
 
       <Dialog onOpenChange={setProjectDialogOpen} open={projectDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>New project</DialogTitle>
             <DialogDescription>

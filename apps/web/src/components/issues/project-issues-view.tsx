@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react'
+import { type FormEvent, useState } from 'react'
 import type {
   AgentProject,
   AgentRun,
@@ -9,6 +9,14 @@ import type {
 } from '@agent-fleet/shared'
 import { ClipboardList, Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -17,7 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { EmptyState, MetricBadge } from './common'
+import { Textarea } from '@/components/ui/textarea'
+import { EmptyState, Field, MetricBadge } from './common'
 import { IssueDetail } from './issue-detail'
 import { IssueRow } from './issue-row'
 import type { IssueDraft } from './types'
@@ -41,7 +50,7 @@ export const ProjectIssuesView = ({
   selectedIssue,
   workspaces,
 }: {
-  createIssue: (event: FormEvent<HTMLFormElement>) => void
+  createIssue: (event: FormEvent<HTMLFormElement>) => Promise<boolean>
   endpoints: LlmEndpoint[]
   issueDraft: IssueDraft
   issues: Issue[]
@@ -57,172 +66,226 @@ export const ProjectIssuesView = ({
   selectedEndpoint: LlmEndpoint | null
   selectedIssue: Issue | null
   workspaces: SandboxWorkspace[]
-}) => (
-  <section className="flex h-full min-h-0 flex-col bg-background">
-    <div className="flex min-h-10 items-center justify-between border-b bg-background px-3 py-2">
-      <div className="min-w-0">
-        <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <ClipboardList className="h-4 w-4" />
-          Issues
-        </h2>
-        <p className="truncate text-xs text-muted-foreground">{project.name}</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <MetricBadge label="Ready" value={countStatus(issues, 'ready')} />
-        <MetricBadge label="Planning" value={countStatus(issues, 'planning')} />
-        <MetricBadge label="Running" value={countStatus(issues, 'running')} />
-        <MetricBadge label="Review" value={countStatus(issues, 'review')} />
-      </div>
-    </div>
+}) => {
+  const [issueDialogOpen, setIssueDialogOpen] = useState(false)
+  const selectedIssueEndpointId =
+    issueDraft.endpointId ||
+    project.defaultEndpointId ||
+    selectedEndpoint?.id ||
+    undefined
 
-    <form
-      className="grid gap-2 border-b bg-muted/20 p-2.5 lg:grid-cols-[minmax(220px,320px)_minmax(260px,1fr)_120px_220px_120px]"
-      onSubmit={createIssue}
-    >
-      <Input
-        onChange={(event) =>
-          onIssueDraftChange((current) => ({
-            ...current,
-            title: event.target.value,
-          }))
-        }
-        placeholder="New issue title"
-        required
-        value={issueDraft.title}
-      />
-      <Input
-        onChange={(event) =>
-          onIssueDraftChange((current) => ({
-            ...current,
-            description: event.target.value,
-          }))
-        }
-        placeholder="Expected change, constraints, verification"
-        required
-        value={issueDraft.description}
-      />
-      <Select
-        onValueChange={(value) =>
-          onIssueDraftChange((current) => ({
-            ...current,
-            priority: value as IssuePriority,
-          }))
-        }
-        value={issueDraft.priority}
-      >
-        <SelectTrigger className="bg-background">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {(['low', 'medium', 'high', 'urgent'] satisfies IssuePriority[]).map(
-            (priority) => (
-              <SelectItem key={priority} value={priority}>
-                {priority}
-              </SelectItem>
-            ),
-          )}
-        </SelectContent>
-      </Select>
-      <Select
-        onValueChange={(value) =>
-          onIssueDraftChange((current) => ({ ...current, endpointId: value }))
-        }
-        value={
-          issueDraft.endpointId ||
-          project.defaultEndpointId ||
-          selectedEndpoint?.id ||
-          undefined
-        }
-      >
-        <SelectTrigger className="bg-background">
-          <SelectValue placeholder="Endpoint" />
-        </SelectTrigger>
-        <SelectContent>
-          {endpoints.map((endpoint) => (
-            <SelectItem key={endpoint.id} value={endpoint.id}>
-              {endpoint.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button disabled={savingIssue} type="submit">
-        {savingIssue ? <Loader2 className="animate-spin" /> : <Plus />}
-        Add
-      </Button>
-    </form>
+  const handleCreateIssue = async (event: FormEvent<HTMLFormElement>) => {
+    const created = await createIssue(event)
 
-    <div className="grid min-h-0 flex-1 overflow-hidden bg-muted/20 xl:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
-      <section className="min-h-0 overflow-y-auto border-b bg-background xl:border-b-0 xl:border-r">
-        {issues.length ? (
-          <div className="divide-y">
-            {issues.map((issue) => (
-              <IssueRow
-                agentRun={
-                  issue.agentRunId ? runById.get(issue.agentRunId) : undefined
-                }
-                issue={issue}
-                key={issue.id}
-                loading={runningIssueId === issue.id}
-                onAnalyze={() => void onAnalyze(issue)}
-                onOpenRun={onOpenRun}
-                onSelect={() => onSelectIssue(issue.id)}
-                onStart={() => void onStart(issue)}
-                planningRun={
-                  issue.planningRunId
-                    ? runById.get(issue.planningRunId)
-                    : undefined
-                }
-                projectWorkspaceId={project.workspaceId}
-                requirementRun={
-                  issue.requirementRunId
-                    ? runById.get(issue.requirementRunId)
-                    : undefined
-                }
-                selected={selectedIssue?.id === issue.id}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="p-3">
-            <EmptyState>No issues in this project</EmptyState>
-          </div>
-        )}
-      </section>
+    if (created) {
+      setIssueDialogOpen(false)
+    }
+  }
 
-      <section className="min-h-[420px] min-w-0 bg-background xl:min-h-0">
-        {selectedIssue ? (
-          <IssueDetail
-            issue={selectedIssue}
-            onOpenRun={onOpenRun}
-            planningRun={
-              selectedIssue.planningRunId
-                ? runById.get(selectedIssue.planningRunId)
-                : undefined
-            }
-            requirementRun={
-              selectedIssue.requirementRunId
-                ? runById.get(selectedIssue.requirementRunId)
-                : undefined
-            }
-            run={
-              selectedIssue.agentRunId
-                ? runById.get(selectedIssue.agentRunId)
-                : undefined
-            }
-            workspace={workspaces.find(
-              (workspace) =>
-                workspace.id ===
-                (selectedIssue.workspaceId ?? project.workspaceId),
-            )}
+  return (
+    <section className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex min-h-10 flex-col gap-2 border-b bg-background px-3 py-2 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <ClipboardList className="h-4 w-4" />
+            Issues
+          </h2>
+          <p className="truncate text-xs text-muted-foreground">
+            {project.name}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <MetricBadge label="Ready" value={countStatus(issues, 'ready')} />
+          <MetricBadge
+            label="Planning"
+            value={countStatus(issues, 'planning')}
           />
-        ) : (
-          <div className="flex h-full min-h-[320px] items-center justify-center p-3">
-            <EmptyState>
-              Select an issue to inspect requirements, plan, and run state
-            </EmptyState>
-          </div>
-        )}
-      </section>
-    </div>
-  </section>
-)
+          <MetricBadge
+            label="Running"
+            value={countStatus(issues, 'running')}
+          />
+          <MetricBadge label="Review" value={countStatus(issues, 'review')} />
+          <Button
+            onClick={() => setIssueDialogOpen(true)}
+            size="sm"
+            type="button"
+          >
+            <Plus className="h-4 w-4" />
+            New issue
+          </Button>
+        </div>
+      </div>
+
+      <Dialog onOpenChange={setIssueDialogOpen} open={issueDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>New issue</DialogTitle>
+            <DialogDescription>
+              Define the work item and choose the endpoint used for scoped agent
+              tasks.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="grid gap-4" onSubmit={handleCreateIssue}>
+            <Field label="Title">
+              <Input
+                onChange={(event) =>
+                  onIssueDraftChange((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
+                placeholder="New issue title"
+                required
+                value={issueDraft.title}
+              />
+            </Field>
+            <Field label="Description">
+              <Textarea
+                className="min-h-24 resize-none"
+                onChange={(event) =>
+                  onIssueDraftChange((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                placeholder="Expected change, constraints, verification"
+                required
+                value={issueDraft.description}
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
+              <Field label="Priority">
+                <Select
+                  onValueChange={(value) =>
+                    onIssueDraftChange((current) => ({
+                      ...current,
+                      priority: value as IssuePriority,
+                    }))
+                  }
+                  value={issueDraft.priority}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(
+                      ['low', 'medium', 'high', 'urgent'] satisfies IssuePriority[]
+                    ).map((priority) => (
+                      <SelectItem key={priority} value={priority}>
+                        {priority}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Endpoint">
+                <Select
+                  onValueChange={(value) =>
+                    onIssueDraftChange((current) => ({
+                      ...current,
+                      endpointId: value,
+                    }))
+                  }
+                  value={selectedIssueEndpointId}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Endpoint" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {endpoints.map((endpoint) => (
+                      <SelectItem key={endpoint.id} value={endpoint.id}>
+                        {endpoint.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <DialogFooter className="border-t pt-4">
+              <Button disabled={savingIssue} type="submit">
+                {savingIssue ? <Loader2 className="animate-spin" /> : <Plus />}
+                Create
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <div className="grid min-h-0 flex-1 overflow-hidden bg-muted/20 xl:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
+        <section className="min-h-0 overflow-y-auto border-b bg-background xl:border-b-0 xl:border-r">
+          {issues.length ? (
+            <div className="divide-y">
+              {issues.map((issue) => (
+                <IssueRow
+                  agentRun={
+                    issue.agentRunId
+                      ? runById.get(issue.agentRunId)
+                      : undefined
+                  }
+                  issue={issue}
+                  key={issue.id}
+                  loading={runningIssueId === issue.id}
+                  onAnalyze={() => void onAnalyze(issue)}
+                  onOpenRun={onOpenRun}
+                  onSelect={() => onSelectIssue(issue.id)}
+                  onStart={() => void onStart(issue)}
+                  planningRun={
+                    issue.planningRunId
+                      ? runById.get(issue.planningRunId)
+                      : undefined
+                  }
+                  projectWorkspaceId={project.workspaceId}
+                  requirementRun={
+                    issue.requirementRunId
+                      ? runById.get(issue.requirementRunId)
+                      : undefined
+                  }
+                  selected={selectedIssue?.id === issue.id}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="p-3">
+              <EmptyState>No issues in this project</EmptyState>
+            </div>
+          )}
+        </section>
+
+        <section className="min-h-[420px] min-w-0 bg-background xl:min-h-0">
+          {selectedIssue ? (
+            <IssueDetail
+              issue={selectedIssue}
+              onOpenRun={onOpenRun}
+              planningRun={
+                selectedIssue.planningRunId
+                  ? runById.get(selectedIssue.planningRunId)
+                  : undefined
+              }
+              requirementRun={
+                selectedIssue.requirementRunId
+                  ? runById.get(selectedIssue.requirementRunId)
+                  : undefined
+              }
+              run={
+                selectedIssue.agentRunId
+                  ? runById.get(selectedIssue.agentRunId)
+                  : undefined
+              }
+              workspace={workspaces.find(
+                (workspace) =>
+                  workspace.id ===
+                  (selectedIssue.workspaceId ?? project.workspaceId),
+              )}
+            />
+          ) : (
+            <div className="flex h-full min-h-[320px] items-center justify-center p-3">
+              <EmptyState>
+                Select an issue to inspect requirements, plan, and run state
+              </EmptyState>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  )
+}

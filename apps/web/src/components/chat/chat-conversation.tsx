@@ -70,6 +70,7 @@ type ConversationRenderItem =
     }
 
 type ChatConversationProps = {
+  contentClassName?: string
   emptyState: ReactNode
   error?: string | null
   header?: ReactNode
@@ -88,9 +89,11 @@ type ChatConversationProps = {
   showInlineActivity?: boolean
   showMessageMeta?: boolean
   showStreamingPlaceholder?: boolean
+  wideMessages?: boolean
 }
 
 export const ChatConversation = ({
+  contentClassName,
   emptyState,
   error,
   header,
@@ -109,6 +112,7 @@ export const ChatConversation = ({
   showInlineActivity = true,
   showMessageMeta = false,
   showStreamingPlaceholder = true,
+  wideMessages = false,
 }: ChatConversationProps) => {
   const [reasoningOpen, setReasoningOpen] = useState<Record<string, boolean>>(
     {},
@@ -171,7 +175,9 @@ export const ChatConversation = ({
           className="relative h-full"
           contextRef={setStickToBottomContext}
         >
-          <ChatContainerContent className="w-full px-3 py-2">
+          <ChatContainerContent
+            className={cn('w-full px-3 py-2', contentClassName)}
+          >
             {messages.length === 0 ? (
               emptyState
             ) : (
@@ -202,6 +208,7 @@ export const ChatConversation = ({
                           onRewind={onRewindMessage}
                           rewindDisabled={inputLoading}
                           showMeta={showMessageMeta}
+                          wide={wideMessages}
                         />
                       ) : (
                         <AssistantMessageRow
@@ -215,6 +222,7 @@ export const ChatConversation = ({
                           showAvatar={showAssistantAvatar}
                           showMeta={showMessageMeta}
                           showStreamingPlaceholder={showStreamingPlaceholder}
+                          wide={wideMessages}
                         />
                       )}
                     </div>
@@ -223,7 +231,10 @@ export const ChatConversation = ({
               </div>
             )}
             {showInlineActivity && inputLoading && !hasInlineActivity ? (
-              <AssistantActivityIndicator showAvatar={showAssistantAvatar} />
+              <AssistantActivityIndicator
+                showAvatar={showAssistantAvatar}
+                wide={wideMessages}
+              />
             ) : null}
             <ChatContainerScrollAnchor />
           </ChatContainerContent>
@@ -264,11 +275,13 @@ export const ChatConversation = ({
 
 const AssistantActivityIndicator = ({
   showAvatar,
+  wide,
 }: {
   showAvatar: boolean
+  wide: boolean
 }) => {
   return (
-    <Message className="group w-full min-w-0 gap-2">
+    <Message className={cn('group w-full min-w-0', wide ? 'gap-0' : 'gap-2')}>
       {showAvatar ? (
         <MessageAvatar
           alt="Assistant"
@@ -382,6 +395,32 @@ const getEstimatedRenderItemSize = (item?: ConversationRenderItem) => {
   return item.message.content.length > 480 ? 140 : 80
 }
 
+const getAssistantBlockWidthClass = (wide: boolean) =>
+  wide ? 'w-full max-w-full' : 'w-fit max-w-[min(920px,calc(100%_-_10rem))]'
+
+const getReasoningFrameClass = (wide: boolean) =>
+  wide
+    ? 'w-full max-w-full min-w-0 overflow-hidden'
+    : 'w-fit max-w-full min-w-0 overflow-hidden'
+
+const getReasoningContentFrameClass = (
+  isReasoningOpen: boolean,
+  wide: boolean,
+) => {
+  if (!isReasoningOpen) {
+    return 'm-0 h-0 w-0 border-0 p-0'
+  }
+
+  return wide
+    ? 'mt-0.5 max-w-full'
+    : 'ml-1 mt-0.5 max-w-full border-l pl-2'
+}
+
+const getInsetOverlayClass = (side: 'left' | 'right') =>
+  side === 'right'
+    ? 'bottom-1 left-auto right-1 pl-0'
+    : 'bottom-1 right-auto left-1 flex-row pr-0'
+
 const MessageBlockFrame = ({
   accessory,
   children,
@@ -445,23 +484,33 @@ const UserMessageBubble = ({
   onRewind,
   rewindDisabled,
   showMeta,
+  wide,
 }: {
   message: ConversationMessage
   onRewind?: (message: ConversationMessage) => void
   rewindDisabled?: boolean
   showMeta: boolean
+  wide: boolean
 }) => {
   const content = message.content
   const metadataAccessory = getMetadataAccessory(message.metadata)
 
   return (
     <Message className="group w-full min-w-0 justify-end">
-      <div className="group/message flex w-full min-w-0 max-w-[920px] flex-col items-end space-y-1">
+      <div
+        className={cn(
+          'group/message flex w-full min-w-0 flex-col items-end space-y-1',
+          !wide && 'max-w-[920px]',
+        )}
+      >
         {showMeta ? <MessageMeta message={message} /> : null}
         {content ? (
           <MessageBlockFrame
             accessory={metadataAccessory}
-            className="w-fit max-w-[calc(100%_-_10rem)]"
+            className={
+              wide ? 'w-fit max-w-full' : 'w-fit max-w-[calc(100%_-_10rem)]'
+            }
+            overlayClassName={wide ? getInsetOverlayClass('left') : undefined}
             overlay={
               <MessageStatusActions
                 message={message}
@@ -496,6 +545,7 @@ const AssistantMessageRow = ({
   showAvatar,
   showMeta,
   showStreamingPlaceholder,
+  wide,
 }: {
   message: ConversationMessage
   metaMessage?: ConversationMessage
@@ -507,9 +557,10 @@ const AssistantMessageRow = ({
   showAvatar: boolean
   showMeta: boolean
   showStreamingPlaceholder: boolean
+  wide: boolean
 }) => {
   return (
-    <Message className="group w-full min-w-0 gap-2">
+    <Message className={cn('group w-full min-w-0', wide ? 'gap-0' : 'gap-2')}>
       {showAvatar && metaMessage ? (
         <MessageAvatar
           alt="Assistant"
@@ -532,6 +583,7 @@ const AssistantMessageRow = ({
           reasoningOpen={reasoningOpen}
           rewindDisabled={rewindDisabled}
           showStreamingPlaceholder={showStreamingPlaceholder}
+          wide={wide}
         />
       </div>
     </Message>
@@ -546,6 +598,7 @@ const AssistantMessagePart = ({
   reasoningOpen,
   rewindDisabled,
   showStreamingPlaceholder,
+  wide,
 }: {
   message: ConversationMessage
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
@@ -554,6 +607,7 @@ const AssistantMessagePart = ({
   reasoningOpen?: boolean
   rewindDisabled?: boolean
   showStreamingPlaceholder: boolean
+  wide: boolean
 }) => {
   const isTool = message.role === 'tool'
   const isSystem = message.role === 'system'
@@ -589,6 +643,7 @@ const AssistantMessagePart = ({
         onRewind={onRewind}
         reasoning={reasoning}
         rewindDisabled={rewindDisabled}
+        wide={wide}
       />
     )
   }
@@ -608,10 +663,10 @@ const AssistantMessagePart = ({
       {showReasoning ? (
         <MessageBlockFrame
           accessory={metadataAccessory}
-          className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
+          className={getAssistantBlockWidthClass(wide)}
         >
           <Reasoning
-            className="w-fit max-w-full min-w-0 overflow-hidden"
+            className={getReasoningFrameClass(wide)}
             onOpenChange={(open) => onReasoningOpenChange(message, open)}
             open={isReasoningOpen}
           >
@@ -621,9 +676,7 @@ const AssistantMessagePart = ({
             <ReasoningContent
               className={cn(
                 'min-w-0',
-                isReasoningOpen
-                  ? 'ml-1 mt-0.5 max-w-full border-l pl-2'
-                  : 'm-0 h-0 w-0 border-0 p-0',
+                getReasoningContentFrameClass(isReasoningOpen, wide),
               )}
               contentClassName={cn(
                 'max-w-full overflow-hidden py-0.5 text-xs leading-5 break-words prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 [&_*]:max-w-full [&_pre]:overflow-x-auto',
@@ -641,7 +694,7 @@ const AssistantMessagePart = ({
       {showThinkingPlaceholder ? (
         <MessageBlockFrame
           accessory={metadataAccessory}
-          className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
+          className={getAssistantBlockWidthClass(wide)}
         >
           <ThinkingBar className="h-7 w-fit max-w-full py-0 text-xs" />
         </MessageBlockFrame>
@@ -650,7 +703,7 @@ const AssistantMessagePart = ({
       {showPreservedPlaceholder && !showThinkingPlaceholder ? (
         <MessageBlockFrame
           accessory={metadataAccessory}
-          className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
+          className={getAssistantBlockWidthClass(wide)}
         >
           <ThinkingBar
             className="h-7 w-fit max-w-full py-0 text-xs"
@@ -662,7 +715,7 @@ const AssistantMessagePart = ({
       {isTool ? (
         <MessageBlockFrame
           accessory={metadataAccessory}
-          className="w-fit max-w-[min(720px,calc(100%_-_10rem))]"
+          className={getAssistantBlockWidthClass(wide)}
         >
           <Tool
             className="border-muted-foreground/20 bg-muted/20 shadow-none"
@@ -674,7 +727,8 @@ const AssistantMessagePart = ({
       ) : showContent ? (
         <MessageBlockFrame
           accessory={metadataAccessory}
-          className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
+          className={getAssistantBlockWidthClass(wide)}
+          overlayClassName={wide ? getInsetOverlayClass('right') : undefined}
           overlay={
             <MessageStatusActions
               message={message}
@@ -711,6 +765,7 @@ const StableAssistantStreamBlock = ({
   onRewind,
   reasoning,
   rewindDisabled,
+  wide,
 }: {
   content: string
   isReasoningOpen: boolean
@@ -722,6 +777,7 @@ const StableAssistantStreamBlock = ({
   onRewind?: (message: ConversationMessage) => void
   reasoning: string
   rewindDisabled?: boolean
+  wide: boolean
 }) => {
   const showReasoning = Boolean(reasoning)
   const showContent = Boolean(content)
@@ -735,7 +791,8 @@ const StableAssistantStreamBlock = ({
     <div className="group/message w-full min-w-0 overflow-visible">
       <MessageBlockFrame
         accessory={metadataAccessory}
-        className="w-fit max-w-[min(920px,calc(100%_-_10rem))]"
+        className={getAssistantBlockWidthClass(wide)}
+        overlayClassName={wide ? getInsetOverlayClass('right') : undefined}
         overlay={
           showContent ? (
             <MessageStatusActions
@@ -746,10 +803,15 @@ const StableAssistantStreamBlock = ({
           ) : null
         }
       >
-        <div className="w-fit max-w-full min-w-0 space-y-0.5 overflow-visible">
+        <div
+          className={cn(
+            'max-w-full min-w-0 space-y-0.5 overflow-visible',
+            wide ? 'w-full' : 'w-fit',
+          )}
+        >
           {showReasoning ? (
             <Reasoning
-              className="w-fit max-w-full min-w-0 overflow-visible"
+              className={cn(getReasoningFrameClass(wide), 'overflow-visible')}
               onOpenChange={(open) => onReasoningOpenChange(message, open)}
               open={isReasoningOpen}
             >
@@ -759,9 +821,7 @@ const StableAssistantStreamBlock = ({
               <ReasoningContent
                 className={cn(
                   'min-w-0',
-                  isReasoningOpen
-                    ? 'ml-1 mt-0.5 max-w-full border-l pl-2'
-                    : 'm-0 h-0 w-0 border-0 p-0',
+                  getReasoningContentFrameClass(isReasoningOpen, wide),
                 )}
                 contentClassName={cn(
                   'max-w-full overflow-hidden py-0.5 text-xs leading-5 break-words prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 [&_*]:max-w-full [&_pre]:overflow-x-auto',
