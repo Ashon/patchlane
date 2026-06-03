@@ -291,7 +291,7 @@ const AgentTaskContentPane = ({
           selectedWorkspace,
         )}
         icon={<Bot className="h-4 w-4" />}
-        title="Agent task"
+        title={selectedRun ? selectedRun.title : 'Agent task'}
       />
       <div className="min-h-0 flex-1">
         {selectedRun ? (
