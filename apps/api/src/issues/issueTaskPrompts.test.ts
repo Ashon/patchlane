@@ -46,8 +46,15 @@ describe('Given issue task prompts', () => {
     expect(prompt).toContain(
       'classify scope as tiny, small, medium, large, or risky',
     )
+    expect(prompt).toContain('concrete completion target')
+    expect(prompt).toContain('Do not stop at analysis')
+    expect(prompt).toContain('Avoid broad repo tours')
+    expect(prompt).toContain('tutoring signals')
+    expect(prompt).toContain('safe interpretation')
     expect(prompt).toContain('Use add_issue_comment')
     expect(prompt).toContain('kind=blocked')
+    expect(prompt).toContain('inspect git status/diff')
+    expect(prompt).toContain('summary issue comment')
     expect(prompt).toContain('run relevant verification')
   })
 })

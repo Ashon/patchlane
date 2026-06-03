@@ -20,11 +20,19 @@ import {
   writeWorkspaceFile,
 } from '../sandbox/workspaceFiles'
 import { estimateTextTokens, prepareAgentContext } from './agentContext'
+import { getFinishRejection } from './agentFinishGuard'
+import {
+  getBlockedToolNames,
+  getToolLoopNudgePrompt,
+} from './agentToolLoopNudge'
 import type { AgentRunStore } from './agentRunStore'
 import { createPullRequest } from './githubPr'
 import {
   buildCodingSystemPrompt,
   buildDurabilityRetryPrompt,
+  plainTextContinuationPrompt,
+  postDiffCompletionPrompt,
+  postEditCompletionPrompt,
   replayRecoveryPrompt,
   thinkingOnlyContinuationPrompt,
   toolIterationLimitMessage,
@@ -366,6 +374,7 @@ export class AgentRuntime {
         const pendingMessages: Array<
           Omit<AgentRunMessage, 'id' | 'createdAt'>
         > = []
+        const recentToolNames = getRecentToolNames(run.messages)
 
         for (
           let iteration = 0;
@@ -393,7 +402,7 @@ export class AgentRuntime {
           const completion = await client.chat.completions.create({
             model: activeModel,
             messages: messages as never,
-            tools: agentTools as never,
+            tools: getAvailableAgentTools(recentToolNames) as never,
             tool_choice: 'auto',
             temperature: 0.2,
             max_tokens: this.options.outputTokenBudget,
@@ -453,8 +462,11 @@ export class AgentRuntime {
                 content: assistantContent,
               }),
             })
-            awaitingUser = true
-            break
+            messages.push({
+              role: 'system',
+              content: plainTextContinuationPrompt,
+            })
+            continue
           }
 
           const toolAdjacentAssistantContent =
@@ -475,23 +487,50 @@ export class AgentRuntime {
 
           for (const toolCall of message.tool_calls) {
             const toolStartedAt = Date.now()
-            const result = await executeAgentTool(
+            const result = getBlockedToolNames(recentToolNames).has(
               toolCall.function.name,
-              toolCall.function.arguments,
-              {
-                settings: this.options.settings,
-                workspace,
-                run,
-                githubToken,
-                addIssueComment: this.options.addIssueComment,
-              },
             )
+              ? getBlockedToolResult(toolCall.function.name)
+              : await executeAgentTool(
+                  toolCall.function.name,
+                  toolCall.function.arguments,
+                  {
+                    settings: this.options.settings,
+                    workspace,
+                    run,
+                    githubToken,
+                    addIssueComment: this.options.addIssueComment,
+                  },
+                )
 
             messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               content: toToolPromptContent(result.content),
             })
+            recentToolNames.push(toolCall.function.name)
+            const toolLoopNudge = getToolLoopNudgePrompt(recentToolNames)
+            if (toolLoopNudge) {
+              messages.push({
+                role: 'system',
+                content: toolLoopNudge,
+              })
+            }
+            if (toolCall.function.name === 'write_file') {
+              messages.push({
+                role: 'system',
+                content: postEditCompletionPrompt,
+              })
+            }
+            if (
+              toolCall.function.name === 'git_status' ||
+              toolCall.function.name === 'git_diff'
+            ) {
+              messages.push({
+                role: 'system',
+                content: postDiffCompletionPrompt,
+              })
+            }
 
             pendingMessages.push({
               role: 'tool',
@@ -630,6 +669,7 @@ export class AgentRuntime {
         )
         emit({ type: 'run', run })
         const messages = [...preparedContext.messages]
+        const recentToolNames = getRecentToolNames(run.messages)
         const recoveryPrompt =
           durabilityAttempt > 0
             ? buildDurabilityRetryPrompt({
@@ -678,7 +718,7 @@ export class AgentRuntime {
           const streamRequest = {
             model: activeModel,
             messages: messages as never,
-            tools: agentTools as never,
+            tools: getAvailableAgentTools(recentToolNames) as never,
             tool_choice: 'auto',
             temperature: 0.2,
             max_tokens: this.options.outputTokenBudget,
@@ -804,8 +844,11 @@ export class AgentRuntime {
               emit({ type: 'run', run })
             }
 
-            awaitingUser = true
-            break
+            messages.push({
+              role: 'system',
+              content: plainTextContinuationPrompt,
+            })
+            continue
           }
 
           const userFacingAssistantContent =
@@ -838,23 +881,41 @@ export class AgentRuntime {
             })
 
             const toolStartedAt = Date.now()
-            const result = await executeAgentTool(
-              toolName,
-              toolCall.function.arguments,
-              {
-                settings: this.options.settings,
-                workspace,
-                run,
-                githubToken,
-                addIssueComment: this.options.addIssueComment,
-              },
-            )
+            const result = getBlockedToolNames(recentToolNames).has(toolName)
+              ? getBlockedToolResult(toolName)
+              : await executeAgentTool(toolName, toolCall.function.arguments, {
+                  settings: this.options.settings,
+                  workspace,
+                  run,
+                  githubToken,
+                  addIssueComment: this.options.addIssueComment,
+                })
 
             messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               content: toToolPromptContent(result.content),
             })
+            recentToolNames.push(toolName)
+            const toolLoopNudge = getToolLoopNudgePrompt(recentToolNames)
+            if (toolLoopNudge) {
+              messages.push({
+                role: 'system',
+                content: toolLoopNudge,
+              })
+            }
+            if (toolName === 'write_file') {
+              messages.push({
+                role: 'system',
+                content: postEditCompletionPrompt,
+              })
+            }
+            if (toolName === 'git_status' || toolName === 'git_diff') {
+              messages.push({
+                role: 'system',
+                content: postDiffCompletionPrompt,
+              })
+            }
 
             run = await this.options.runStore.appendMessage(run.id, {
               role: 'tool',
@@ -1202,6 +1263,21 @@ const executeAgentTool = async (
 
     if (name === 'finish') {
       const summary = requireString(args.summary, 'summary')
+      const rejection = getFinishRejection({
+        gitStatusShort: await getGitStatusShort(context),
+        issueRun: Boolean(context.run.issueId),
+        summary,
+      })
+
+      if (rejection) {
+        return toolResult({
+          error: rejection,
+          completed: false,
+          requiredNextStep:
+            'Continue the run with implementation, verification, or a precise blocker question.',
+        })
+      }
+
       return {
         content: summary,
         resultSummary: summary,
@@ -1220,6 +1296,53 @@ const executeAgentTool = async (
 const toolResult = (value: unknown): AgentToolResult => ({
   content: JSON.stringify(value, null, 2),
 })
+
+const getBlockedToolResult = (toolName: string): AgentToolResult => {
+  return toolResult({
+    error: `Tool '${toolName}' is temporarily disabled because it was repeated too many times in this run.`,
+    blocked: true,
+    requiredNextStep:
+      'Use the existing context to edit, verify with an allowed focused tool, call finish if complete, or ask one precise blocker question.',
+  })
+}
+
+const getGitStatusShort = async (context: ToolContext) => {
+  if (!context.run.issueId) {
+    return undefined
+  }
+
+  const result = await executeSandboxCommand(
+    context.settings,
+    context.workspace,
+    {
+      command: 'git',
+      args: ['status', '--short'],
+    },
+  )
+
+  if (!result.ok) {
+    return undefined
+  }
+
+  return result.stdout
+}
+
+const getAvailableAgentTools = (recentToolNames: string[]) => {
+  const blockedToolNames = getBlockedToolNames(recentToolNames)
+
+  if (blockedToolNames.size === 0) {
+    return agentTools
+  }
+
+  return agentTools.filter((tool) => !blockedToolNames.has(tool.function.name))
+}
+
+const getRecentToolNames = (messages: AgentRunMessage[]) => {
+  return messages
+    .filter((message) => message.role === 'tool' && message.toolName)
+    .map((message) => message.toolName as string)
+    .slice(-8)
+}
 
 const sleep = (durationMs: number) =>
   new Promise<void>((resolve) => {

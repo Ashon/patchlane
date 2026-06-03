@@ -735,8 +735,12 @@ const buildIssueAnalysis = ({
     '- The coding agent should assess scope directly in the task worktree.',
     '- The agent should decide whether the issue is actionable, under-specified, or unsafe before editing.',
     '- The agent should create its own plan when the inspected scope requires one.',
-    '- The agent should implement, verify, and finish from the same run when possible.',
-    '- The agent should ask for user input only when blocked by a concrete missing decision.',
+    '- The agent should convert the issue into a concrete completion target before editing.',
+    '- The agent should implement, verify, inspect git status/diff, add a final summary issue comment, and finish from the same run when possible.',
+    '- The agent should recover from failed commands by inspecting the error, making a smaller correction, and re-running focused verification.',
+    '- The agent should avoid repeated broad exploration once the relevant files or behavior are known.',
+    '- The agent should treat verification failures as feedback to patch and retry, not as immediate blockers.',
+    '- The agent should ask for user input only when blocked by a concrete missing decision and no safe useful next step remains.',
   ].join('\n')
 }
 

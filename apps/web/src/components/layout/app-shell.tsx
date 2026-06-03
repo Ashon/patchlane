@@ -160,10 +160,6 @@ export const AppShell = ({
                   supervisorChatOpen ? 'Close supervisor' : 'Open supervisor'
                 }
                 aria-pressed={supervisorChatOpen}
-                className={cn(
-                  supervisorChatOpen &&
-                    'border-primary/35 bg-primary/10 text-primary shadow-inner hover:bg-primary/15 hover:text-primary dark:border-primary/45 dark:bg-primary/15 dark:hover:bg-primary/20',
-                )}
                 onClick={() =>
                   onSupervisorChatOpenChange((current) => !current)
                 }
@@ -172,7 +168,7 @@ export const AppShell = ({
                   supervisorChatOpen ? 'Close supervisor' : 'Open supervisor'
                 }
                 type="button"
-                variant="outline"
+                variant={supervisorChatOpen ? 'default' : 'outline'}
               >
                 <Bot />
               </Button>
