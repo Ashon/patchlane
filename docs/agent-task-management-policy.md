@@ -629,6 +629,12 @@ Workspace APIs:
 
 ## UI Expectations
 
+Agents changing Patchlane UI should follow the
+[Agent Design System Guidelines](agent-design-system-guidelines.md). In
+particular, reuse layout primitives, keep the app shell compact, align chat work
+blocks through shared primitives, and verify overlays, borders, and streaming
+states for visual stability.
+
 Projects page:
 
 - Project list only
@@ -665,6 +671,8 @@ Coding conversation:
 - Reasoning/Thinking bar
 - Markdown rendering
 - Context memory panel when compacted
+- Agent work blocks follow the shared design system guidance for pulse
+  indicators, labels, previews, overlays, and metadata.
 
 ## Implementation Priorities
 

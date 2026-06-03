@@ -73,6 +73,7 @@ SANDBOX_ENV_ALLOWLIST=PATH,HOME,LANG,LC_ALL
 ## Product Specs
 
 - [Agent Task Management Policy](docs/agent-task-management-policy.md): project, issue, agent task, task workspace, verification, and PR flow policy.
+- [Agent Design System Guidelines](docs/agent-design-system-guidelines.md): compact app shell, page primitives, chat work blocks, overlays, typography, and visual QA guidance for agents changing UI.
 
 ## API
 
