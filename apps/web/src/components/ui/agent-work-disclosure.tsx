@@ -52,7 +52,7 @@ export const AgentWorkDisclosureTrigger = ({
     >
       {icon}
       <AgentWorkInlineText
-        className={cn('shrink-0 text-primary', labelClassName)}
+        className={cn('shrink-0 text-foreground', labelClassName)}
         shimmer={!hasPreview && streaming}
       >
         {label}
@@ -133,7 +133,7 @@ export const AgentWorkPulseIndicator = ({
   return (
     <span
       className={cn(
-        'grid shrink-0 place-items-center text-primary',
+        'grid shrink-0 place-items-center text-foreground',
         compact ? 'h-4 w-4' : 'h-5 w-5',
         className,
       )}

@@ -48,6 +48,7 @@ import {
 import { api } from '@/lib/api'
 import { getQueryErrorMessage } from '@/lib/errors'
 import { queryKeys } from '@/lib/query-client'
+import { cn } from '@/lib/utils'
 import { useAgentRunController } from '@/pages/agent/agent-run-controller'
 
 export const ProjectDetailPage = () => {
@@ -372,23 +373,31 @@ export const ProjectDetailPage = () => {
 
       <PageToolbar>
         <Button
+          className={cn(
+            selectedTab === 'issues' &&
+              'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
+          )}
           onClick={() =>
             navigate(buildRoute(`/projects/${activeProjectId}/issues`))
           }
           size="sm"
           type="button"
-          variant={selectedTab === 'issues' ? 'secondary' : 'ghost'}
+          variant="outline"
         >
           <ClipboardList className="h-4 w-4" />
           Issues
         </Button>
         <Button
+          className={cn(
+            selectedTab === 'tasks' &&
+              'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
+          )}
           onClick={() =>
             navigate(buildRoute(`/projects/${activeProjectId}/tasks`))
           }
           size="sm"
           type="button"
-          variant={selectedTab === 'tasks' ? 'secondary' : 'ghost'}
+          variant="outline"
         >
           <ListChecks className="h-4 w-4" />
           Tasks

@@ -9,7 +9,10 @@ import { Tool } from '@/components/ui/tool'
 import { AgentWorkPendingIndicator } from '@/components/ui/agent-work-disclosure'
 import { cn } from '@/lib/utils'
 import type { ConversationMessage } from './chat-conversation-types'
-import { AssistantGroupMeta, MessageStatusActions } from './chat-message-actions'
+import {
+  AssistantGroupMeta,
+  MessageStatusActions,
+} from './chat-message-actions'
 import {
   MessageBlockFrame,
   getAssistantBlockWidthClass,
@@ -19,6 +22,9 @@ import {
 } from './chat-message-frame'
 import { getMetadataAccessory } from './chat-message-metadata'
 import { toToolPart } from './chat-tool-part'
+
+const assistantResponseContentClassName =
+  'max-w-full overflow-hidden rounded-lg border border-border/70 bg-card px-2.5 py-1.5 text-sm leading-5 text-foreground prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto'
 
 export const AssistantMessageRow = ({
   message,
@@ -245,9 +251,10 @@ const AssistantMessagePart = ({
         >
           <MessageContent
             className={cn(
-              'max-w-full overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto mb-2',
+              assistantResponseContentClassName,
+              'mb-2',
               isSystem &&
-                'border-destructive/25 bg-destructive/10 text-destructive',
+                'border-destructive/25 bg-destructive/5 text-destructive',
             )}
             id={message.id}
             markdown={isAssistant}
@@ -354,9 +361,9 @@ const StableAssistantStreamBlock = ({
           {showContent ? (
             <MessageContent
               className={cn(
-                'max-w-full overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+                assistantResponseContentClassName,
                 isSystem &&
-                  'border-destructive/25 bg-destructive/10 text-destructive',
+                  'border-destructive/25 bg-destructive/5 text-destructive',
               )}
               id={message.id}
               markdown

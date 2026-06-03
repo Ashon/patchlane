@@ -48,7 +48,7 @@ export const UserMessageBubble = ({
             overlaySide={wide ? 'right' : 'left'}
           >
             <MessageContent
-              className="max-w-full overflow-hidden rounded-lg bg-primary px-2.5 py-1.5 text-sm leading-5 text-primary-foreground prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto"
+              className="max-w-full overflow-hidden rounded-lg bg-chat-user px-2.5 py-1.5 text-sm leading-5 text-chat-user-foreground prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto"
               id={message.id}
               markdown
             >

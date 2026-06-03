@@ -119,12 +119,16 @@ const Tool = ({
             ) : null}
 
             {toolPart.state === 'input-streaming' ? (
-              <div className="text-muted-foreground">Processing tool call...</div>
+              <div className="text-muted-foreground">
+                Processing tool call...
+              </div>
             ) : null}
 
             {toolPart.toolCallId ? (
               <div className="text-[11px] text-muted-foreground">
-                <span className="font-mono">Call ID: {toolPart.toolCallId}</span>
+                <span className="font-mono">
+                  Call ID: {toolPart.toolCallId}
+                </span>
               </div>
             ) : null}
           </AgentWorkDisclosurePanel>
@@ -179,7 +183,7 @@ const ToolStateIcon = ({
   return (
     <span
       className={cn(
-        'grid shrink-0 place-items-center text-muted-foreground',
+        'grid shrink-0 place-items-center text-foreground',
         slotClassName,
       )}
     >

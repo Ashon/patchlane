@@ -115,7 +115,7 @@ const ReasoningStateIcon = ({ streaming }: { streaming: boolean }) => {
   }
 
   return (
-    <span className="grid h-4 w-4 shrink-0 place-items-center text-primary">
+    <span className="grid h-4 w-4 shrink-0 place-items-center text-foreground">
       <Brain className="h-3.5 w-3.5" />
     </span>
   )

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { Bot, Check, Copy, MessageSquare, RotateCcw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,24 +14,41 @@ export const AssistantGroupMeta = ({
   message: ConversationMessage
 }) => {
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <Bot className="h-3.5 w-3.5" />
-      <span>{message.role === 'system' ? 'system' : 'assistant'}</span>
-      {message.createdAt ? (
-        <span>{formatDateTime(message.createdAt)}</span>
-      ) : null}
-    </div>
+    <MessageMetaDivider
+      icon={<Bot className="h-3.5 w-3.5" />}
+      label={message.role === 'system' ? 'system' : 'assistant'}
+      timestamp={message.createdAt}
+    />
   )
 }
 
 export const MessageMeta = ({ message }: { message: ConversationMessage }) => {
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <MessageSquare className="h-3.5 w-3.5" />
-      <span>{message.role}</span>
-      {message.createdAt ? (
-        <span>{formatDateTime(message.createdAt)}</span>
-      ) : null}
+    <MessageMetaDivider
+      icon={<MessageSquare className="h-3.5 w-3.5" />}
+      label={message.role}
+      timestamp={message.createdAt}
+    />
+  )
+}
+
+const MessageMetaDivider = ({
+  icon,
+  label,
+  timestamp,
+}: {
+  icon: ReactNode
+  label: string
+  timestamp?: string
+}) => {
+  return (
+    <div className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground">
+      <div className="flex shrink-0 items-center gap-1.5">
+        {icon}
+        <span>{label}</span>
+        {timestamp ? <span>{formatDateTime(timestamp)}</span> : null}
+      </div>
+      <div className="h-px min-w-0 flex-1 bg-border/70" />
     </div>
   )
 }

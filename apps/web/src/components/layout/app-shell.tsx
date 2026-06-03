@@ -79,7 +79,7 @@ export const AppShell = ({
         <header className="shrink-0 border-b bg-muted/30">
           <div className="grid min-h-9 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1">
             <div className="flex min-w-0 shrink-0 items-center gap-1.5">
-              <div className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <div className="patchlane-logo-mark flex h-[22px] w-[22px] items-center justify-center rounded-md text-white">
                 <GitPullRequestArrow className="h-3.5 w-3.5" />
               </div>
               <div className="min-w-0">
