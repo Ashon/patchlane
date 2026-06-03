@@ -9,6 +9,8 @@ type MetadataItem = {
   title?: string
 }
 
+type TokenUsage = NonNullable<AgentRunMessageMetadata['usage']>
+
 export const getMetadataAccessory = (metadata?: AgentRunMessageMetadata) => {
   const items = getMessageMetadataItems(metadata)
 
@@ -127,30 +129,39 @@ const getMessageMetadataItems = (metadata?: AgentRunMessageMetadata) => {
     })
   }
 
+  const usage = getRenderableUsage(metadata.usage)
+
+  if (usage) {
+    items.push({
+      label: getUsageItemLabel(usage),
+      title: getUsageItemTitle(usage),
+    })
+  }
+
   if (metadata.content) {
     items.push({
-      label: `out ${formatCompactNumber(metadata.content.estimatedTokens)} tok · ${formatCompactNumber(metadata.content.characters)} ch`,
+      label: `content est ${formatCompactNumber(metadata.content.estimatedTokens)} tok · ${formatCompactNumber(metadata.content.characters)} ch`,
       title: `content characters: ${metadata.content.characters.toLocaleString()}`,
     })
   }
 
   if (metadata.reasoning) {
     items.push({
-      label: `reason ${formatCompactNumber(metadata.reasoning.estimatedTokens)} tok · ${formatCompactNumber(metadata.reasoning.characters)} ch`,
+      label: `reason est ${formatCompactNumber(metadata.reasoning.estimatedTokens)} tok · ${formatCompactNumber(metadata.reasoning.characters)} ch`,
       title: `reasoning characters: ${metadata.reasoning.characters.toLocaleString()}`,
     })
   }
 
   if (metadata.tool?.input) {
     items.push({
-      label: `tool in ${formatCompactNumber(metadata.tool.input.estimatedTokens)} tok`,
+      label: `tool in est ${formatCompactNumber(metadata.tool.input.estimatedTokens)} tok`,
       title: `tool input characters: ${metadata.tool.input.characters.toLocaleString()}`,
     })
   }
 
   if (metadata.tool?.output) {
     items.push({
-      label: `tool out ${formatCompactNumber(metadata.tool.output.estimatedTokens)} tok · ${formatCompactNumber(metadata.tool.output.characters)} ch`,
+      label: `tool out est ${formatCompactNumber(metadata.tool.output.estimatedTokens)} tok · ${formatCompactNumber(metadata.tool.output.characters)} ch`,
       title: `tool output characters: ${metadata.tool.output.characters.toLocaleString()}`,
     })
   }
@@ -196,27 +207,97 @@ const getEventTokenLabel = (metadata?: AgentRunMessageMetadata) => {
     return null
   }
 
+  const usage = getRenderableUsage(metadata.usage)
+
+  if (usage) {
+    return getUsageActionLabel(usage)
+  }
+
   const contentTokens = metadata.content?.estimatedTokens
   const reasoningTokens = metadata.reasoning?.estimatedTokens
 
   if (contentTokens !== undefined || reasoningTokens !== undefined) {
-    return `${formatCompactNumber((contentTokens ?? 0) + (reasoningTokens ?? 0))} tok`
+    return `est ${formatCompactNumber((contentTokens ?? 0) + (reasoningTokens ?? 0))} tok`
   }
 
   const toolInputTokens = metadata.tool?.input?.estimatedTokens
   const toolOutputTokens = metadata.tool?.output?.estimatedTokens
 
   if (toolInputTokens !== undefined && toolOutputTokens !== undefined) {
-    return `${formatCompactNumber(toolInputTokens + toolOutputTokens)} tok`
+    return `est ${formatCompactNumber(toolInputTokens + toolOutputTokens)} tok`
   }
 
   if (toolOutputTokens !== undefined) {
-    return `${formatCompactNumber(toolOutputTokens)} tok`
+    return `est ${formatCompactNumber(toolOutputTokens)} tok`
   }
 
   if (toolInputTokens !== undefined) {
-    return `${formatCompactNumber(toolInputTokens)} tok`
+    return `est ${formatCompactNumber(toolInputTokens)} tok`
   }
 
   return null
+}
+
+const getUsageItemLabel = (usage: TokenUsage) => {
+  const input = usage.inputTokens
+  const output = usage.outputTokens
+
+  if (input !== undefined && output !== undefined) {
+    return `usage in ${formatCompactNumber(input)} · out ${formatCompactNumber(output)} tok`
+  }
+
+  return `usage ${formatCompactNumber(getUsageTotal(usage) ?? 0)} tok`
+}
+
+const getUsageItemTitle = (usage: TokenUsage) => {
+  return [
+    usage.inputTokens !== undefined
+      ? `input tokens: ${usage.inputTokens.toLocaleString()}`
+      : null,
+    usage.outputTokens !== undefined
+      ? `output tokens: ${usage.outputTokens.toLocaleString()}`
+      : null,
+    usage.totalTokens !== undefined
+      ? `total tokens: ${usage.totalTokens.toLocaleString()}`
+      : null,
+    usage.reasoningTokens !== undefined
+      ? `reasoning tokens: ${usage.reasoningTokens.toLocaleString()}`
+      : null,
+    usage.cachedInputTokens !== undefined
+      ? `cached input tokens: ${usage.cachedInputTokens.toLocaleString()}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+const getUsageActionLabel = (usage: TokenUsage) => {
+  const input = usage.inputTokens
+  const output = usage.outputTokens
+
+  if (input !== undefined && output !== undefined) {
+    return `in ${formatCompactNumber(input)} · out ${formatCompactNumber(output)} tok`
+  }
+
+  const total = getUsageTotal(usage)
+
+  return total !== undefined ? `${formatCompactNumber(total)} tok` : null
+}
+
+const getUsageTotal = (usage: TokenUsage) => {
+  if (usage.totalTokens !== undefined) {
+    return usage.totalTokens
+  }
+
+  if (usage.inputTokens !== undefined || usage.outputTokens !== undefined) {
+    return (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)
+  }
+
+  return usage.reasoningTokens
+}
+
+const getRenderableUsage = (usage?: TokenUsage) => {
+  return usage && Object.values(usage).some((count) => count !== undefined)
+    ? usage
+    : undefined
 }

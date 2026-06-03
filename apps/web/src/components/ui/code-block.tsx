@@ -12,7 +12,7 @@ function CodeBlock({ children, className, ...props }: CodeBlockProps) {
     <div
       className={cn(
         'not-prose flex w-full flex-col overflow-clip border',
-        'border-border bg-card text-card-foreground rounded-xl',
+        'rounded-xl border-border bg-muted/30 text-foreground',
         className,
       )}
       {...props}
@@ -32,27 +32,59 @@ export type CodeBlockCodeProps = {
 function CodeBlockCode({
   code,
   language = 'tsx',
-  theme = 'github-light',
+  theme,
   className,
   ...props
 }: CodeBlockCodeProps) {
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
+  const [isDarkMode, setIsDarkMode] = useState(
+    () => typeof document !== 'undefined' && isDocumentDarkMode(),
+  )
+  const activeTheme = theme ?? (isDarkMode ? 'github-dark' : 'github-light')
 
   useEffect(() => {
+    if (theme) {
+      return
+    }
+
+    const syncTheme = () => setIsDarkMode(isDocumentDarkMode())
+    const observer = new MutationObserver(syncTheme)
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+
+    return () => observer.disconnect()
+  }, [theme])
+
+  useEffect(() => {
+    let cancelled = false
+
     async function highlight() {
       if (!code) {
-        setHighlightedHtml('<pre><code></code></pre>')
+        if (!cancelled) {
+          setHighlightedHtml('<pre><code></code></pre>')
+        }
         return
       }
 
-      const html = await codeToHtml(code, { lang: language, theme })
-      setHighlightedHtml(html)
+      const html = await codeToHtml(code, { lang: language, theme: activeTheme })
+
+      if (!cancelled) {
+        setHighlightedHtml(html)
+      }
     }
+
     highlight()
-  }, [code, language, theme])
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTheme, code, language])
 
   const classNames = cn(
-    'w-full overflow-x-auto text-[13px] [&>pre]:px-4 [&>pre]:py-4',
+    'w-full overflow-x-auto text-[13px] [&>pre]:m-0 [&>pre]:px-4 [&>pre]:py-4',
     className,
   )
 
@@ -71,6 +103,9 @@ function CodeBlockCode({
     </div>
   )
 }
+
+const isDocumentDarkMode = () =>
+  document.documentElement.classList.contains('dark')
 
 export type CodeBlockGroupProps = React.HTMLAttributes<HTMLDivElement>
 

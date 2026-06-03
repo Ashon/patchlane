@@ -2,8 +2,10 @@ import type {
   AgentProject,
   AgentRun,
   Issue,
+  LlmEndpoint,
+  SandboxWorkspace,
 } from '@patchlane/shared'
-import { useMemo } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Bot, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,8 +22,16 @@ import {
   PageScroll,
   PageSplit,
 } from '@/components/layout/page-primitives'
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  useResizableDefaultLayout,
+} from '@/components/ui/resizable'
 import { cn } from '@/lib/utils'
 import { useAgentRunController } from './agent-run-controller'
+
+const agentTaskPanelIds = ['task-list', 'task-content']
 
 export const AgentTasksPage = () => {
   const {
@@ -56,15 +66,135 @@ export const AgentTasksPage = () => {
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   )
+  const agentTaskLayout = useResizableDefaultLayout({
+    id: 'patchlane-agent-tasks-layout',
+    panelIds: agentTaskPanelIds,
+  })
+  const [resizableLayoutEnabled, setResizableLayoutEnabled] = useState(() =>
+    typeof window === 'undefined'
+      ? false
+      : window.matchMedia('(min-width: 1280px)').matches,
+  )
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1280px)')
+    const syncResizableLayout = () =>
+      setResizableLayoutEnabled(mediaQuery.matches)
+
+    syncResizableLayout()
+    mediaQuery.addEventListener('change', syncResizableLayout)
+
+    return () => mediaQuery.removeEventListener('change', syncResizableLayout)
+  }, [])
+
+  const taskListPane = (
+    <AgentTaskListPane
+      agentRunning={agentRunning}
+      issueById={issueById}
+      onDeleteAgentRun={onDeleteAgentRun}
+      onSelectAgentRun={onSelectAgentRun}
+      onStartNewAgentRun={onStartNewAgentRun}
+      projectById={projectById}
+      runDeletingId={runDeletingId}
+      runs={runs}
+      selectedRun={selectedRun}
+      variant={resizableLayoutEnabled ? 'resizable' : 'stacked'}
+    />
+  )
+  const taskContentPane = (
+    <AgentTaskContentPane
+      agentReplyDraft={agentReplyDraft}
+      agentRunning={agentRunning}
+      agentTaskDraft={agentTaskDraft}
+      endpoint={endpoint}
+      error={error}
+      onAgentReplyChange={onAgentReplyChange}
+      onAgentTaskChange={onAgentTaskChange}
+      onContinueAgentRun={onContinueAgentRun}
+      onCreateAgentRun={onCreateAgentRun}
+      onRewindAgentRun={onRewindAgentRun}
+      onSendAgentMessage={onSendAgentMessage}
+      onStopAgentRun={onStopAgentRun}
+      selectedRun={selectedRun}
+      selectedRunStreaming={selectedRunStreaming}
+      selectedWorkspace={selectedWorkspace}
+    />
+  )
+
+  if (resizableLayoutEnabled) {
+    return (
+      <section className="h-full min-h-0 overflow-hidden bg-background">
+        <ResizablePanelGroup
+          className="min-w-0"
+          defaultLayout={agentTaskLayout.defaultLayout}
+          direction="horizontal"
+          id="patchlane-agent-tasks-layout"
+          onLayoutChanged={agentTaskLayout.onLayoutChanged}
+        >
+          <ResizablePanel
+            className="min-w-0 overflow-hidden"
+            defaultSize="30%"
+            id="task-list"
+            maxSize="520px"
+            minSize="300px"
+          >
+            {taskListPane}
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel
+            className="min-w-0 overflow-hidden"
+            defaultSize="70%"
+            id="task-content"
+            minSize="520px"
+          >
+            {taskContentPane}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </section>
+    )
+  }
 
   return (
     <PageSplit variant="wide-list">
-      <PagePane
-        className="overflow-hidden border-b xl:border-b-0 xl:border-r"
-        minHeight="compact"
-      >
-        <PageHeader
-          actions={
+      {taskListPane}
+      {taskContentPane}
+    </PageSplit>
+  )
+}
+
+const AgentTaskListPane = ({
+  agentRunning,
+  issueById,
+  onDeleteAgentRun,
+  onSelectAgentRun,
+  onStartNewAgentRun,
+  projectById,
+  runDeletingId,
+  runs,
+  selectedRun,
+  variant,
+}: {
+  agentRunning: boolean
+  issueById: Map<string, Issue>
+  onDeleteAgentRun: (run: AgentRun) => void
+  onSelectAgentRun: (run: AgentRun) => void
+  onStartNewAgentRun: () => void
+  projectById: Map<string, AgentProject>
+  runDeletingId: string | null
+  runs: AgentRun[]
+  selectedRun: AgentRun | null
+  variant: 'resizable' | 'stacked'
+}) => {
+  return (
+    <PagePane
+      className={cn(
+        'overflow-hidden',
+        variant === 'resizable' ? 'h-full' : 'border-b',
+      )}
+      minHeight="compact"
+    >
+      <PageHeader
+        actions={
           <Button
             disabled={agentRunning}
             onClick={onStartNewAgentRun}
@@ -75,103 +205,136 @@ export const AgentTasksPage = () => {
             <Plus />
             New
           </Button>
-          }
-          icon={<Bot className="h-4 w-4" />}
-          title="Agent tasks"
-        />
-        <PageScroll className="min-h-[220px] min-w-0">
-          {runs.length ? (
-            <PageList>
-              {runs.map((run) => (
-                <AgentRunCard
-                  deleting={runDeletingId === run.id}
-                  key={run.id}
-                  onDelete={() => onDeleteAgentRun(run)}
-                  onSelect={() => onSelectAgentRun(run)}
-                  issue={run.issueId ? issueById.get(run.issueId) : undefined}
-                  project={
-                    run.projectId ? projectById.get(run.projectId) : undefined
-                  }
-                  run={run}
-                  selected={selectedRun?.id === run.id}
-                />
-              ))}
-            </PageList>
-          ) : (
-            <div className="p-2">
-              <EmptyState>No runs</EmptyState>
-            </div>
-          )}
-        </PageScroll>
-      </PagePane>
+        }
+        icon={<Bot className="h-4 w-4" />}
+        title="Agent tasks"
+      />
+      <PageScroll className="min-h-[220px] min-w-0">
+        {runs.length ? (
+          <PageList>
+            {runs.map((run) => (
+              <AgentRunCard
+                deleting={runDeletingId === run.id}
+                key={run.id}
+                onDelete={() => onDeleteAgentRun(run)}
+                onSelect={() => onSelectAgentRun(run)}
+                issue={run.issueId ? issueById.get(run.issueId) : undefined}
+                project={
+                  run.projectId ? projectById.get(run.projectId) : undefined
+                }
+                run={run}
+                selected={selectedRun?.id === run.id}
+              />
+            ))}
+          </PageList>
+        ) : (
+          <div className="p-2">
+            <EmptyState>No runs</EmptyState>
+          </div>
+        )}
+      </PageScroll>
+    </PagePane>
+  )
+}
 
-      <PagePane minHeight="detail">
-        <PageHeader
-          actions={
-            <>
-            {endpoint ? (
-              <Badge variant="secondary">{endpoint.defaultModel}</Badge>
-            ) : null}
-            {selectedWorkspace ? (
-              <Badge variant="outline">{selectedWorkspace.name}</Badge>
-            ) : (
+const AgentTaskContentPane = ({
+  agentReplyDraft,
+  agentRunning,
+  agentTaskDraft,
+  endpoint,
+  error,
+  onAgentReplyChange,
+  onAgentTaskChange,
+  onContinueAgentRun,
+  onCreateAgentRun,
+  onRewindAgentRun,
+  onSendAgentMessage,
+  onStopAgentRun,
+  selectedRun,
+  selectedRunStreaming,
+  selectedWorkspace,
+}: {
+  agentReplyDraft: string
+  agentRunning: boolean
+  agentTaskDraft: string
+  endpoint: LlmEndpoint | null
+  error: string | null
+  onAgentReplyChange: (value: string) => void
+  onAgentTaskChange: (value: string) => void
+  onContinueAgentRun: (run: AgentRun) => void
+  onCreateAgentRun: (event: FormEvent<HTMLFormElement>) => void
+  onRewindAgentRun: (run: AgentRun, messageId: string) => void
+  onSendAgentMessage: () => void
+  onStopAgentRun: () => void
+  selectedRun: AgentRun | null
+  selectedRunStreaming: boolean
+  selectedWorkspace: SandboxWorkspace | null
+}) => {
+  return (
+    <PagePane className="h-full" minHeight="detail">
+      <PageHeader
+        actions={
+          <>
+            {!selectedWorkspace ? (
               <StateBadge tone="warning">No workspace</StateBadge>
-            )}
-            {selectedRun ? <AgentRunKindBadge kind={selectedRun.kind} /> : null}
+            ) : null}
             {selectedRun ? (
               <AgentRunStatusBadge status={selectedRun.status} />
             ) : null}
             {selectedRun?.context ? (
               <AgentRunContextBadge context={selectedRun.context} />
             ) : null}
-            </>
-          }
-          icon={<Bot className="h-4 w-4" />}
-          title="Agent task"
-        />
-        <div className="min-h-0 flex-1">
-          {selectedRun ? (
-            <AgentTaskConversation
-              draft={agentReplyDraft}
-              endpoint={endpoint}
-              error={error}
-              isStreaming={selectedRunStreaming}
-              onChange={onAgentReplyChange}
-              onContinue={() => onContinueAgentRun(selectedRun)}
-              onRewind={(messageId) => onRewindAgentRun(selectedRun, messageId)}
-              onSend={onSendAgentMessage}
-              onStop={onStopAgentRun}
-              run={selectedRun}
-            />
-          ) : (
-            <form className="space-y-2.5 p-3" onSubmit={onCreateAgentRun}>
-              <Field label="New task">
-                <Textarea
-                  className="min-h-[160px] bg-background"
-                  onChange={(event) => onAgentTaskChange(event.target.value)}
-                  placeholder="Implement the requested change, run verification, commit to a branch, push, and open a PR."
-                  required
-                  value={agentTaskDraft}
-                />
-              </Field>
-              <ErrorBanner message={error} variant="card" />
-              <Button
-                disabled={
-                  agentRunning ||
-                  !selectedWorkspace ||
-                  !endpoint ||
-                  selectedWorkspace.status !== 'ready'
-                }
-                type="submit"
-              >
-                {agentRunning ? <Loader2 className="animate-spin" /> : <Bot />}
-                Start agent run
-              </Button>
-            </form>
-          )}
-        </div>
-      </PagePane>
-    </PageSplit>
+          </>
+        }
+        description={getAgentTaskHeaderDescription(
+          selectedRun,
+          selectedWorkspace,
+        )}
+        icon={<Bot className="h-4 w-4" />}
+        title="Agent task"
+      />
+      <div className="min-h-0 flex-1">
+        {selectedRun ? (
+          <AgentTaskConversation
+            draft={agentReplyDraft}
+            endpoint={endpoint}
+            error={error}
+            isStreaming={selectedRunStreaming}
+            onChange={onAgentReplyChange}
+            onContinue={() => onContinueAgentRun(selectedRun)}
+            onRewind={(messageId) => onRewindAgentRun(selectedRun, messageId)}
+            onSend={onSendAgentMessage}
+            onStop={onStopAgentRun}
+            run={selectedRun}
+          />
+        ) : (
+          <form className="space-y-2.5 p-3" onSubmit={onCreateAgentRun}>
+            <Field label="New task">
+              <Textarea
+                className="min-h-[160px] bg-background"
+                onChange={(event) => onAgentTaskChange(event.target.value)}
+                placeholder="Implement the requested change, run verification, commit to a branch, push, and open a PR."
+                required
+                value={agentTaskDraft}
+              />
+            </Field>
+            <ErrorBanner message={error} variant="card" />
+            <Button
+              disabled={
+                agentRunning ||
+                !selectedWorkspace ||
+                !endpoint ||
+                selectedWorkspace.status !== 'ready'
+              }
+              type="submit"
+            >
+              {agentRunning ? <Loader2 className="animate-spin" /> : <Bot />}
+              Start agent run
+            </Button>
+          </form>
+        )}
+      </div>
+    </PagePane>
   )
 }
 
@@ -256,26 +419,50 @@ const AgentRunCard = ({
 
 const AgentRunKindBadge = ({ kind }: { kind: AgentRun['kind'] }) => {
   if (kind === 'requirements') {
-    return <Badge variant="outline">requirements</Badge>
+    return <Badge variant="outline">{getAgentRunKindLabel(kind)}</Badge>
   }
 
   if (kind === 'planning') {
-    return <Badge variant="secondary">plan</Badge>
+    return <Badge variant="secondary">{getAgentRunKindLabel(kind)}</Badge>
   }
 
   if (kind === 'verification') {
-    return <Badge variant="secondary">verify</Badge>
+    return <Badge variant="secondary">{getAgentRunKindLabel(kind)}</Badge>
   }
 
   if (kind === 'publish') {
-    return <Badge variant="secondary">publish</Badge>
+    return <Badge variant="secondary">{getAgentRunKindLabel(kind)}</Badge>
   }
 
   if (kind === 'followup') {
-    return <Badge variant="outline">followup</Badge>
+    return <Badge variant="outline">{getAgentRunKindLabel(kind)}</Badge>
   }
 
-  return <Badge variant="outline">coding</Badge>
+  return <Badge variant="outline">{getAgentRunKindLabel(kind)}</Badge>
+}
+
+const getAgentTaskHeaderDescription = (
+  run: AgentRun | null,
+  workspace: SandboxWorkspace | null,
+) => {
+  const items = [
+    run ? getAgentRunKindLabel(run.kind) : null,
+    workspace?.name,
+  ].filter(Boolean)
+
+  return items.length ? items.join(' · ') : 'Select a task or start a new run'
+}
+
+const getAgentRunKindLabel = (kind: AgentRun['kind']) => {
+  if (kind === 'planning') {
+    return 'plan'
+  }
+
+  if (kind === 'verification') {
+    return 'verify'
+  }
+
+  return kind
 }
 
 const AgentRunStatusBadge = ({ status }: { status: AgentRun['status'] }) => {

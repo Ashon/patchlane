@@ -92,7 +92,7 @@ const toolPromptContentMaxChars = 6_000
 const defaultReadFileMaxLines = 240
 const maxReadFileMaxLines = 500
 const maxReadFileContentChars = 20_000
-const toolDispatchSleepMs = 1_000
+const toolDispatchSleepMs = 0
 const toolIterationRetryPrompt = [
   'The tool loop reached the normal per-pass limit.',
   'Continue from the current context instead of stopping.',
@@ -121,11 +121,15 @@ type AgentMessageMetadataInput = {
   promptMessages: number
   maxOutputTokens?: number
   durationMs?: number
+  usage?: AgentRunTokenUsage
   content?: string
   reasoning?: string
   toolInput?: string
   toolOutput?: string
 }
+
+type AgentRunTokenUsage = NonNullable<AgentRunMessageMetadata['usage']>
+type RecordValue = Record<string, unknown>
 
 const createAgentMessageMetadata = ({
   context,
@@ -135,6 +139,7 @@ const createAgentMessageMetadata = ({
   promptMessages,
   maxOutputTokens,
   durationMs,
+  usage,
   content,
   reasoning,
   toolInput,
@@ -160,6 +165,7 @@ const createAgentMessageMetadata = ({
       iteration,
       maxOutputTokens,
     },
+    usage,
     content: contentText ? getTextMetrics(contentText) : undefined,
     reasoning: reasoningText.trim()
       ? getTextMetrics(reasoningText.trim())
@@ -174,6 +180,101 @@ const createAgentMessageMetadata = ({
               toolOutput === undefined ? undefined : getTextMetrics(toolOutput),
           },
   }
+}
+
+const getCompletionTokenUsage = (value: unknown): AgentRunTokenUsage | undefined => {
+  const payload = isRecord(value) && isRecord(value.usage) ? value.usage : value
+
+  if (!isRecord(payload)) {
+    return undefined
+  }
+
+  const promptDetails = getUsageDetails(payload, [
+    'prompt_tokens_details',
+    'promptTokensDetails',
+    'input_tokens_details',
+    'inputTokensDetails',
+  ])
+  const completionDetails = getUsageDetails(payload, [
+    'completion_tokens_details',
+    'completionTokensDetails',
+    'output_tokens_details',
+    'outputTokensDetails',
+  ])
+  const usage: AgentRunTokenUsage = {
+    inputTokens: getFirstTokenCount(payload, [
+      'prompt_tokens',
+      'promptTokens',
+      'input_tokens',
+      'inputTokens',
+    ]),
+    outputTokens: getFirstTokenCount(payload, [
+      'completion_tokens',
+      'completionTokens',
+      'output_tokens',
+      'outputTokens',
+    ]),
+    totalTokens: getFirstTokenCount(payload, ['total_tokens', 'totalTokens']),
+    reasoningTokens:
+      getFirstTokenCount(completionDetails, [
+        'reasoning_tokens',
+        'reasoningTokens',
+      ]) ?? getFirstTokenCount(payload, ['reasoning_tokens', 'reasoningTokens']),
+    cachedInputTokens:
+      getFirstTokenCount(promptDetails, ['cached_tokens', 'cachedTokens']) ??
+      getFirstTokenCount(payload, ['cached_tokens', 'cachedTokens']),
+  }
+
+  return Object.values(usage).some((count) => count !== undefined)
+    ? usage
+    : undefined
+}
+
+const getUsageDetails = (value: RecordValue, keys: string[]) => {
+  for (const key of keys) {
+    const details = value[key]
+
+    if (isRecord(details)) {
+      return details
+    }
+  }
+
+  return undefined
+}
+
+const getFirstTokenCount = (
+  value: RecordValue | undefined,
+  keys: string[],
+) => {
+  if (!value) {
+    return undefined
+  }
+
+  for (const key of keys) {
+    const count = getTokenCount(value[key])
+
+    if (count !== undefined) {
+      return count
+    }
+  }
+
+  return undefined
+}
+
+const getTokenCount = (value: unknown) => {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : undefined
+}
+
+const isRecord = (value: unknown): value is RecordValue => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const isUnsupportedStreamUsageError = (error: unknown) => {
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+
+  return message.includes('stream_options') || message.includes('include_usage')
 }
 
 const getTextMetrics = (value: string) => {
@@ -293,6 +394,7 @@ export class AgentRuntime {
             max_tokens: this.options.outputTokenBudget,
           })
           const completionDurationMs = Date.now() - completionStartedAt
+          const completionUsage = getCompletionTokenUsage(completion)
 
           const message = completion.choices[0]?.message as {
             content?: string | null
@@ -342,6 +444,7 @@ export class AgentRuntime {
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
                 durationMs: completionDurationMs,
+                usage: completionUsage,
                 content: assistantContent,
               }),
             })
@@ -360,6 +463,7 @@ export class AgentRuntime {
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
                 durationMs: completionDurationMs,
+                usage: completionUsage,
                 content: toolAdjacentAssistantContent,
               }),
             })
@@ -391,6 +495,7 @@ export class AgentRuntime {
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
                 durationMs: Date.now() - toolStartedAt,
+                usage: completionUsage,
                 toolInput: toolCall.function.arguments,
                 toolOutput: result.content,
               }),
@@ -550,7 +655,8 @@ export class AgentRuntime {
             maxOutputTokens: this.options.outputTokenBudget,
           }
           const completionStartedAt = Date.now()
-          const stream = await client.chat.completions.create({
+          let completionUsage: AgentRunTokenUsage | undefined
+          const streamRequest = {
             model: activeModel,
             messages: messages as never,
             tools: agentTools as never,
@@ -558,9 +664,24 @@ export class AgentRuntime {
             temperature: 0.2,
             max_tokens: this.options.outputTokenBudget,
             stream: true,
-          })
+          } as const
+          const stream = await client.chat.completions
+            .create({
+              ...streamRequest,
+              stream_options: {
+                include_usage: true,
+              },
+            })
+            .catch((error: unknown) => {
+              if (!isUnsupportedStreamUsageError(error)) {
+                throw error
+              }
+
+              return client.chat.completions.create(streamRequest)
+            })
 
           for await (const chunk of stream) {
+            completionUsage = getCompletionTokenUsage(chunk) ?? completionUsage
             const delta = chunk.choices[0]?.delta as StreamDelta | undefined
             const content =
               typeof delta?.content === 'string' ? delta.content : ''
@@ -645,6 +766,7 @@ export class AgentRuntime {
                 metadata: createAgentMessageMetadata({
                   ...metadataBase,
                   durationMs: completionDurationMs,
+                  usage: completionUsage,
                   content: fallbackContent,
                 }),
               })
@@ -656,6 +778,7 @@ export class AgentRuntime {
                 metadata: createAgentMessageMetadata({
                   ...metadataBase,
                   durationMs: completionDurationMs,
+                  usage: completionUsage,
                   content: assistantContent,
                 }),
               })
@@ -676,6 +799,7 @@ export class AgentRuntime {
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
                 durationMs: completionDurationMs,
+                usage: completionUsage,
                 content: userFacingAssistantContent,
               }),
             })
@@ -719,6 +843,7 @@ export class AgentRuntime {
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
                 durationMs: Date.now() - toolStartedAt,
+                usage: completionUsage,
                 toolInput: toolCall.function.arguments,
                 toolOutput: result.content,
               }),
@@ -745,6 +870,7 @@ export class AgentRuntime {
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
                 durationMs: Date.now() - toolStartedAt,
+                usage: completionUsage,
                 toolInput: toolCall.function.arguments,
                 toolOutput: result.content,
               }),

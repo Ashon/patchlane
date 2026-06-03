@@ -163,6 +163,7 @@ const AssistantMessagePart = ({
           accessory={metadataAccessory}
           accessoryVisible={isReasoningOpen}
           className={getAssistantBlockWidthClass(wide)}
+          overlayClassName={wide ? getInsetOverlayClass('right') : undefined}
         >
           <Reasoning
             className={getReasoningFrameClass(wide)}
@@ -198,6 +199,7 @@ const AssistantMessagePart = ({
         <MessageBlockFrame
           accessory={metadataAccessory}
           className={getAssistantBlockWidthClass(wide)}
+          overlayClassName={wide ? getInsetOverlayClass('right') : undefined}
         >
           <AgentWorkPendingIndicator className="w-fit max-w-full" />
         </MessageBlockFrame>
@@ -207,6 +209,7 @@ const AssistantMessagePart = ({
         <MessageBlockFrame
           accessory={metadataAccessory}
           className={getAssistantBlockWidthClass(wide)}
+          overlayClassName={wide ? getInsetOverlayClass('right') : undefined}
         >
           <AgentWorkPendingIndicator className="w-fit max-w-full" />
         </MessageBlockFrame>
@@ -217,6 +220,7 @@ const AssistantMessagePart = ({
           accessory={metadataAccessory}
           accessoryVisible={isToolOpen}
           className={getAssistantBlockWidthClass(wide)}
+          overlayClassName={wide ? getInsetOverlayClass('right') : undefined}
         >
           <Tool
             defaultOpen={false}

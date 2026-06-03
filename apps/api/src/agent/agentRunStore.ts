@@ -9,12 +9,14 @@ import {
   type AgentRun,
   type AgentRunContext,
   type AgentRunMessage,
+  type AgentRunMessageMetadata,
   type AgentRunStatus,
   type CreateAgentRunInput,
 } from '@patchlane/shared'
 import { AppDatabase, optionalString } from '../db/database'
 import { readLegacyJson } from '../db/legacyJson'
 import { notFound } from '../http/errors'
+import { estimateTextTokens } from './agentContext'
 
 type AgentRunRow = {
   id: string
@@ -362,13 +364,19 @@ export class AgentRunStore {
 }
 
 const toMessage = (row: AgentRunMessageRow) => {
+  const toolInput = parseToolInput(row.tool_input_json)
+  const metadata = mergeDerivedMessageMetadata(
+    parseMessageMetadata(row.metadata_json),
+    getDerivedMessageMetadata(row),
+  )
+
   return agentRunMessageSchema.parse({
     id: row.id,
     role: row.role,
     content: row.content,
     toolName: optionalString(row.tool_name),
-    toolInput: parseToolInput(row.tool_input_json),
-    metadata: parseMessageMetadata(row.metadata_json),
+    toolInput,
+    metadata,
     createdAt: row.created_at,
   })
 }
@@ -394,6 +402,104 @@ const parseMessageMetadata = (value: string | null) => {
     return agentRunMessageMetadataSchema.parse(JSON.parse(value))
   } catch {
     return undefined
+  }
+}
+
+const getDerivedMessageMetadata = (
+  row: AgentRunMessageRow,
+): AgentRunMessageMetadata | undefined => {
+  if (row.role === 'assistant' || row.role === 'system') {
+    const text = splitAgentThinking(row.content)
+    const content = text.content.trim()
+    const reasoning = text.reasoning.trim()
+
+    return hasMetadata({
+      content: content ? getTextMetrics(content) : undefined,
+      reasoning: reasoning ? getTextMetrics(reasoning) : undefined,
+    })
+  }
+
+  if (row.role === 'tool') {
+    return hasMetadata({
+      tool: {
+        input: row.tool_input_json
+          ? getTextMetrics(row.tool_input_json)
+          : undefined,
+        output: row.content ? getTextMetrics(row.content) : undefined,
+      },
+    })
+  }
+
+  return undefined
+}
+
+const mergeDerivedMessageMetadata = (
+  metadata: AgentRunMessageMetadata | undefined,
+  derived: AgentRunMessageMetadata | undefined,
+) => {
+  if (!metadata) {
+    return derived
+  }
+
+  if (!derived) {
+    return metadata
+  }
+
+  const tool =
+    metadata.tool || derived.tool
+      ? {
+          input: metadata.tool?.input ?? derived.tool?.input,
+          output: metadata.tool?.output ?? derived.tool?.output,
+        }
+      : undefined
+
+  return {
+    ...metadata,
+    content: metadata.content ?? derived.content,
+    reasoning: metadata.reasoning ?? derived.reasoning,
+    tool,
+  }
+}
+
+const getTextMetrics = (value: string) => {
+  return {
+    characters: Array.from(value).length,
+    estimatedTokens: estimateTextTokens(value),
+  }
+}
+
+const hasMetadata = (metadata: AgentRunMessageMetadata) => {
+  return metadata.content ||
+    metadata.reasoning ||
+    metadata.tool?.input ||
+    metadata.tool?.output
+    ? metadata
+    : undefined
+}
+
+const splitAgentThinking = (value: string) => {
+  let content = value
+  let reasoning = ''
+
+  while (content.includes('<think>')) {
+    const openIndex = content.indexOf('<think>')
+    const before = content.slice(0, openIndex)
+    const afterOpen = content.slice(openIndex + '<think>'.length)
+    const closeIndex = afterOpen.indexOf('</think>')
+
+    if (closeIndex < 0) {
+      reasoning += afterOpen
+      content = before
+      break
+    }
+
+    reasoning += afterOpen.slice(0, closeIndex)
+    content = `${before}${afterOpen.slice(closeIndex + '</think>'.length)}`
+  }
+
+  return {
+    content: content.trimStart(),
+    reasoning: reasoning.trim(),
   }
 }
 

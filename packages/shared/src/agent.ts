@@ -33,6 +33,14 @@ const agentRunMessageTextMetricsSchema = z.object({
   estimatedTokens: z.number().int().nonnegative(),
 })
 
+const agentRunMessageTokenUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative().optional(),
+  outputTokens: z.number().int().nonnegative().optional(),
+  totalTokens: z.number().int().nonnegative().optional(),
+  reasoningTokens: z.number().int().nonnegative().optional(),
+  cachedInputTokens: z.number().int().nonnegative().optional(),
+})
+
 const agentRunMessageContextMetadataSchema = agentRunContextSchema
   .omit({
     summary: true,
@@ -53,6 +61,7 @@ export const agentRunMessageMetadataSchema = z.object({
       maxOutputTokens: z.number().int().positive().optional(),
     })
     .optional(),
+  usage: agentRunMessageTokenUsageSchema.optional(),
   content: agentRunMessageTextMetricsSchema.optional(),
   reasoning: agentRunMessageTextMetricsSchema.optional(),
   tool: z

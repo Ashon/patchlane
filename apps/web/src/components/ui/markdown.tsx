@@ -85,6 +85,14 @@ const INITIAL_COMPONENTS: Partial<Components> = {
       />
     )
   },
+  hr: function HorizontalRuleComponent({ className, ...props }) {
+    return (
+      <hr
+        className={cn('my-3 border-0 border-t border-border/70', className)}
+        {...props}
+      />
+    )
+  },
   ul: function UnorderedListComponent({ className, ...props }) {
     return (
       <ul

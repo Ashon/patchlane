@@ -48,7 +48,7 @@ export const MessageBlockFrame = ({
   const accessoryNode = accessory ? (
     <div
       className={cn(
-        'shrink-0 transition-opacity',
+        'flex h-6 shrink-0 items-center transition-opacity',
         accessoryVisible
           ? 'pointer-events-auto opacity-100'
           : 'pointer-events-none opacity-0 group-hover/block:pointer-events-auto group-hover/block:opacity-100 group-focus-within/block:pointer-events-auto group-focus-within/block:opacity-100',
@@ -58,7 +58,7 @@ export const MessageBlockFrame = ({
     </div>
   ) : null
   const overlayNode = overlay ? (
-    <MessageActions className="pointer-events-none gap-1 opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100">
+    <MessageActions className="pointer-events-none h-6 gap-1 opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100">
       {overlay}
     </MessageActions>
   ) : null
@@ -97,7 +97,7 @@ const MessageBlockSideRail = ({
   return (
     <MessageActions
       className={cn(
-        'pointer-events-none absolute bottom-0 z-20 gap-1 whitespace-nowrap text-foreground',
+        'pointer-events-none absolute bottom-0 z-20 h-6 items-center gap-1 whitespace-nowrap text-foreground',
         side === 'right'
           ? 'left-full pl-1'
           : 'right-full flex-row-reverse pr-1',
