@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import type {
   AgentProject,
   AgentRun,
@@ -32,11 +32,20 @@ import {
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  useResizableDefaultLayout,
+} from '@/components/ui/resizable'
 import { EmptyState, Field, MetricBadge } from './common'
 import { IssueDetail } from './issue-detail'
 import { IssueRow } from './issue-row'
 import type { IssueDraft } from './types'
 import { countStatus } from './utils'
+
+const projectIssuePanelIds = ['project-issue-list', 'project-issue-detail']
+const projectIssueResizableMediaQuery = '(min-width: 640px)'
 
 export const ProjectIssuesView = ({
   createIssue,
@@ -72,11 +81,43 @@ export const ProjectIssuesView = ({
   workspaces: SandboxWorkspace[]
 }) => {
   const [issueDialogOpen, setIssueDialogOpen] = useState(false)
+  const projectIssueLayout = useResizableDefaultLayout({
+    id: 'patchlane-project-issues-layout',
+    panelIds: projectIssuePanelIds,
+  })
+  const [resizableLayoutEnabled, setResizableLayoutEnabled] = useState(() =>
+    typeof window === 'undefined'
+      ? false
+      : window.matchMedia(projectIssueResizableMediaQuery).matches,
+  )
   const selectedIssueEndpointId =
     issueDraft.endpointId ||
     project.defaultEndpointId ||
     selectedEndpoint?.id ||
     undefined
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(projectIssueResizableMediaQuery)
+    const syncResizableLayout = () =>
+      setResizableLayoutEnabled(mediaQuery.matches)
+
+    syncResizableLayout()
+    mediaQuery.addEventListener('change', syncResizableLayout)
+
+    return () => mediaQuery.removeEventListener('change', syncResizableLayout)
+  }, [])
+
+  const selectedWorkspace = useMemo(
+    () =>
+      selectedIssue
+        ? workspaces.find(
+            (workspace) =>
+              workspace.id ===
+              (selectedIssue.workspaceId ?? project.workspaceId),
+          )
+        : undefined,
+    [project.workspaceId, selectedIssue, workspaces],
+  )
 
   const handleCreateIssue = async (event: FormEvent<HTMLFormElement>) => {
     const created = await createIssue(event)
@@ -211,68 +252,165 @@ export const ProjectIssuesView = ({
         </DialogContent>
       </Dialog>
 
-      <div className="grid min-h-0 flex-1 overflow-hidden bg-background xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-        <ScrollArea className="min-h-0 border-b bg-background xl:border-b-0 xl:border-r">
-          {issues.length ? (
-            <PageList>
-              {issues.map((issue) => (
-                <IssueRow
-                  agentRun={
-                    issue.agentRunId ? runById.get(issue.agentRunId) : undefined
-                  }
-                  issue={issue}
-                  key={issue.id}
-                  loading={runningIssueId === issue.id}
-                  onOpenRun={onOpenRun}
-                  onSelect={() => onSelectIssue(issue.id)}
-                  onStart={() => void onStart(issue)}
-                  planningRun={
-                    issue.planningRunId
-                      ? runById.get(issue.planningRunId)
-                      : undefined
-                  }
-                  projectWorkspaceId={project.workspaceId}
-                  requirementRun={
-                    issue.requirementRunId
-                      ? runById.get(issue.requirementRunId)
-                      : undefined
-                  }
-                  selected={selectedIssue?.id === issue.id}
-                />
-              ))}
-            </PageList>
-          ) : (
-            <div className="p-3">
-              <EmptyState>No issues in this project</EmptyState>
-            </div>
-          )}
-        </ScrollArea>
-
-        <section className="min-h-[420px] min-w-0 bg-background xl:min-h-0">
-          {selectedIssue ? (
-            <IssueDetail
-              issue={selectedIssue}
+      {resizableLayoutEnabled ? (
+        <ResizablePanelGroup
+          className="min-w-0 flex-1"
+          defaultLayout={projectIssueLayout.defaultLayout}
+          direction="horizontal"
+          id="patchlane-project-issues-layout"
+          onLayoutChanged={projectIssueLayout.onLayoutChanged}
+        >
+          <ResizablePanel
+            className="min-w-0 overflow-hidden"
+            defaultSize="32%"
+            id="project-issue-list"
+            maxSize="520px"
+            minSize="240px"
+          >
+            <IssueListPane
+              issues={issues}
+              onSelectIssue={onSelectIssue}
+              onStart={onStart}
+              projectWorkspaceId={project.workspaceId}
+              runById={runById}
+              runningIssueId={runningIssueId}
+              selectedIssue={selectedIssue}
+              variant="resizable"
+            />
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel
+            className="min-w-0 overflow-hidden"
+            defaultSize="68%"
+            id="project-issue-detail"
+            minSize="320px"
+          >
+            <IssueDetailPane
               onOpenRun={onOpenRun}
-              run={
-                selectedIssue.agentRunId
-                  ? runById.get(selectedIssue.agentRunId)
+              runById={runById}
+              selectedIssue={selectedIssue}
+              workspace={selectedWorkspace}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        <div className="grid min-h-0 flex-1 overflow-hidden bg-background sm:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+          <IssueListPane
+            issues={issues}
+            onSelectIssue={onSelectIssue}
+            onStart={onStart}
+            projectWorkspaceId={project.workspaceId}
+            runById={runById}
+            runningIssueId={runningIssueId}
+            selectedIssue={selectedIssue}
+            variant="stacked"
+          />
+          <IssueDetailPane
+            onOpenRun={onOpenRun}
+            runById={runById}
+            selectedIssue={selectedIssue}
+            workspace={selectedWorkspace}
+          />
+        </div>
+      )}
+    </Page>
+  )
+}
+
+const IssueListPane = ({
+  issues,
+  onSelectIssue,
+  onStart,
+  projectWorkspaceId,
+  runById,
+  runningIssueId,
+  selectedIssue,
+  variant,
+}: {
+  issues: Issue[]
+  onSelectIssue: (id: string | null) => void
+  onStart: (issue: Issue) => Promise<void>
+  projectWorkspaceId?: string
+  runById: Map<string, AgentRun>
+  runningIssueId: string | null
+  selectedIssue: Issue | null
+  variant: 'resizable' | 'stacked'
+}) => {
+  return (
+    <ScrollArea
+      className={
+        variant === 'resizable'
+          ? 'h-full min-h-0 bg-background'
+          : 'min-h-0 border-b bg-background sm:border-b-0 sm:border-r'
+      }
+    >
+      {issues.length ? (
+        <PageList>
+          {issues.map((issue) => (
+            <IssueRow
+              agentRun={
+                issue.agentRunId ? runById.get(issue.agentRunId) : undefined
+              }
+              issue={issue}
+              key={issue.id}
+              loading={runningIssueId === issue.id}
+              onSelect={() => onSelectIssue(issue.id)}
+              onStart={() => void onStart(issue)}
+              planningRun={
+                issue.planningRunId
+                  ? runById.get(issue.planningRunId)
                   : undefined
               }
-              workspace={workspaces.find(
-                (workspace) =>
-                  workspace.id ===
-                  (selectedIssue.workspaceId ?? project.workspaceId),
-              )}
+              projectWorkspaceId={projectWorkspaceId}
+              requirementRun={
+                issue.requirementRunId
+                  ? runById.get(issue.requirementRunId)
+                  : undefined
+              }
+              selected={selectedIssue?.id === issue.id}
             />
-          ) : (
-            <div className="flex h-full min-h-[320px] items-center justify-center p-3">
-              <EmptyState>
-                Select an issue to inspect context and agent run state
-              </EmptyState>
-            </div>
-          )}
-        </section>
-      </div>
-    </Page>
+          ))}
+        </PageList>
+      ) : (
+        <div className="p-3">
+          <EmptyState>No issues in this project</EmptyState>
+        </div>
+      )}
+    </ScrollArea>
+  )
+}
+
+const IssueDetailPane = ({
+  onOpenRun,
+  runById,
+  selectedIssue,
+  workspace,
+}: {
+  onOpenRun: (runId: string) => void
+  runById: Map<string, AgentRun>
+  selectedIssue: Issue | null
+  workspace?: SandboxWorkspace
+}) => {
+  return (
+    <section className="h-full min-h-[420px] min-w-0 bg-background sm:min-h-0">
+      {selectedIssue ? (
+        <IssueDetail
+          issue={selectedIssue}
+          onOpenRun={onOpenRun}
+          run={
+            selectedIssue.agentRunId
+              ? runById.get(selectedIssue.agentRunId)
+              : undefined
+          }
+          workspace={workspace}
+        />
+      ) : (
+        <div className="flex h-full min-h-[320px] items-center justify-center p-3">
+          <EmptyState>
+            Select an issue to inspect context and agent run state
+          </EmptyState>
+        </div>
+      )}
+    </section>
   )
 }

@@ -169,7 +169,7 @@ function PromptInputTextarea({
       onChange={handleChange}
       onKeyDown={handleKeyDown}
       className={cn(
-        'text-primary min-h-9 w-full resize-none border-none bg-transparent px-2 py-1.5 text-sm leading-5 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0',
+        'min-h-9 w-full resize-none border-none bg-transparent px-2 py-1.5 text-sm leading-5 text-foreground shadow-none outline-none caret-primary focus-visible:ring-0 focus-visible:ring-offset-0',
         className,
       )}
       rows={1}

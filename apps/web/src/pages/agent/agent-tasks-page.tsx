@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils'
 import { useAgentRunController } from './agent-run-controller'
 
 const agentTaskPanelIds = ['task-list', 'task-content']
+const agentTaskResizableMediaQuery = '(min-width: 640px)'
 
 export const AgentTasksPage = () => {
   const {
@@ -73,11 +74,11 @@ export const AgentTasksPage = () => {
   const [resizableLayoutEnabled, setResizableLayoutEnabled] = useState(() =>
     typeof window === 'undefined'
       ? false
-      : window.matchMedia('(min-width: 1280px)').matches,
+      : window.matchMedia(agentTaskResizableMediaQuery).matches,
   )
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(min-width: 1280px)')
+    const mediaQuery = window.matchMedia(agentTaskResizableMediaQuery)
     const syncResizableLayout = () =>
       setResizableLayoutEnabled(mediaQuery.matches)
 
@@ -136,7 +137,7 @@ export const AgentTasksPage = () => {
             defaultSize="30%"
             id="task-list"
             maxSize="520px"
-            minSize="300px"
+            minSize="240px"
           >
             {taskListPane}
           </ResizablePanel>
@@ -145,7 +146,7 @@ export const AgentTasksPage = () => {
             className="min-w-0 overflow-hidden"
             defaultSize="70%"
             id="task-content"
-            minSize="520px"
+            minSize="320px"
           >
             {taskContentPane}
           </ResizablePanel>

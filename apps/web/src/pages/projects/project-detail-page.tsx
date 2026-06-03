@@ -59,12 +59,25 @@ export const ProjectDetailPage = () => {
     'issue',
     parseAsString.withOptions({ history: 'replace', shallow: true }),
   )
+  const [, setSelectedAgentRunId] = useQueryState(
+    'run',
+    parseAsString.withOptions({ history: 'replace', shallow: true }),
+  )
   const queryClient = useQueryClient()
   const {
+    agentReplyDraft,
     agentRunning,
-    onOpenAgentRun,
+    endpoint,
+    error: agentRunError,
+    onAgentReplyChange,
+    onContinueAgentRun,
+    onRewindAgentRun,
+    onSendAgentMessage,
     onStartIssueRun,
+    onStopAgentRun,
     runs: agentRuns,
+    selectedRun,
+    selectedRunStreaming,
   } = useAgentRunController()
   const [localError, setLocalError] = useState<string | null>(null)
   const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(null)
@@ -163,6 +176,22 @@ export const ProjectDetailPage = () => {
       ),
     [activeProjectId, agentRuns, linkedRunIds],
   )
+  const selectedProjectRun =
+    selectedRun && projectRuns.some((run) => run.id === selectedRun.id)
+      ? selectedRun
+      : null
+  const selectedProjectRunStreaming =
+    selectedProjectRun && selectedRun?.id === selectedProjectRun.id
+      ? selectedRunStreaming
+      : false
+  const openProjectTaskRun = (runId: string) => {
+    navigate(
+      buildRoute(`/projects/${activeProjectId}/tasks`, {
+        issue: null,
+        run: runId,
+      }),
+    )
+  }
   const workspace = project?.workspaceId
     ? workspaces.find((item) => item.id === project.workspaceId)
     : undefined
@@ -430,7 +459,7 @@ export const ProjectDetailPage = () => {
             issueDraft={issueDraft}
             issues={projectIssues}
             onIssueDraftChange={setIssueDraft}
-            onOpenRun={onOpenAgentRun}
+            onOpenRun={openProjectTaskRun}
             onSelectIssue={(id) => void setSelectedIssueId(id)}
             onStart={startIssue}
             project={project}
@@ -443,9 +472,19 @@ export const ProjectDetailPage = () => {
           />
         ) : (
           <ProjectTasksView
+            agentReplyDraft={agentReplyDraft}
+            endpoint={endpoint}
+            error={agentRunError}
             issues={projectIssues}
-            onOpenRun={onOpenAgentRun}
+            onAgentReplyChange={onAgentReplyChange}
+            onContinueRun={onContinueAgentRun}
+            onRewindRun={onRewindAgentRun}
+            onSelectRun={(runId) => void setSelectedAgentRunId(runId)}
+            onSendMessage={onSendAgentMessage}
+            onStopRun={onStopAgentRun}
             runs={projectRuns}
+            selectedRun={selectedProjectRun}
+            selectedRunStreaming={selectedProjectRunStreaming}
           />
         )}
       </div>

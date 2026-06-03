@@ -1,5 +1,5 @@
 import type { AgentRun, Issue } from '@patchlane/shared'
-import { Bot, GitBranch, Loader2, Play } from 'lucide-react'
+import { GitBranch, Loader2, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageListItem } from '@/components/layout/page-primitives'
 import { IssueStatusBadge, PriorityBadge } from './common'
@@ -9,7 +9,6 @@ export const IssueRow = ({
   agentRun,
   issue,
   loading,
-  onOpenRun,
   onSelect,
   onStart,
   planningRun,
@@ -20,7 +19,6 @@ export const IssueRow = ({
   agentRun?: AgentRun
   issue: Issue
   loading: boolean
-  onOpenRun: (runId: string) => void
   onSelect: () => void
   onStart: () => void
   planningRun?: AgentRun
@@ -50,9 +48,6 @@ export const IssueRow = ({
               <PriorityBadge priority={issue.priority} />
             </span>
           </div>
-          <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-            {issue.description}
-          </div>
           <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             {issue.branchName ? (
               <span className="inline-flex min-w-0 items-center gap-1">
@@ -61,24 +56,11 @@ export const IssueRow = ({
               </span>
             ) : null}
             <span className="shrink-0">{formatDateTime(issue.updatedAt)}</span>
-            {agentRun ? (
-              <span className="min-w-0 truncate">Agent {agentRun.status}</span>
-            ) : null}
           </div>
         </button>
 
-        <div className="flex shrink-0 items-center gap-1 md:justify-end">
-          {issue.agentRunId ? (
-            <Button
-              onClick={() => onOpenRun(issue.agentRunId!)}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Bot />
-              Open
-            </Button>
-          ) : (
+        {!issue.agentRunId ? (
+          <div className="flex shrink-0 items-center gap-1 md:justify-end">
             <Button
               disabled={!canRun}
               onClick={onStart}
@@ -89,8 +71,8 @@ export const IssueRow = ({
               {loading ? <Loader2 className="animate-spin" /> : <Play />}
               Run
             </Button>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
     </PageListItem>
   )
