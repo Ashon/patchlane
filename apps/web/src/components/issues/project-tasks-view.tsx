@@ -1,6 +1,7 @@
 import type { AgentRun, Issue } from '@agent-fleet/shared'
 import { ListChecks } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Page, PageHeader } from '@/components/layout/page-primitives'
 import {
   AgentRunKindBadge,
   AgentRunStatusBadge,
@@ -21,25 +22,21 @@ export const ProjectTasksView = ({
   const issueById = new Map(issues.map((issue) => [issue.id, issue]))
 
   return (
-    <section className="flex min-h-[360px] flex-col">
-      <div className="flex min-h-10 items-center justify-between border-b px-3 py-2">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <ListChecks className="h-4 w-4" />
-            Tasks
-          </h2>
-          <p className="truncate text-xs text-muted-foreground">
-            Project-scoped agent task history
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <Page className="min-h-[360px]">
+      <PageHeader
+        actions={
+          <>
           <MetricBadge label="Total" value={runs.length} />
           <MetricBadge
             label="Running"
             value={runs.filter((run) => run.status === 'running').length}
           />
-        </div>
-      </div>
+          </>
+        }
+        description="Project-scoped agent task history"
+        icon={<ListChecks className="h-4 w-4" />}
+        title="Tasks"
+      />
       <ScrollArea className="min-h-0 flex-1">
         {runs.length ? (
           <div className="divide-y">
@@ -90,6 +87,6 @@ export const ProjectTasksView = ({
           </div>
         )}
       </ScrollArea>
-    </section>
+    </Page>
   )
 }

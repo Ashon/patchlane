@@ -22,7 +22,15 @@ import { StateBadge, TestBadge } from '@/components/app/status-badges'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  ErrorBanner,
+  LoadingCardList,
+  PageAside,
+  PageHeader,
+  PagePane,
+  PageScroll,
+  PageSplit,
+} from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
 import { getErrorMessage, getQueryErrorMessage } from '@/lib/errors'
 import { queryKeys } from '@/lib/query-client'
@@ -185,32 +193,23 @@ export const EndpointSettingsPage = () => {
   }, [selectedEndpoint, selectedEndpointId])
 
   return (
-    <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
-      <div className="flex min-h-[320px] flex-col lg:min-h-0">
-        <div className="flex min-h-10 items-center justify-between border-b px-3 py-2">
-          <h2 className="text-sm font-semibold">Endpoints</h2>
+    <PageSplit>
+      <PagePane>
+        <PageHeader
+          actions={
           <Button variant="secondary" onClick={startNewEndpoint} size="sm">
             <Plus />
             New
           </Button>
-        </div>
-        <ScrollArea className="min-h-0 flex-1" viewportClassName="p-2">
+          }
+          title="Endpoints"
+        />
+        <PageScroll viewportClassName="p-2">
           <div className="grid gap-1.5">
-            {endpointError ? (
-              <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {endpointError}
-              </div>
-            ) : null}
+            <ErrorBanner message={endpointError} variant="card" />
 
             {loading ? (
-              <div className="grid gap-2">
-                {[0, 1, 2].map((item) => (
-                  <div
-                    key={item}
-                    className="h-24 animate-pulse rounded-md border bg-muted/40"
-                  />
-                ))}
-              </div>
+              <LoadingCardList />
             ) : endpoints.length > 0 ? (
               <div className="grid gap-2">
                 {endpoints.map((endpoint) => (
@@ -229,18 +228,13 @@ export const EndpointSettingsPage = () => {
               <EmptyState>No endpoints</EmptyState>
             )}
           </div>
-        </ScrollArea>
-      </div>
+        </PageScroll>
+      </PagePane>
 
-      <ScrollArea
-        className="min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0"
-        viewportClassName="p-3"
-      >
-        <div className="mb-2">
-          <h2 className="text-sm font-semibold">
-            {selectedEndpoint ? 'Endpoint settings' : 'New endpoint'}
-          </h2>
-        </div>
+      <PageAside>
+        <h2 className="mb-2 text-sm font-semibold">
+          {selectedEndpoint ? 'Endpoint settings' : 'New endpoint'}
+        </h2>
         <form className="space-y-2.5" onSubmit={saveEndpoint}>
           <Field label="Name">
             <Input
@@ -330,8 +324,8 @@ export const EndpointSettingsPage = () => {
             ) : null}
           </div>
         </form>
-      </ScrollArea>
-    </section>
+      </PageAside>
+    </PageSplit>
   )
 }
 

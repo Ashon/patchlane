@@ -45,6 +45,12 @@ import {
   upsertIssue,
   upsertProject,
 } from '@/components/issues/utils'
+import {
+  ErrorBanner,
+  Page,
+  PageHeader,
+  PageToolbar,
+} from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
 import { getQueryErrorMessage } from '@/lib/errors'
 import { queryKeys } from '@/lib/query-client'
@@ -319,38 +325,19 @@ export const ProjectDetailPage = () => {
 
   if (!project) {
     return (
-      <section className="flex h-full min-h-0 items-center justify-center bg-background p-3">
+      <Page className="items-center justify-center p-3">
         <EmptyState>
           {loading ? 'Loading project' : 'Project not found'}
         </EmptyState>
-      </section>
+      </Page>
     )
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <header className="flex min-h-10 flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 items-center gap-2">
-          <Button
-            onClick={() =>
-              navigate(
-                buildRoute('/projects', { issue: null, project: null }),
-              )
-            }
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold">{project.name}</h1>
-            <p className="truncate text-xs text-muted-foreground">
-              {project.repositoryUrl || 'Repository not configured'}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <Page>
+      <PageHeader
+        actions={
+          <>
           <ProjectRepositoryBadge project={project} />
           <Badge variant="secondary">{projectIssues.length} issues</Badge>
           <Badge variant="secondary">{projectRuns.length} tasks</Badge>
@@ -376,17 +363,27 @@ export const ProjectDetailPage = () => {
           >
             <Pencil className="h-4 w-4" />
           </Button>
-        </div>
-      </header>
+          </>
+        }
+        description={project.repositoryUrl || 'Repository not configured'}
+        leading={
+          <Button
+            onClick={() =>
+              navigate(buildRoute('/projects', { issue: null, project: null }))
+            }
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        }
+        title={project.name}
+      />
 
-      {visibleError ? (
-        <div className="border-b border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {visibleError}
-        </div>
-      ) : null}
+      <ErrorBanner message={visibleError} />
 
-      <div className="border-b bg-muted/20 px-3 py-1.5">
-        <div className="flex flex-wrap items-center gap-1">
+      <PageToolbar>
           <Button
             onClick={() => navigate(buildRoute(`/projects/${activeProjectId}/issues`))}
             size="sm"
@@ -405,8 +402,7 @@ export const ProjectDetailPage = () => {
             <ListChecks className="h-4 w-4" />
             Tasks
           </Button>
-        </div>
-      </div>
+      </PageToolbar>
 
       <div className="min-h-0 flex-1 overflow-hidden">
         <Dialog onOpenChange={setEditProjectOpen} open={editProjectOpen}>
@@ -454,6 +450,6 @@ export const ProjectDetailPage = () => {
           />
         )}
       </div>
-    </section>
+    </Page>
   )
 }

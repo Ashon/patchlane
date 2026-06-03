@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Page, PageHeader } from '@/components/layout/page-primitives'
 import {
   Select,
   SelectContent,
@@ -84,18 +85,10 @@ export const ProjectIssuesView = ({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex min-h-10 flex-col gap-2 border-b bg-background px-3 py-2 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <ClipboardList className="h-4 w-4" />
-            Issues
-          </h2>
-          <p className="truncate text-xs text-muted-foreground">
-            {project.name}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <Page>
+      <PageHeader
+        actions={
+          <>
           <MetricBadge label="Ready" value={countStatus(issues, 'ready')} />
           <MetricBadge
             label="Planning"
@@ -114,8 +107,12 @@ export const ProjectIssuesView = ({
             <Plus className="h-4 w-4" />
             New issue
           </Button>
-        </div>
-      </div>
+          </>
+        }
+        description={project.name}
+        icon={<ClipboardList className="h-4 w-4" />}
+        title="Issues"
+      />
 
       <Dialog onOpenChange={setIssueDialogOpen} open={issueDialogOpen}>
         <DialogContent className="max-w-2xl">
@@ -287,6 +284,6 @@ export const ProjectIssuesView = ({
           )}
         </section>
       </div>
-    </section>
+    </Page>
   )
 }

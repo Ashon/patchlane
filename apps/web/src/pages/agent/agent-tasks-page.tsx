@@ -7,11 +7,17 @@ import { useMemo } from 'react'
 import { Bot, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
+import {
+  ErrorBanner,
+  PageHeader,
+  PagePane,
+  PageScroll,
+  PageSplit,
+} from '@/components/layout/page-primitives'
 import { cn } from '@/lib/utils'
 import { useAgentRunController } from './agent-run-controller'
 
@@ -50,13 +56,13 @@ export const AgentTasksPage = () => {
   )
 
   return (
-    <section className="grid h-full min-h-0 overflow-y-auto bg-background xl:grid-cols-[minmax(340px,360px)_minmax(0,1fr)] xl:overflow-hidden">
-      <div className="flex min-h-[260px] min-w-0 flex-col overflow-hidden border-b xl:min-h-0 xl:border-b-0 xl:border-r">
-        <div className="flex min-h-10 items-center justify-between border-b px-3 py-2">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Bot className="h-4 w-4" />
-            Agent tasks
-          </h2>
+    <PageSplit variant="wide-list">
+      <PagePane
+        className="overflow-hidden border-b xl:border-b-0 xl:border-r"
+        minHeight="compact"
+      >
+        <PageHeader
+          actions={
           <Button
             disabled={agentRunning}
             onClick={onStartNewAgentRun}
@@ -67,8 +73,11 @@ export const AgentTasksPage = () => {
             <Plus />
             New
           </Button>
-        </div>
-        <ScrollArea className="min-h-[220px] min-w-0 flex-1">
+          }
+          icon={<Bot className="h-4 w-4" />}
+          title="Agent tasks"
+        />
+        <PageScroll className="min-h-[220px] min-w-0">
           {runs.length ? (
             <div className="divide-y">
               {runs.map((run) => (
@@ -91,16 +100,13 @@ export const AgentTasksPage = () => {
               <EmptyState>No runs</EmptyState>
             </div>
           )}
-        </ScrollArea>
-      </div>
+        </PageScroll>
+      </PagePane>
 
-      <div className="flex min-h-[560px] min-w-0 flex-col xl:min-h-0">
-        <div className="flex min-h-10 flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Bot className="h-4 w-4" />
-            Agent task
-          </h2>
-          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+      <PagePane minHeight="detail">
+        <PageHeader
+          actions={
+            <>
             {endpoint ? (
               <Badge variant="secondary">{endpoint.defaultModel}</Badge>
             ) : null}
@@ -116,8 +122,11 @@ export const AgentTasksPage = () => {
             {selectedRun?.context ? (
               <AgentRunContextBadge context={selectedRun.context} />
             ) : null}
-          </div>
-        </div>
+            </>
+          }
+          icon={<Bot className="h-4 w-4" />}
+          title="Agent task"
+        />
         <div className="min-h-0 flex-1">
           {selectedRun ? (
             <AgentTaskConversation
@@ -143,11 +152,7 @@ export const AgentTasksPage = () => {
                   value={agentTaskDraft}
                 />
               </Field>
-              {error ? (
-                <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {error}
-                </div>
-              ) : null}
+              <ErrorBanner message={error} variant="card" />
               <Button
                 disabled={
                   agentRunning ||
@@ -163,8 +168,8 @@ export const AgentTasksPage = () => {
             </form>
           )}
         </div>
-      </div>
-    </section>
+      </PagePane>
+    </PageSplit>
   )
 }
 

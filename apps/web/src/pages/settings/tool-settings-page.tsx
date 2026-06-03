@@ -19,12 +19,18 @@ import {
 } from '@/components/app/app-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Field,
   ToolStatusRow,
 } from '@/components/app/panel-primitives'
 import { GitHubTestBadge, StateBadge } from '@/components/app/status-badges'
+import {
+  ErrorBanner,
+  PageAside,
+  PageHeader,
+  PageScroll,
+  PageSplit,
+} from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
 import { getErrorMessage, getQueryErrorMessage } from '@/lib/errors'
 import { queryKeys } from '@/lib/query-client'
@@ -101,14 +107,11 @@ export const ToolSettingsPage = () => {
   }
 
   return (
-    <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
-      <ScrollArea className="min-h-0">
-        <div className="flex min-h-10 flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Github className="h-4 w-4" />
-            GitHub
-          </h2>
-          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+    <PageSplit>
+      <PageScroll>
+        <PageHeader
+          actions={
+            <>
             <StateBadge tone={draft.enabled ? 'success' : 'warning'}>
               {draft.enabled ? 'Enabled' : 'Disabled'}
             </StateBadge>
@@ -116,8 +119,11 @@ export const ToolSettingsPage = () => {
               {github?.tokenConfigured ? 'PAT configured' : 'PAT missing'}
             </StateBadge>
             {testResult ? <GitHubTestBadge result={testResult} /> : null}
-          </div>
-        </div>
+            </>
+          }
+          icon={<Github className="h-4 w-4" />}
+          title="GitHub"
+        />
         <div className="p-3">
           <form className="space-y-2.5" onSubmit={saveGitHubToolSettings}>
             <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
@@ -175,11 +181,7 @@ export const ToolSettingsPage = () => {
               </label>
             ) : null}
 
-            {visibleError ? (
-              <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {visibleError}
-              </div>
-            ) : null}
+            <ErrorBanner message={visibleError} variant="card" />
 
             {testResult?.error ? (
               <p className="text-sm text-destructive">{testResult.error}</p>
@@ -202,12 +204,9 @@ export const ToolSettingsPage = () => {
             </div>
           </form>
         </div>
-      </ScrollArea>
+      </PageScroll>
 
-      <ScrollArea
-        className="min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0"
-        viewportClassName="p-3"
-      >
+      <PageAside>
         <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
           <ShieldCheck className="h-4 w-4" />
           Git clone readiness
@@ -234,8 +233,8 @@ export const ToolSettingsPage = () => {
             value={formatDateTime(github?.validatedAt)}
           />
         </div>
-      </ScrollArea>
-    </section>
+      </PageAside>
+    </PageSplit>
   )
 }
 

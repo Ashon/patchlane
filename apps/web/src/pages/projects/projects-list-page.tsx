@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   EmptyState,
   MetricBadge,
@@ -26,6 +25,12 @@ import {
   toProjectDraft,
   upsertProject,
 } from '@/components/issues/utils'
+import {
+  ErrorBanner,
+  Page,
+  PageHeader,
+  PageScroll,
+} from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
 import { getQueryErrorMessage } from '@/lib/errors'
 import { queryKeys } from '@/lib/query-client'
@@ -163,19 +168,11 @@ export const ProjectsListPage = () => {
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+    <Page>
       <main className="flex min-h-[520px] flex-col xl:min-h-0">
-        <div className="flex min-h-10 items-center justify-between border-b px-3 py-2">
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <Layers3 className="h-4 w-4" />
-              Projects
-            </h2>
-            <p className="truncate text-xs text-muted-foreground">
-              Repository-scoped coding workspaces and issues
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
+        <PageHeader
+          actions={
+            <div className="flex items-center gap-1">
             <Button
               disabled={loading}
               onClick={() => void refreshProjects()}
@@ -199,15 +196,15 @@ export const ProjectsListPage = () => {
               New
             </Button>
           </div>
-        </div>
+          }
+          description="Repository-scoped coding workspaces and issues"
+          icon={<Layers3 className="h-4 w-4" />}
+          title="Projects"
+        />
 
-        {visibleError ? (
-          <div className="border-b border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {visibleError}
-          </div>
-        ) : null}
+        <ErrorBanner message={visibleError} />
 
-        <ScrollArea className="min-h-0 flex-1">
+        <PageScroll>
           {projects.length ? (
             <div className="divide-y">
               {projects.map((project) => {
@@ -262,7 +259,7 @@ export const ProjectsListPage = () => {
               <EmptyState>No projects</EmptyState>
             </div>
           )}
-        </ScrollArea>
+        </PageScroll>
       </main>
 
       <Dialog onOpenChange={setProjectDialogOpen} open={projectDialogOpen}>
@@ -287,6 +284,6 @@ export const ProjectsListPage = () => {
           />
         </DialogContent>
       </Dialog>
-    </section>
+    </Page>
   )
 }

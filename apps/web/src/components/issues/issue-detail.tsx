@@ -3,6 +3,7 @@ import { Bot, ClipboardList, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Markdown } from '@/components/ui/markdown'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Page, PageHeader } from '@/components/layout/page-primitives'
 import { EmptyState, InfoRow, IssueStatusBadge, PriorityBadge } from './common'
 
 export const IssueDetail = ({
@@ -20,20 +21,20 @@ export const IssueDetail = ({
   run?: AgentRun
   workspace?: SandboxWorkspace
 }) => (
-  <section className="flex h-full min-h-0 flex-col bg-background">
-    <header className="border-b bg-background px-3 py-2">
-      <div className="mb-1 flex min-w-0 flex-wrap items-center gap-2">
+  <Page>
+    <PageHeader
+      actions={
+        <>
         <span className="text-[11px] font-medium uppercase text-muted-foreground">
           Issue detail
         </span>
         <IssueStatusBadge status={issue.status} />
         <PriorityBadge priority={issue.priority} />
-      </div>
-      <h3 className="truncate text-sm font-semibold">{issue.title}</h3>
-      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-        {issue.description}
-      </p>
-    </header>
+        </>
+      }
+      description={issue.description}
+      title={issue.title}
+    />
 
     <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1fr)_320px]">
       <ScrollArea className="min-h-0" viewportClassName="px-4 py-3">
@@ -116,5 +117,5 @@ export const IssueDetail = ({
         </div>
       </ScrollArea>
     </div>
-  </section>
+  </Page>
 )

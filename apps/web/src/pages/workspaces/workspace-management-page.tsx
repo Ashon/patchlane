@@ -11,16 +11,23 @@ import {
   emptySandboxWorkspaceDraft,
   type SandboxWorkspaceDraft,
 } from '@/components/app/app-types'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   EmptyState,
   Field,
   ToolStatusRow,
 } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
+import {
+  ErrorBanner,
+  PageAside,
+  PageHeader,
+  PagePane,
+  PageScroll,
+  PageSection,
+  PageSplit,
+} from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
 import { getErrorMessage, getQueryErrorMessage } from '@/lib/errors'
 import { queryKeys } from '@/lib/query-client'
@@ -125,22 +132,20 @@ export const WorkspaceManagementPage = () => {
   }, [selectedWorkspaceId, setSelectedWorkspaceId, workspaces])
 
   return (
-    <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
-      <div className="flex min-h-[320px] flex-col lg:min-h-0">
-        <div className="flex min-h-10 items-center justify-between border-b px-3 py-2">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Folder className="h-4 w-4" />
-            Workspaces
-          </h2>
-          <Badge variant="secondary">{workspaces.length} total</Badge>
-        </div>
-        <ScrollArea className="min-h-0 flex-1" viewportClassName="p-2">
+    <PageSplit>
+      <PagePane>
+        <PageHeader
+          actions={
+            <span className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
+              {workspaces.length} total
+            </span>
+          }
+          icon={<Folder className="h-4 w-4" />}
+          title="Workspaces"
+        />
+        <PageScroll viewportClassName="p-2">
           <div className="grid gap-1.5">
-            {visibleError ? (
-              <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {visibleError}
-              </div>
-            ) : null}
+            <ErrorBanner message={visibleError} variant="card" />
 
             {workspaces.length ? (
               workspaces.map((workspace) => (
@@ -156,12 +161,11 @@ export const WorkspaceManagementPage = () => {
               <EmptyState>No workspaces</EmptyState>
             )}
           </div>
-        </ScrollArea>
-      </div>
+        </PageScroll>
+      </PagePane>
 
-      <ScrollArea className="min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0">
-        <section className="border-b p-3">
-          <h2 className="mb-2 text-sm font-semibold">New workspace</h2>
+      <PageAside viewportClassName="">
+        <PageSection title="New workspace">
           <form className="space-y-2.5" onSubmit={createWorkspace}>
             <Field label="Name">
               <Input
@@ -212,10 +216,9 @@ export const WorkspaceManagementPage = () => {
               Create
             </Button>
           </form>
-        </section>
+        </PageSection>
 
-        <section className="border-b p-3">
-          <h2 className="mb-2 text-sm font-semibold">Selected workspace</h2>
+        <PageSection title="Selected workspace">
           <div className="space-y-0">
             {selectedWorkspace ? (
               <>
@@ -239,10 +242,9 @@ export const WorkspaceManagementPage = () => {
               <EmptyState>Select or create a workspace</EmptyState>
             )}
           </div>
-        </section>
+        </PageSection>
 
-        <section className="p-3">
-          <h2 className="mb-2 text-sm font-semibold">Sandbox policy</h2>
+        <PageSection title="Sandbox policy">
           <div className="grid gap-0">
             <ToolStatusRow
               label="Root"
@@ -261,9 +263,9 @@ export const WorkspaceManagementPage = () => {
               value={settings ? `${settings.maxOutputBytes} bytes` : 'Loading'}
             />
           </div>
-        </section>
-      </ScrollArea>
-    </section>
+        </PageSection>
+      </PageAside>
+    </PageSplit>
   )
 }
 
