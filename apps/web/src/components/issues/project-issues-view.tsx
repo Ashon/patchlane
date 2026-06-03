@@ -18,7 +18,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Page, PageActionBar } from '@/components/layout/page-primitives'
+import {
+  Page,
+  PageActionBar,
+  PageList,
+} from '@/components/layout/page-primitives'
 import {
   Select,
   SelectContent,
@@ -203,7 +207,7 @@ export const ProjectIssuesView = ({
       <div className="grid min-h-0 flex-1 overflow-hidden bg-background xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
         <ScrollArea className="min-h-0 border-b bg-background xl:border-b-0 xl:border-r">
           {issues.length ? (
-            <div className="divide-y">
+            <PageList>
               {issues.map((issue) => (
                 <IssueRow
                   agentRun={
@@ -232,7 +236,7 @@ export const ProjectIssuesView = ({
                   selected={selectedIssue?.id === issue.id}
                 />
               ))}
-            </div>
+            </PageList>
           ) : (
             <div className="p-3">
               <EmptyState>No issues in this project</EmptyState>

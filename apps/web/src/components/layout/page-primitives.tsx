@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
+import { Slot } from 'radix-ui'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
@@ -90,7 +91,7 @@ export const PageHeader = ({
   return (
     <header
       className={cn(
-        'flex min-h-10 flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between',
+        'flex min-h-12 flex-col gap-2 border-b px-3 py-1.5 md:flex-row md:items-center md:justify-between',
         className,
       )}
     >
@@ -102,14 +103,14 @@ export const PageHeader = ({
             <span className="min-w-0 truncate">{title}</span>
           </h2>
           {description ? (
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="truncate text-[11px] leading-3 text-muted-foreground">
               {description}
             </p>
           ) : null}
         </div>
       </div>
       {actions ? (
-        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+        <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
           {actions}
         </div>
       ) : null}
@@ -210,6 +211,69 @@ export const PageSection = ({
       {title ? <h2 className="mb-2 text-sm font-semibold">{title}</h2> : null}
       {children}
     </section>
+  )
+}
+
+export const PageList = ({
+  children,
+  className,
+  ...props
+}: ComponentProps<'div'>) => {
+  return (
+    <div className={cn('divide-y border-b bg-background', className)} {...props}>
+      {children}
+    </div>
+  )
+}
+
+export const PageListItem = ({
+  asChild = false,
+  children,
+  className,
+  interactive = true,
+  selected = false,
+  ...props
+}: ComponentProps<'div'> & {
+  asChild?: boolean
+  interactive?: boolean
+  selected?: boolean
+}) => {
+  const Comp = asChild ? Slot.Root : 'div'
+
+  return (
+    <Comp
+      className={cn(
+        'grid w-full min-w-0 gap-2 border-l-2 border-l-transparent px-3 py-2.5',
+        interactive && 'transition-colors hover:bg-muted/45',
+        selected && 'border-l-primary bg-primary/5',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </Comp>
+  )
+}
+
+export const PageListSkeleton = ({
+  count = 3,
+  className,
+  itemClassName,
+}: {
+  count?: number
+  className?: string
+  itemClassName?: string
+}) => {
+  return (
+    <PageList className={className}>
+      {Array.from({ length: count }).map((_, index) => (
+        <PageListItem
+          className={cn('h-20 animate-pulse bg-muted/30', itemClassName)}
+          interactive={false}
+          key={index}
+        />
+      ))}
+    </PageList>
   )
 }
 

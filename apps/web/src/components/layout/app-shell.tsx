@@ -1,10 +1,11 @@
+import { useEffect, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import {
+  GitPullRequestArrow,
   Loader2,
   MessageSquare,
   Monitor,
   Moon,
-  Network,
   RefreshCw,
   Sun,
 } from 'lucide-react'
@@ -15,12 +16,20 @@ import type { ThemeMode } from '@/components/app/app-types'
 import { StateBadge, StatusBadge } from '@/components/app/status-badges'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  useResizableDefaultLayout,
+} from '@/components/ui/resizable'
 import { cn } from '@/lib/utils'
 
 type AppRoute = {
   pathname: string
   search?: string
 }
+
+const supervisorPanelIds = ['main', 'supervisor']
 
 export const AppShell = ({
   apiOnline,
@@ -54,25 +63,47 @@ export const AppShell = ({
   themeMode: ThemeMode
 }) => {
   const location = useLocation()
+  const supervisorLayout = useResizableDefaultLayout({
+    id: 'patchlane-supervisor-layout',
+    panelIds: supervisorPanelIds,
+  })
+  const [resizableLayoutEnabled, setResizableLayoutEnabled] = useState(() =>
+    typeof window === 'undefined'
+      ? true
+      : window.matchMedia('(min-width: 1280px)').matches,
+  )
+  const showResizableSupervisor =
+    supervisorChatOpen && resizableLayoutEnabled
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1280px)')
+    const syncResizableLayout = () =>
+      setResizableLayoutEnabled(mediaQuery.matches)
+
+    syncResizableLayout()
+    mediaQuery.addEventListener('change', syncResizableLayout)
+
+    return () => mediaQuery.removeEventListener('change', syncResizableLayout)
+  }, [])
 
   return (
     <main className="h-screen overflow-hidden bg-background">
       <div className="flex h-full min-h-0 flex-col">
-        <header className="shrink-0 border-b bg-background">
-          <div className="grid min-h-11 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-1.5">
-            <div className="flex min-w-0 shrink-0 items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <Network className="h-4 w-4" />
+        <header className="shrink-0 border-b bg-muted/30">
+          <div className="grid min-h-9 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1">
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+              <div className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <GitPullRequestArrow className="h-3.5 w-3.5" />
               </div>
               <div className="min-w-0">
-                <h1 className="truncate text-sm font-semibold tracking-normal">
+                <h1 className="truncate text-xs font-semibold tracking-normal">
                   Patchlane
                 </h1>
               </div>
             </div>
 
             <nav
-              className="flex h-8 min-w-0 items-center gap-1 overflow-x-auto border-l pl-3"
+              className="flex h-6 min-w-0 items-center gap-0.5 overflow-x-auto pl-2"
               aria-label="Primary"
             >
               {navigationItems.map((item) => {
@@ -88,21 +119,22 @@ export const AppShell = ({
                   <NavLink
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex h-8 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
-                      active && 'border-primary text-foreground',
+                      'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                      active &&
+                        'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground',
                     )}
                     end={item.value !== 'settings'}
                     key={item.value}
                     to={buildRoute(item.path)}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-3 w-3" />
                     {item.label}
                   </NavLink>
                 )
               })}
             </nav>
 
-            <div className="flex shrink-0 items-center justify-end gap-1.5">
+            <div className="flex shrink-0 items-center justify-end gap-1">
               <div className="hidden items-center gap-1 2xl:flex">
                 <StatusBadge online={apiOnline} />
                 <Badge variant="secondary">{endpointCount} endpoints</Badge>
@@ -119,20 +151,18 @@ export const AppShell = ({
 
               <Button
                 variant={supervisorChatOpen ? 'secondary' : 'outline'}
-                size="sm"
-                className="h-8"
+                size="xs"
                 onClick={() =>
                   onSupervisorChatOpenChange((current) => !current)
                 }
                 type="button"
               >
-                <MessageSquare className="h-4 w-4" />
+                <MessageSquare className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Supervisor</span>
               </Button>
               <Button
                 variant="outline"
-                size="icon"
-                className="h-8 w-8"
+                size="icon-xs"
                 onClick={onRefresh}
                 disabled={loading}
                 type="button"
@@ -145,9 +175,42 @@ export const AppShell = ({
         </header>
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          <div className="min-w-0 flex-1 overflow-hidden">{children}</div>
+          {showResizableSupervisor ? (
+            <ResizablePanelGroup
+              className="min-w-0 flex-1"
+              defaultLayout={supervisorLayout.defaultLayout}
+              direction="horizontal"
+              id="patchlane-supervisor-layout"
+              onLayoutChanged={supervisorLayout.onLayoutChanged}
+            >
+              <ResizablePanel
+                className="min-w-0 overflow-hidden"
+                defaultSize="70%"
+                id="main"
+                minSize="520px"
+              >
+                <div className="h-full min-w-0 overflow-hidden">
+                  {children}
+                </div>
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel
+                className="min-w-0 overflow-hidden"
+                defaultSize="30%"
+                id="supervisor"
+                maxSize="560px"
+                minSize="320px"
+              >
+                <aside className="flex h-full min-h-0 bg-background">
+                  {supervisorPanel}
+                </aside>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : (
+            <div className="min-w-0 flex-1 overflow-hidden">{children}</div>
+          )}
 
-          {supervisorChatOpen ? (
+          {supervisorChatOpen && !resizableLayoutEnabled ? (
             <>
               <button
                 aria-label="Close supervisor chat backdrop"
@@ -180,9 +243,8 @@ const ThemeToggle = ({
   return (
     <Button
       aria-label={label}
-      className="h-8 w-8"
       onClick={() => onChange(nextMode)}
-      size="icon"
+      size="icon-xs"
       title={label}
       type="button"
       variant="outline"

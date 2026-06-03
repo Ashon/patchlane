@@ -28,7 +28,9 @@ import {
   ErrorBanner,
   PageAside,
   PageHeader,
+  PagePane,
   PageScroll,
+  PageSection,
   PageSplit,
 } from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
@@ -108,25 +110,28 @@ export const ToolSettingsPage = () => {
 
   return (
     <PageSplit>
-      <PageScroll>
+      <PagePane>
         <PageHeader
           actions={
             <>
-            <StateBadge tone={draft.enabled ? 'success' : 'warning'}>
-              {draft.enabled ? 'Enabled' : 'Disabled'}
-            </StateBadge>
-            <StateBadge tone={github?.tokenConfigured ? 'success' : 'warning'}>
-              {github?.tokenConfigured ? 'PAT configured' : 'PAT missing'}
-            </StateBadge>
-            {testResult ? <GitHubTestBadge result={testResult} /> : null}
+              <StateBadge tone={draft.enabled ? 'success' : 'warning'}>
+                {draft.enabled ? 'Enabled' : 'Disabled'}
+              </StateBadge>
+              <StateBadge
+                tone={github?.tokenConfigured ? 'success' : 'warning'}
+              >
+                {github?.tokenConfigured ? 'PAT configured' : 'PAT missing'}
+              </StateBadge>
+              {testResult ? <GitHubTestBadge result={testResult} /> : null}
             </>
           }
+          description="Repository tooling and credentials"
           icon={<Github className="h-4 w-4" />}
-          title="GitHub"
+          title="Tools"
         />
-        <div className="p-3">
+        <PageScroll viewportClassName="p-3">
           <form className="space-y-2.5" onSubmit={saveGitHubToolSettings}>
-            <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            <label className="flex items-center justify-between rounded-md border bg-background px-3 py-2 text-sm">
               <span className="font-medium">Enabled</span>
               <input
                 checked={draft.enabled}
@@ -164,7 +169,7 @@ export const ToolSettingsPage = () => {
             </Field>
 
             {github?.tokenConfigured ? (
-              <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <label className="flex items-center justify-between rounded-md border bg-background px-3 py-2 text-sm">
                 <span className="font-medium">Clear stored PAT</span>
                 <input
                   checked={draft.clearToken}
@@ -203,36 +208,46 @@ export const ToolSettingsPage = () => {
               </Button>
             </div>
           </form>
-        </div>
-      </PageScroll>
+        </PageScroll>
+      </PagePane>
 
-      <PageAside>
-        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-          <ShieldCheck className="h-4 w-4" />
-          Git clone readiness
-        </h2>
-        <div className="space-y-0">
-          <ToolStatusRow label="Status" value={ready ? 'Ready' : 'Not ready'} />
-          <ToolStatusRow
-            icon={<KeyRound className="h-4 w-4" />}
-            label="Credential"
-            value={github?.tokenPreview || 'Missing'}
-          />
-          <ToolStatusRow
-            label="Account"
-            value={github?.username || 'Not validated'}
-          />
-          <ToolStatusRow
-            label="Scopes"
-            value={
-              github?.scopes.length ? github.scopes.join(', ') : 'Not reported'
-            }
-          />
-          <ToolStatusRow
-            label="Last validation"
-            value={formatDateTime(github?.validatedAt)}
-          />
-        </div>
+      <PageAside viewportClassName="">
+        <PageSection
+          title={
+            <span className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4" />
+              Git clone readiness
+            </span>
+          }
+        >
+          <div className="space-y-0">
+            <ToolStatusRow
+              label="Status"
+              value={ready ? 'Ready' : 'Not ready'}
+            />
+            <ToolStatusRow
+              icon={<KeyRound className="h-4 w-4" />}
+              label="Credential"
+              value={github?.tokenPreview || 'Missing'}
+            />
+            <ToolStatusRow
+              label="Account"
+              value={github?.username || 'Not validated'}
+            />
+            <ToolStatusRow
+              label="Scopes"
+              value={
+                github?.scopes.length
+                  ? github.scopes.join(', ')
+                  : 'Not reported'
+              }
+            />
+            <ToolStatusRow
+              label="Last validation"
+              value={formatDateTime(github?.validatedAt)}
+            />
+          </div>
+        </PageSection>
       </PageAside>
     </PageSplit>
   )

@@ -43,13 +43,15 @@ export const MetricBadge = ({
 )
 
 export const ProjectRepositoryBadge = ({
+  className,
   project,
 }: {
+  className?: string
   project: AgentProject
 }) => {
   if (project.workspaceId) {
     return (
-      <StateBadge tone="success">
+      <StateBadge className={className} tone="success">
         {project.repositoryUrl ? (
           <Github className="h-3 w-3" />
         ) : (
@@ -60,7 +62,11 @@ export const ProjectRepositoryBadge = ({
     )
   }
 
-  return <StateBadge tone="warning">No repo</StateBadge>
+  return (
+    <StateBadge className={className} tone="warning">
+      No repo
+    </StateBadge>
+  )
 }
 
 export const AgentRunKindBadge = ({ kind }: { kind: AgentRun['kind'] }) => {
@@ -143,9 +149,11 @@ export const PriorityBadge = ({ priority }: { priority: IssuePriority }) => {
 
 export const StateBadge = ({
   children,
+  className,
   tone,
 }: {
   children: ReactNode
+  className?: string
   tone: 'success' | 'warning'
 }) => (
   <Badge
@@ -155,6 +163,7 @@ export const StateBadge = ({
         'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300',
       tone === 'warning' &&
         'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
+      className,
     )}
     variant="outline"
   >

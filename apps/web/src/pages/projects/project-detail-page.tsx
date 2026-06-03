@@ -338,34 +338,47 @@ export const ProjectDetailPage = () => {
       <PageHeader
         actions={
           <>
-          <ProjectRepositoryBadge project={project} />
-          <Badge variant="secondary">{projectIssues.length} issues</Badge>
-          <Badge variant="secondary">{projectRuns.length} tasks</Badge>
-          {workspace ? <Badge variant="outline">{workspace.name}</Badge> : null}
-          <Button
-            disabled={loading}
-            onClick={() => void refreshProject()}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-          </Button>
-          <Button
-            onClick={() => setEditProjectOpen(true)}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
+            <ProjectRepositoryBadge
+              className="h-7 px-2 text-xs"
+              project={project}
+            />
+            <Badge className="h-7 px-2 text-xs" variant="secondary">
+              {projectIssues.length} issues
+            </Badge>
+            <Badge className="h-7 px-2 text-xs" variant="secondary">
+              {projectRuns.length} tasks
+            </Badge>
+            {workspace ? (
+              <Badge className="h-7 px-2 text-xs" variant="outline">
+                {workspace.name}
+              </Badge>
+            ) : null}
+            <Button
+              className="bg-background"
+              disabled={loading}
+              onClick={() => void refreshProject()}
+              size="icon-sm"
+              type="button"
+              variant="outline"
+            >
+              {loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+            </Button>
+            <Button
+              className="bg-background"
+              onClick={() => setEditProjectOpen(true)}
+              size="icon-sm"
+              type="button"
+              variant="outline"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
           </>
         }
-        description={project.repositoryUrl || 'Repository not configured'}
+        description={project.repositoryUrl || undefined}
         leading={
           <Button
             onClick={() =>

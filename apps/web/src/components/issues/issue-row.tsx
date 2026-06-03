@@ -1,7 +1,7 @@
 import type { AgentRun, Issue } from '@patchlane/shared'
 import { Bot, CheckCircle2, GitBranch, Loader2, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { PageListItem } from '@/components/layout/page-primitives'
 import { IssueStatusBadge, PriorityBadge } from './common'
 import { formatDateTime, hasActiveIssueTask } from './utils'
 
@@ -61,12 +61,7 @@ export const IssueRow = ({
   ].filter(Boolean)
 
   return (
-    <div
-      className={cn(
-        'grid gap-2 border-l-2 border-l-transparent px-3 py-2.5 transition-colors hover:bg-muted/45',
-        selected && 'border-l-primary bg-primary/5',
-      )}
-    >
+    <PageListItem selected={selected}>
       <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
         <button className="min-w-0 text-left" onClick={onSelect} type="button">
           <div className="flex min-w-0 items-start gap-2">
@@ -133,6 +128,6 @@ export const IssueRow = ({
           )}
         </div>
       </div>
-    </div>
+    </PageListItem>
   )
 }

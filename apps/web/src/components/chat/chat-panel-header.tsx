@@ -38,8 +38,8 @@ export const ChatPanelHeader = ({
 }) => {
   if (isSidebar) {
     return (
-      <header className="border-b bg-card p-1.5">
-        <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
+      <header className="flex min-h-12 items-center border-b bg-background px-2 py-1.5">
+        <div className="grid min-h-7 w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
           <EndpointSelect
             endpoint={endpoint}
             endpoints={endpoints}
@@ -113,7 +113,7 @@ const EndpointSelect = ({
     >
       <SelectTrigger
         className={cn(
-          'h-8 min-w-0 bg-background text-xs',
+          'h-7 min-w-0 px-2 text-xs',
           !sidebar && 'w-full sm:w-[320px] xl:w-[400px]',
         )}
       >
@@ -141,14 +141,14 @@ const EndpointStatusBadge = ({
     <Badge
       className={cn(
         'gap-1',
-        sidebar && 'h-8 px-2 text-xs',
+        sidebar && 'h-7 px-2 text-xs',
         canChat
           ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300'
           : 'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
       )}
       variant="outline"
     >
-      <Cpu className="h-3.5 w-3.5" />
+      <Cpu className="h-3 w-3" />
       {canChat ? 'Ready' : 'Unavailable'}
     </Badge>
   )
@@ -165,7 +165,7 @@ const ClearChatButton = ({
 }) => {
   return (
     <Button
-      className={sidebar ? 'h-8 px-2.5' : undefined}
+      className={sidebar ? 'h-7 px-2.5 text-xs' : undefined}
       disabled={disabled}
       onClick={onClear}
       size="sm"
@@ -176,4 +176,3 @@ const ClearChatButton = ({
     </Button>
   )
 }
-

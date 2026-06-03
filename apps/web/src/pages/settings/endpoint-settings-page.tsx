@@ -24,17 +24,19 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   ErrorBanner,
-  LoadingCardList,
   PageAside,
   PageHeader,
+  PageList,
+  PageListItem,
+  PageListSkeleton,
   PagePane,
   PageScroll,
+  PageSection,
   PageSplit,
 } from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
 import { getErrorMessage, getQueryErrorMessage } from '@/lib/errors'
 import { queryKeys } from '@/lib/query-client'
-import { cn } from '@/lib/utils'
 
 export const EndpointSettingsPage = () => {
   const queryClient = useQueryClient()
@@ -197,133 +199,141 @@ export const EndpointSettingsPage = () => {
       <PagePane>
         <PageHeader
           actions={
-          <Button variant="secondary" onClick={startNewEndpoint} size="sm">
-            <Plus />
-            New
-          </Button>
+            <Button
+              onClick={startNewEndpoint}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Plus />
+              New
+            </Button>
           }
+          description="LLM providers and default chat models"
+          icon={<Server className="h-4 w-4" />}
           title="Endpoints"
         />
-        <PageScroll viewportClassName="p-2">
-          <div className="grid gap-1.5">
-            <ErrorBanner message={endpointError} variant="card" />
+        <PageScroll>
+          <ErrorBanner message={endpointError} />
 
-            {loading ? (
-              <LoadingCardList />
-            ) : endpoints.length > 0 ? (
-              <div className="grid gap-2">
-                {endpoints.map((endpoint) => (
-                  <EndpointCard
-                    endpoint={endpoint}
-                    key={endpoint.id}
-                    selected={endpoint.id === selectedEndpointId}
-                    testResult={testResults[endpoint.id]}
-                    testing={testingId === endpoint.id}
-                    onSelect={() => selectEndpoint(endpoint)}
-                    onTest={() => void testEndpoint(endpoint)}
-                  />
-                ))}
-              </div>
-            ) : (
+          {loading ? (
+            <PageListSkeleton />
+          ) : endpoints.length > 0 ? (
+            <PageList>
+              {endpoints.map((endpoint) => (
+                <EndpointCard
+                  endpoint={endpoint}
+                  key={endpoint.id}
+                  selected={endpoint.id === selectedEndpointId}
+                  testResult={testResults[endpoint.id]}
+                  testing={testingId === endpoint.id}
+                  onSelect={() => selectEndpoint(endpoint)}
+                  onTest={() => void testEndpoint(endpoint)}
+                />
+              ))}
+            </PageList>
+          ) : (
+            <div className="p-2">
               <EmptyState>No endpoints</EmptyState>
-            )}
-          </div>
+            </div>
+          )}
         </PageScroll>
       </PagePane>
 
-      <PageAside>
-        <h2 className="mb-2 text-sm font-semibold">
-          {selectedEndpoint ? 'Endpoint settings' : 'New endpoint'}
-        </h2>
-        <form className="space-y-2.5" onSubmit={saveEndpoint}>
-          <Field label="Name">
-            <Input
-              value={draft.name}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  name: event.target.value,
-                })
-              }
-              placeholder="Ollama Local"
-              required
-            />
-          </Field>
+      <PageAside viewportClassName="">
+        <PageSection
+          title={selectedEndpoint ? 'Endpoint settings' : 'New endpoint'}
+        >
+          <form className="space-y-2.5" onSubmit={saveEndpoint}>
+            <Field label="Name">
+              <Input
+                value={draft.name}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    name: event.target.value,
+                  })
+                }
+                placeholder="Ollama Local"
+                required
+              />
+            </Field>
 
-          <Field label="Base URL">
-            <Input
-              value={draft.baseUrl}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  baseUrl: event.target.value,
-                })
-              }
-              placeholder="http://localhost:11434/v1"
-              required
-            />
-          </Field>
+            <Field label="Base URL">
+              <Input
+                value={draft.baseUrl}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    baseUrl: event.target.value,
+                  })
+                }
+                placeholder="http://localhost:11434/v1"
+                required
+              />
+            </Field>
 
-          <Field label="Default model">
-            <Input
-              value={draft.defaultModel}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  defaultModel: event.target.value,
-                })
-              }
-              placeholder="llama3.1"
-              required
-            />
-          </Field>
+            <Field label="Default model">
+              <Input
+                value={draft.defaultModel}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    defaultModel: event.target.value,
+                  })
+                }
+                placeholder="llama3.1"
+                required
+              />
+            </Field>
 
-          <Field label="API key env">
-            <Input
-              value={draft.apiKeyEnvVar || ''}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  apiKeyEnvVar: event.target.value,
-                })
-              }
-              placeholder="LOCAL_LLM_API_KEY"
-            />
-          </Field>
+            <Field label="API key env">
+              <Input
+                value={draft.apiKeyEnvVar || ''}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    apiKeyEnvVar: event.target.value,
+                  })
+                }
+                placeholder="LOCAL_LLM_API_KEY"
+              />
+            </Field>
 
-          <label className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
-            <span className="font-medium">Enabled</span>
-            <input
-              checked={draft.enabled}
-              className="h-4 w-4 accent-primary"
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  enabled: event.target.checked,
-                })
-              }
-              type="checkbox"
-            />
-          </label>
+            <label className="flex items-center justify-between rounded-md border bg-background px-3 py-2 text-sm">
+              <span className="font-medium">Enabled</span>
+              <input
+                checked={draft.enabled}
+                className="h-4 w-4 accent-primary"
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    enabled: event.target.checked,
+                  })
+                }
+                type="checkbox"
+              />
+            </label>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button className="flex-1" disabled={saving} type="submit">
-              {saving ? <Loader2 className="animate-spin" /> : <Save />}
-              Save
-            </Button>
-            {selectedEndpoint ? (
-              <Button
-                disabled={saving}
-                onClick={() => void deleteEndpoint()}
-                type="button"
-                variant="destructive"
-              >
-                <Trash2 />
-                Delete
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button className="flex-1" disabled={saving} type="submit">
+                {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                Save
               </Button>
-            ) : null}
-          </div>
-        </form>
+              {selectedEndpoint ? (
+                <Button
+                  disabled={saving}
+                  onClick={() => void deleteEndpoint()}
+                  type="button"
+                  variant="destructive"
+                >
+                  <Trash2 />
+                  Delete
+                </Button>
+              ) : null}
+            </div>
+          </form>
+        </PageSection>
       </PageAside>
     </PageSplit>
   )
@@ -345,26 +355,23 @@ const EndpointCard = ({
   onTest: () => void
 }) => {
   return (
-    <div
-      className={cn(
-        'rounded-md border bg-background p-2 transition-colors',
-        selected && 'border-primary ring-1 ring-primary',
-      )}
-    >
+    <PageListItem selected={selected}>
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <button
           className="min-w-0 flex-1 text-left"
           onClick={onSelect}
           type="button"
         >
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Server className="h-4 w-4 text-primary" />
-            <h3 className="truncate text-sm font-semibold">{endpoint.name}</h3>
+            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
+              {endpoint.name}
+            </h3>
             <StateBadge tone={endpoint.enabled ? 'success' : 'warning'}>
               {endpoint.enabled ? 'Enabled' : 'Disabled'}
             </StateBadge>
           </div>
-          <div className="mt-1 grid gap-1 text-xs text-muted-foreground">
+          <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             <span className="truncate">{endpoint.baseUrl}</span>
             <span className="truncate">{endpoint.defaultModel}</span>
           </div>
@@ -398,7 +405,7 @@ const EndpointCard = ({
       {testResult?.error ? (
         <p className="mt-2 text-sm text-destructive">{testResult.error}</p>
       ) : null}
-    </div>
+    </PageListItem>
   )
 }
 

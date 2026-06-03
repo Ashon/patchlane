@@ -14,6 +14,8 @@ import { AgentTaskConversation } from '@/components/agent/agent-task-conversatio
 import {
   ErrorBanner,
   PageHeader,
+  PageList,
+  PageListItem,
   PagePane,
   PageScroll,
   PageSplit,
@@ -79,7 +81,7 @@ export const AgentTasksPage = () => {
         />
         <PageScroll className="min-h-[220px] min-w-0">
           {runs.length ? (
-            <div className="divide-y">
+            <PageList>
               {runs.map((run) => (
                 <AgentRunCard
                   deleting={runDeletingId === run.id}
@@ -94,7 +96,7 @@ export const AgentTasksPage = () => {
                   selected={selectedRun?.id === run.id}
                 />
               ))}
-            </div>
+            </PageList>
           ) : (
             <div className="p-2">
               <EmptyState>No runs</EmptyState>
@@ -194,12 +196,7 @@ const AgentRunCard = ({
   const scopeLabel = getAgentRunCardScope(run, issue)
 
   return (
-    <div
-      className={cn(
-        'grid w-full min-w-0 border-l-2 border-l-transparent px-3 py-2.5 transition-colors hover:bg-muted/45',
-        selected && 'border-l-primary bg-primary/5',
-      )}
-    >
+    <PageListItem selected={selected}>
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
         <button
           className="min-w-0 overflow-hidden text-left"
@@ -253,7 +250,7 @@ const AgentRunCard = ({
           )}
         </Button>
       </div>
-    </div>
+    </PageListItem>
   )
 }
 

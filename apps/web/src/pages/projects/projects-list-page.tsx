@@ -29,6 +29,8 @@ import {
   ErrorBanner,
   Page,
   PageHeader,
+  PageList,
+  PageListItem,
   PageScroll,
 } from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
@@ -206,7 +208,7 @@ export const ProjectsListPage = () => {
 
         <PageScroll>
           {projects.length ? (
-            <div className="divide-y">
+            <PageList>
               {projects.map((project) => {
                 const projectIssues = issues.filter(
                   (issue) => issue.projectId === project.id,
@@ -218,42 +220,43 @@ export const ProjectsListPage = () => {
                 ).length
 
                 return (
-                  <button
-                    className="grid w-full gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/70 md:grid-cols-[minmax(0,1fr)_auto]"
+                  <PageListItem
+                    asChild
+                    className="text-left md:grid-cols-[minmax(0,1fr)_auto]"
                     key={project.id}
-                    onClick={() => openProject(project.id)}
-                    type="button"
                   >
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className="truncate text-sm font-semibold">
-                          {project.name}
-                        </span>
-                        <ProjectRepositoryBadge project={project} />
-                        {project.repositoryRef ? (
-                          <Badge variant="outline">
-                            {project.repositoryRef}
-                          </Badge>
-                        ) : null}
+                    <button onClick={() => openProject(project.id)} type="button">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-semibold">
+                            {project.name}
+                          </span>
+                          <ProjectRepositoryBadge project={project} />
+                          {project.repositoryRef ? (
+                            <Badge variant="outline">
+                              {project.repositoryRef}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {project.repositoryUrl || 'Repository not configured'}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {project.description}
+                        </div>
                       </div>
-                      <div className="mt-1 truncate text-xs text-muted-foreground">
-                        {project.repositoryUrl || 'Repository not configured'}
+                      <div className="flex items-center gap-2 md:justify-end">
+                        <MetricBadge
+                          label="Issues"
+                          value={projectIssues.length}
+                        />
+                        <MetricBadge label="Active" value={activeCount} />
                       </div>
-                      <div className="mt-1 truncate text-xs text-muted-foreground">
-                        {project.description}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 md:justify-end">
-                      <MetricBadge
-                        label="Issues"
-                        value={projectIssues.length}
-                      />
-                      <MetricBadge label="Active" value={activeCount} />
-                    </div>
-                  </button>
+                    </button>
+                  </PageListItem>
                 )
               })}
-            </div>
+            </PageList>
           ) : (
             <div className="p-3">
               <EmptyState>No projects</EmptyState>
