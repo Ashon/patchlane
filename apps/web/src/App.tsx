@@ -67,6 +67,7 @@ import { ProjectsListPage } from '@/components/issues/projects-list-page'
 import type { ProjectDetailTab } from '@/components/issues/types'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
 import {
@@ -1566,8 +1567,11 @@ export default function App() {
                           New
                         </Button>
                       </div>
-                      <div className="min-h-0 flex-1 overflow-y-auto">
-                        <div className="grid gap-1.5 p-2">
+                      <ScrollArea
+                        className="min-h-0 flex-1"
+                        viewportClassName="p-2"
+                      >
+                        <div className="grid gap-1.5">
                           {endpointError ? (
                             <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                               {endpointError}
@@ -1601,10 +1605,13 @@ export default function App() {
                             <EmptyState>No endpoints</EmptyState>
                           )}
                         </div>
-                      </div>
+                      </ScrollArea>
                     </div>
 
-                    <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 p-3 lg:border-l lg:border-t-0">
+                    <ScrollArea
+                      className="min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0"
+                      viewportClassName="p-3"
+                    >
                       <div className="mb-2">
                         <h2 className="text-sm font-semibold">
                           {selectedEndpoint
@@ -1709,7 +1716,7 @@ export default function App() {
                           ) : null}
                         </div>
                       </form>
-                    </aside>
+                    </ScrollArea>
                   </section>
                 </SettingsShell>
               }
@@ -1918,8 +1925,8 @@ const WorkspaceManagementPanel = ({
           </h2>
           <Badge variant="secondary">{workspaces.length} total</Badge>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="grid gap-1.5 p-2">
+        <ScrollArea className="min-h-0 flex-1" viewportClassName="p-2">
+          <div className="grid gap-1.5">
             {error ? (
               <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {error}
@@ -1940,10 +1947,10 @@ const WorkspaceManagementPanel = ({
               <EmptyState>No workspaces</EmptyState>
             )}
           </div>
-        </div>
+        </ScrollArea>
       </div>
 
-      <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 lg:border-l lg:border-t-0">
+      <ScrollArea className="min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0">
         <section className="border-b p-3">
           <h2 className="mb-2 text-sm font-semibold">New workspace</h2>
           <form className="space-y-2.5" onSubmit={onCreateWorkspace}>
@@ -2046,7 +2053,7 @@ const WorkspaceManagementPanel = ({
             />
           </div>
         </section>
-      </aside>
+      </ScrollArea>
     </section>
   )
 }
@@ -2103,7 +2110,7 @@ const SandboxPanel = ({
             New
           </Button>
         </div>
-        <div className="min-h-[220px] min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <ScrollArea className="min-h-[220px] min-w-0 flex-1">
           {runs.length ? (
             <div className="divide-y">
               {runs.map((run) => (
@@ -2126,7 +2133,7 @@ const SandboxPanel = ({
               <EmptyState>No runs</EmptyState>
             </div>
           )}
-        </div>
+        </ScrollArea>
       </div>
 
       <div className="flex min-h-[560px] min-w-0 flex-col xl:min-h-0">
@@ -2569,7 +2576,7 @@ const ToolSettingsPanel = ({
 
   return (
     <section className="grid h-full min-h-0 overflow-y-auto bg-background lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden">
-      <div className="min-h-0 overflow-y-auto">
+      <ScrollArea className="min-h-0">
         <div className="flex min-h-10 flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Github className="h-4 w-4" />
@@ -2663,9 +2670,12 @@ const ToolSettingsPanel = ({
             </div>
           </form>
         </div>
-      </div>
+      </ScrollArea>
 
-      <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 p-3 lg:border-l lg:border-t-0">
+      <ScrollArea
+        className="min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0"
+        viewportClassName="p-3"
+      >
         <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
           <ShieldCheck className="h-4 w-4" />
           Git clone readiness
@@ -2692,7 +2702,7 @@ const ToolSettingsPanel = ({
             value={formatDateTime(github?.validatedAt)}
           />
         </div>
-      </aside>
+      </ScrollArea>
     </section>
   )
 }

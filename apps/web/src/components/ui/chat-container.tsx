@@ -1,11 +1,20 @@
+import { useCallback } from 'react'
 import { cn } from '@/lib/utils'
-import { StickToBottom, type StickToBottomContext } from 'use-stick-to-bottom'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  StickToBottom,
+  type StickToBottomContext,
+  useStickToBottomContext,
+} from 'use-stick-to-bottom'
 
 export type ChatContainerRootProps = {
   children: React.ReactNode
   className?: string
   contextRef?: React.Ref<StickToBottomContext>
-} & React.HTMLAttributes<HTMLDivElement>
+} & Omit<
+  React.ComponentPropsWithoutRef<typeof ScrollArea>,
+  'children' | 'viewportRef'
+>
 
 export type ChatContainerContentProps = {
   children: React.ReactNode
@@ -21,18 +30,28 @@ function ChatContainerRoot({
   children,
   className,
   contextRef,
+  role = 'log',
+  viewportClassName,
   ...props
 }: ChatContainerRootProps) {
   return (
     <StickToBottom
-      className={cn('flex overflow-y-auto', className)}
       contextRef={contextRef}
       resize="smooth"
       initial="instant"
-      role="log"
-      {...props}
+      className="contents"
     >
-      {children}
+      {(context) => (
+        <ScrollArea
+          className={cn('flex', className)}
+          viewportClassName={viewportClassName}
+          viewportRef={context.scrollRef}
+          {...props}
+          role={role}
+        >
+          {children}
+        </ScrollArea>
+      )}
     </StickToBottom>
   )
 }
@@ -42,13 +61,22 @@ function ChatContainerContent({
   className,
   ...props
 }: ChatContainerContentProps) {
+  const context = useStickToBottomContext()
+  const setContentRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      context.contentRef(node)
+    },
+    [context],
+  )
+
   return (
-    <StickToBottom.Content
+    <div
+      ref={setContentRef}
       className={cn('flex w-full min-w-0 flex-col', className)}
       {...props}
     >
       {children}
-    </StickToBottom.Content>
+    </div>
   )
 }
 

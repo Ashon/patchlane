@@ -1,5 +1,6 @@
 import type { AgentRun, Issue } from '@agent-fleet/shared'
 import { ListChecks } from 'lucide-react'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   AgentRunKindBadge,
   AgentRunStatusBadge,
@@ -39,7 +40,7 @@ export const ProjectTasksView = ({
           />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <ScrollArea className="min-h-0 flex-1">
         {runs.length ? (
           <div className="divide-y">
             {runs.map((run) => {
@@ -88,7 +89,7 @@ export const ProjectTasksView = ({
             <EmptyState>No tasks in this project</EmptyState>
           </div>
         )}
-      </div>
+      </ScrollArea>
     </section>
   )
 }

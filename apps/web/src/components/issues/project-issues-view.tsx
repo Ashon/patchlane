@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState, Field, MetricBadge } from './common'
 import { IssueDetail } from './issue-detail'
@@ -212,7 +213,7 @@ export const ProjectIssuesView = ({
       </Dialog>
 
       <div className="grid min-h-0 flex-1 overflow-hidden bg-muted/20 xl:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
-        <section className="min-h-0 overflow-y-auto border-b bg-background xl:border-b-0 xl:border-r">
+        <ScrollArea className="min-h-0 border-b bg-background xl:border-b-0 xl:border-r">
           {issues.length ? (
             <div className="divide-y">
               {issues.map((issue) => (
@@ -249,7 +250,7 @@ export const ProjectIssuesView = ({
               <EmptyState>No issues in this project</EmptyState>
             </div>
           )}
-        </section>
+        </ScrollArea>
 
         <section className="min-h-[420px] min-w-0 bg-background xl:min-h-0">
           {selectedIssue ? (

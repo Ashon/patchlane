@@ -8,9 +8,7 @@ import {
   Sparkles,
   Square,
 } from 'lucide-react'
-import {
-  ChatConversation,
-} from '@/components/chat/chat-conversation'
+import { ChatConversation } from '@/components/chat/chat-conversation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +18,7 @@ import {
 } from '@/components/ui/collapsible'
 import { Markdown } from '@/components/ui/markdown'
 import { PromptInputAction } from '@/components/ui/prompt-input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { getAgentTaskConversationMessages } from '@/lib/agent-task-messages'
 import { cn } from '@/lib/utils'
 
@@ -190,12 +189,12 @@ const AgentContextMemoryPanel = ({
         </CollapsibleTrigger>
       </div>
       <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-        <div className="m-3 mt-0 border bg-background rounded-md">
-          <div className="max-h-72 overflow-y-auto px-3 py-2.5 text-sm">
+        <div className="m-3 mt-0 rounded-md border bg-background">
+          <ScrollArea className="max-h-72" viewportClassName="px-3 py-2.5">
             <Markdown className="prose prose-sm max-w-none dark:prose-invert prose-headings:my-2 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-code:text-xs">
               {formatContextMemoryMarkdown(context)}
             </Markdown>
-          </div>
+          </ScrollArea>
         </div>
       </CollapsibleContent>
     </Collapsible>

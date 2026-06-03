@@ -256,7 +256,6 @@ export const ChatPanel = ({
           </div>
         </div>
       }
-      contentClassName={isSidebar ? 'px-0 py-2' : undefined}
       error={error}
       header={
         isSidebar ? (

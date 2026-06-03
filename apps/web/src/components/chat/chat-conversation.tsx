@@ -174,10 +174,9 @@ export const ChatConversation = ({
         <ChatContainerRoot
           className="relative h-full"
           contextRef={setStickToBottomContext}
+          viewportClassName="px-3 py-2"
         >
-          <ChatContainerContent
-            className={cn('w-full px-3 py-2', contentClassName)}
-          >
+          <ChatContainerContent className={cn('w-full', contentClassName)}>
             {messages.length === 0 ? (
               emptyState
             ) : (

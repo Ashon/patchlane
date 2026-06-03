@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/lib/query-client'
 import { EmptyState, MetricBadge, ProjectRepositoryBadge } from './common'
@@ -134,7 +135,7 @@ export const ProjectsListPage = ({
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <ScrollArea className="min-h-0 flex-1">
           {projects.length ? (
             <div className="divide-y">
               {projects.map((project) => {
@@ -189,7 +190,7 @@ export const ProjectsListPage = ({
               <EmptyState>No projects</EmptyState>
             </div>
           )}
-        </div>
+        </ScrollArea>
       </main>
 
       <Dialog onOpenChange={setProjectDialogOpen} open={projectDialogOpen}>
