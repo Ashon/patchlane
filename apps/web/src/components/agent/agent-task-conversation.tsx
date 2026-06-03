@@ -146,6 +146,7 @@ export const AgentTaskConversation = ({
       showInlineActivity={false}
       showMessageMeta
       showStreamingPlaceholder
+      wideMessages
     />
   )
 }

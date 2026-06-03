@@ -28,8 +28,8 @@ export function TextShimmer({
   const dynamicSpread = Math.min(Math.max(spread, 5), 45)
   const Component = as as ElementType
   const textClassName = multiline
-    ? 'block whitespace-pre-wrap break-words'
-    : 'whitespace-nowrap'
+    ? 'block whitespace-pre-wrap break-words leading-[inherit]'
+    : 'whitespace-nowrap leading-[inherit]'
 
   return (
     <Component

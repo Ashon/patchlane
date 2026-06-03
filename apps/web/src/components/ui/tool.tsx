@@ -1,13 +1,17 @@
-import { Button } from '@/components/ui/button'
-import { Loader } from '@/components/ui/loader'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
-import { CheckCircle, ChevronDown, Settings, XCircle } from 'lucide-react'
+import { CheckCircle, Settings, XCircle } from 'lucide-react'
 import { useState } from 'react'
+import {
+  AgentWorkDisclosurePanel,
+  AgentWorkDisclosureSection,
+  AgentWorkDisclosureTrigger,
+  AgentWorkPulseIndicator,
+} from './agent-work-disclosure'
 
 export type ToolPart = {
   type: string
@@ -26,6 +30,8 @@ export type ToolProps = {
   toolPart: ToolPart
   defaultOpen?: boolean
   className?: string
+  onOpenChange?: (open: boolean) => void
+  open?: boolean
   size?: 'default' | 'compact'
 }
 
@@ -33,264 +39,218 @@ const Tool = ({
   toolPart,
   defaultOpen = false,
   className,
+  onOpenChange,
+  open,
   size = 'default',
 }: ToolProps) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
-
-  const { state, input, output, toolCallId } = toolPart
+  const [internalOpen, setInternalOpen] = useState(defaultOpen)
+  const isControlled = open !== undefined
+  const isOpen = isControlled ? open : internalOpen
   const isCompact = size === 'compact'
-
-  const getStateIcon = () => {
-    const iconClassName = isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'
-
-    switch (state) {
-      case 'input-streaming':
-        return (
-          <Loader
-            className="text-blue-500"
-            size={isCompact ? 'sm' : 'md'}
-            variant="pulse-dot"
-          />
-        )
-      case 'input-available':
-        return <Settings className={cn(iconClassName, 'text-orange-500')} />
-      case 'output-available':
-        return <CheckCircle className={cn(iconClassName, 'text-green-500')} />
-      case 'output-error':
-        return <XCircle className={cn(iconClassName, 'text-red-500')} />
-      default:
-        return (
-          <Settings className={cn(iconClassName, 'text-muted-foreground')} />
-        )
+  const preview = getToolPreview(toolPart)
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!isControlled) {
+      setInternalOpen(nextOpen)
     }
-  }
 
-  const getStateBadge = () => {
-    const baseClasses = cn(
-      'inline-flex justify-center rounded-full font-medium',
-      isCompact
-        ? 'min-w-[4.75rem] px-1.5 py-0 text-[11px] leading-4'
-        : 'min-w-[5.25rem] px-2 py-0.5 text-xs',
-    )
-    switch (state) {
-      case 'input-streaming':
-        return (
-          <span
-            className={cn(
-              baseClasses,
-              'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-            )}
-          >
-            Processing
-          </span>
-        )
-      case 'input-available':
-        return (
-          <span
-            className={cn(
-              baseClasses,
-              'bg-orange-500/10 text-orange-700 dark:text-orange-300',
-            )}
-          >
-            Ready
-          </span>
-        )
-      case 'output-available':
-        return (
-          <span
-            className={cn(
-              baseClasses,
-              'bg-green-500/10 text-green-700 dark:text-green-300',
-            )}
-          >
-            Completed
-          </span>
-        )
-      case 'output-error':
-        return (
-          <span
-            className={cn(
-              baseClasses,
-              'bg-red-500/10 text-red-700 dark:text-red-300',
-            )}
-          >
-            Error
-          </span>
-        )
-      default:
-        return (
-          <span
-            className={cn(
-              baseClasses,
-              'bg-zinc-500/10 text-zinc-700 dark:text-zinc-300',
-            )}
-          >
-            Pending
-          </span>
-        )
-    }
-  }
-
-  const formatValue = (value: unknown): string => {
-    if (value === null) return 'null'
-    if (value === undefined) return 'undefined'
-    if (typeof value === 'string') return value
-    if (typeof value === 'object') {
-      return JSON.stringify(value, null, 2)
-    }
-    return String(value)
+    onOpenChange?.(nextOpen)
   }
 
   return (
     <div
       className={cn(
-        'border-border min-w-0 overflow-hidden border bg-background transition-colors hover:bg-accent dark:hover:bg-accent/50',
-        isCompact ? 'mt-0.5 w-fit max-w-full rounded-md' : 'mt-2 rounded-md',
+        'min-w-0',
+        isCompact ? 'mt-0.5 w-full max-w-full' : 'mt-2 w-full',
         className,
       )}
     >
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Collapsible open={isOpen} onOpenChange={handleOpenChange}>
         <CollapsibleTrigger asChild>
-          <Button
-            variant="ghost"
-            className={cn(
-              'w-full items-center justify-between rounded-none bg-transparent font-normal hover:bg-transparent hover:text-accent-foreground dark:hover:bg-transparent',
-              isCompact ? 'h-7 gap-2 px-2 py-0 text-xs' : 'h-9 px-3 py-0',
-            )}
-          >
-            <div
-              className={cn(
-                'flex min-w-0 items-center overflow-hidden',
-                isCompact ? 'gap-1.5' : 'gap-2',
-              )}
-            >
-              {getStateIcon()}
-              <span
-                className={cn(
-                  'truncate font-mono font-medium',
-                  isCompact ? 'text-xs' : 'text-sm',
-                )}
-              >
-                {toolPart.type}
-              </span>
-              {getStateBadge()}
-            </div>
-            <ChevronDown
-              className={cn(
-                isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4',
-                isOpen && 'rotate-180',
-              )}
-            />
-          </Button>
+          <AgentWorkDisclosureTrigger
+            aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${getToolStateLabel(toolPart.state)} tool call ${toolPart.type}`}
+            compact={isCompact}
+            icon={<ToolStateIcon state={toolPart.state} compact={isCompact} />}
+            label={`${toolPart.type}:`}
+            open={isOpen}
+            preview={preview}
+            type="button"
+          />
         </CollapsibleTrigger>
-        {isOpen ? (
-          <CollapsibleContent className="border-border overflow-hidden border-t data-[state=open]:animate-collapsible-down">
-            <div
-              className={cn(
-                'bg-background min-w-0',
-                isCompact ? 'space-y-1.5 p-2' : 'space-y-2 p-3',
-              )}
-            >
-              {input && Object.keys(input).length > 0 && (
-                <div className="min-w-0">
-                  <h4
-                    className={cn(
-                      'text-muted-foreground font-medium',
-                      isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
-                    )}
-                  >
-                    Input
-                  </h4>
-                  <div
-                    className={cn(
-                      'bg-background min-w-0 overflow-x-auto rounded border font-mono',
-                      isCompact ? 'p-1.5 text-xs' : 'p-2 text-sm',
-                    )}
-                  >
-                    {Object.entries(input).map(([key, value]) => (
-                      <div
-                        key={key}
-                        className={cn(
-                          'min-w-0 break-words',
-                          isCompact ? 'mb-0.5' : 'mb-1',
-                        )}
-                      >
-                        <span className="text-muted-foreground">{key}:</span>{' '}
-                        <span>{formatValue(value)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              {output !== undefined && output !== null && (
-                <div className="min-w-0">
-                  <h4
-                    className={cn(
-                      'text-muted-foreground font-medium',
-                      isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
-                    )}
-                  >
-                    Output
-                  </h4>
-                  <div
-                    className={cn(
-                      'bg-background min-w-0 overflow-auto rounded border font-mono',
-                      isCompact
-                        ? 'max-h-44 p-1.5 text-xs'
-                        : 'max-h-60 p-2 text-sm',
-                    )}
-                  >
-                    <pre className="min-w-0 whitespace-pre-wrap break-words">
-                      {formatValue(output)}
-                    </pre>
-                  </div>
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+          <AgentWorkDisclosurePanel compact={isCompact}>
+            {toolPart.input && Object.keys(toolPart.input).length > 0 ? (
+              <AgentWorkDisclosureSection title="Input">
+                <div className="grid gap-1">
+                  {Object.entries(toolPart.input).map(([key, value]) => (
+                    <div className="min-w-0 break-words" key={key}>
+                      <span className="text-muted-foreground">{key}:</span>{' '}
+                      <span className="font-mono">{formatValue(value)}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </AgentWorkDisclosureSection>
+            ) : null}
 
-              {state === 'output-error' && toolPart.errorText && (
-                <div className="min-w-0">
-                  <h4
-                    className={cn(
-                      'font-medium text-red-500',
-                      isCompact ? 'mb-1 text-xs' : 'mb-2 text-sm',
-                    )}
-                  >
-                    Error
-                  </h4>
-                  <div
-                    className={cn(
-                      'bg-background min-w-0 break-words rounded border border-red-200 dark:border-red-950 dark:bg-red-900/20',
-                      isCompact ? 'p-1.5 text-xs' : 'p-2 text-sm',
-                    )}
-                  >
-                    {toolPart.errorText}
-                  </div>
-                </div>
-              )}
-
-              {state === 'input-streaming' && (
-                <div
+            {toolPart.output !== undefined && toolPart.output !== null ? (
+              <AgentWorkDisclosureSection title="Output">
+                <pre
                   className={cn(
-                    'text-muted-foreground',
-                    isCompact ? 'text-xs' : 'text-sm',
+                    'max-h-56 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background p-2 font-mono leading-5',
+                    isCompact && 'max-h-44 p-1.5 text-xs leading-4',
                   )}
                 >
-                  Processing tool call...
-                </div>
-              )}
+                  {formatValue(toolPart.output)}
+                </pre>
+              </AgentWorkDisclosureSection>
+            ) : null}
 
-              {toolCallId && (
-                <div className="text-muted-foreground text-[11px]">
-                  <span className="font-mono">Call ID: {toolCallId}</span>
+            {toolPart.state === 'output-error' && toolPart.errorText ? (
+              <AgentWorkDisclosureSection title="Error" tone="error">
+                <div
+                  className={cn(
+                    'min-w-0 break-words rounded-md border border-destructive/25 bg-destructive/10 p-2 text-destructive',
+                    isCompact && 'p-1.5 text-xs',
+                  )}
+                >
+                  {toolPart.errorText}
                 </div>
-              )}
-            </div>
-          </CollapsibleContent>
-        ) : null}
+              </AgentWorkDisclosureSection>
+            ) : null}
+
+            {toolPart.state === 'input-streaming' ? (
+              <div className="text-muted-foreground">Processing tool call...</div>
+            ) : null}
+
+            {toolPart.toolCallId ? (
+              <div className="text-[11px] text-muted-foreground">
+                <span className="font-mono">Call ID: {toolPart.toolCallId}</span>
+              </div>
+            ) : null}
+          </AgentWorkDisclosurePanel>
+        </CollapsibleContent>
       </Collapsible>
     </div>
   )
+}
+
+const ToolStateIcon = ({
+  compact,
+  state,
+}: {
+  compact: boolean
+  state: ToolPart['state']
+}) => {
+  const slotClassName = compact ? 'h-4 w-4' : 'h-5 w-5'
+  const iconClassName = compact ? 'h-3.5 w-3.5' : 'h-4 w-4'
+
+  if (state === 'input-streaming') {
+    return <AgentWorkPulseIndicator compact={compact} label="Running" />
+  }
+
+  if (state === 'output-available') {
+    return (
+      <span
+        className={cn(
+          'grid shrink-0 place-items-center text-emerald-500',
+          slotClassName,
+        )}
+      >
+        <CheckCircle className={iconClassName} />
+        <span className="sr-only">Completed</span>
+      </span>
+    )
+  }
+
+  if (state === 'output-error') {
+    return (
+      <span
+        className={cn(
+          'grid shrink-0 place-items-center text-destructive',
+          slotClassName,
+        )}
+      >
+        <XCircle className={iconClassName} />
+        <span className="sr-only">Error</span>
+      </span>
+    )
+  }
+
+  return (
+    <span
+      className={cn(
+        'grid shrink-0 place-items-center text-muted-foreground',
+        slotClassName,
+      )}
+    >
+      <Settings className={iconClassName} />
+      <span className="sr-only">Ready</span>
+    </span>
+  )
+}
+
+const getToolStateLabel = (state: ToolPart['state']) => {
+  if (state === 'input-streaming') {
+    return 'running'
+  }
+
+  if (state === 'output-available') {
+    return 'completed'
+  }
+
+  if (state === 'output-error') {
+    return 'failed'
+  }
+
+  return 'ready'
+}
+
+const getToolPreview = (toolPart: ToolPart) => {
+  if (toolPart.errorText) {
+    return normalizePreview(toolPart.errorText)
+  }
+
+  if (toolPart.output !== undefined && toolPart.output !== null) {
+    return normalizePreview(formatValue(toolPart.output))
+  }
+
+  if (toolPart.input && Object.keys(toolPart.input).length > 0) {
+    return normalizePreview(formatInputPreview(toolPart.input))
+  }
+
+  if (toolPart.state === 'input-streaming') {
+    return 'Processing tool call...'
+  }
+
+  return ''
+}
+
+const formatInputPreview = (input: Record<string, unknown>) => {
+  return Object.entries(input)
+    .map(([key, value]) => `${key}: ${formatValue(value)}`)
+    .join(' · ')
+}
+
+const normalizePreview = (value: string) => value.replace(/\s+/g, ' ').trim()
+
+const formatValue = (value: unknown): string => {
+  if (value === null) {
+    return 'null'
+  }
+
+  if (value === undefined) {
+    return 'undefined'
+  }
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2)
+  }
+
+  return String(value)
 }
 
 export { Tool }

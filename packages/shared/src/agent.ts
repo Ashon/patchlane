@@ -54,6 +54,7 @@ export const agentRunMessageMetadataSchema = z.object({
     })
     .optional(),
   content: agentRunMessageTextMetricsSchema.optional(),
+  reasoning: agentRunMessageTextMetricsSchema.optional(),
   tool: z
     .object({
       input: agentRunMessageTextMetricsSchema.optional(),

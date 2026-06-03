@@ -5,8 +5,8 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from '@/components/ui/reasoning'
-import { ThinkingBar } from '@/components/ui/thinking-bar'
 import { Tool } from '@/components/ui/tool'
+import { AgentWorkPendingIndicator } from '@/components/ui/agent-work-disclosure'
 import { cn } from '@/lib/utils'
 import type { ConversationMessage } from './chat-conversation-types'
 import { AssistantGroupMeta, MessageStatusActions } from './chat-message-actions'
@@ -25,24 +25,28 @@ export const AssistantMessageRow = ({
   metaMessage,
   onReasoningOpenChange,
   onRewind,
+  onToolOpenChange,
   preserveEmpty,
   reasoningOpen,
   rewindDisabled,
   showAvatar,
   showMeta,
   showStreamingPlaceholder,
+  toolOpen,
   wide,
 }: {
   message: ConversationMessage
   metaMessage?: ConversationMessage
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
   onRewind?: (message: ConversationMessage) => void
+  onToolOpenChange: (message: ConversationMessage, open: boolean) => void
   preserveEmpty: boolean
   reasoningOpen?: boolean
   rewindDisabled?: boolean
   showAvatar: boolean
   showMeta: boolean
   showStreamingPlaceholder: boolean
+  toolOpen?: boolean
   wide: boolean
 }) => {
   return (
@@ -65,10 +69,12 @@ export const AssistantMessageRow = ({
           message={message}
           onReasoningOpenChange={onReasoningOpenChange}
           onRewind={onRewind}
+          onToolOpenChange={onToolOpenChange}
           preserveEmpty={preserveEmpty}
           reasoningOpen={reasoningOpen}
           rewindDisabled={rewindDisabled}
           showStreamingPlaceholder={showStreamingPlaceholder}
+          toolOpen={toolOpen}
           wide={wide}
         />
       </div>
@@ -80,19 +86,23 @@ const AssistantMessagePart = ({
   message,
   onReasoningOpenChange,
   onRewind,
+  onToolOpenChange,
   preserveEmpty,
   reasoningOpen,
   rewindDisabled,
   showStreamingPlaceholder,
+  toolOpen,
   wide,
 }: {
   message: ConversationMessage
   onReasoningOpenChange: (message: ConversationMessage, open: boolean) => void
   onRewind?: (message: ConversationMessage) => void
+  onToolOpenChange: (message: ConversationMessage, open: boolean) => void
   preserveEmpty: boolean
   reasoningOpen?: boolean
   rewindDisabled?: boolean
   showStreamingPlaceholder: boolean
+  toolOpen?: boolean
   wide: boolean
 }) => {
   const isTool = message.role === 'tool'
@@ -102,7 +112,9 @@ const AssistantMessagePart = ({
   const content = message.content
   const reasoning = message.reasoning ?? ''
   const isReasoningOpen = reasoningOpen ?? false
+  const isToolOpen = toolOpen ?? false
   const showReasoning = isAssistant && Boolean(reasoning)
+  const isReasoningStreaming = isStreaming && !content
   const showThinkingPlaceholder =
     showStreamingPlaceholder &&
     isAssistant &&
@@ -149,6 +161,7 @@ const AssistantMessagePart = ({
       {showReasoning ? (
         <MessageBlockFrame
           accessory={metadataAccessory}
+          accessoryVisible={isReasoningOpen}
           className={getAssistantBlockWidthClass(wide)}
         >
           <Reasoning
@@ -156,8 +169,12 @@ const AssistantMessagePart = ({
             onOpenChange={(open) => onReasoningOpenChange(message, open)}
             open={isReasoningOpen}
           >
-            <ReasoningTrigger className="max-w-full" streaming={isStreaming}>
-              Reasoning
+            <ReasoningTrigger
+              className="max-w-full"
+              preview={getReasoningPreview(reasoning)}
+              streaming={isReasoningStreaming}
+            >
+              Reasoning:
             </ReasoningTrigger>
             <ReasoningContent
               className={cn(
@@ -169,7 +186,7 @@ const AssistantMessagePart = ({
                 !isReasoningOpen && 'w-0 p-0',
               )}
               markdown
-              streaming={isStreaming}
+              streaming={isReasoningStreaming}
             >
               {reasoning}
             </ReasoningContent>
@@ -182,7 +199,7 @@ const AssistantMessagePart = ({
           accessory={metadataAccessory}
           className={getAssistantBlockWidthClass(wide)}
         >
-          <ThinkingBar className="h-7 w-fit max-w-full py-0 text-xs" />
+          <AgentWorkPendingIndicator className="w-fit max-w-full" />
         </MessageBlockFrame>
       ) : null}
 
@@ -191,21 +208,20 @@ const AssistantMessagePart = ({
           accessory={metadataAccessory}
           className={getAssistantBlockWidthClass(wide)}
         >
-          <ThinkingBar
-            className="h-7 w-fit max-w-full py-0 text-xs"
-            text="Thinking"
-          />
+          <AgentWorkPendingIndicator className="w-fit max-w-full" />
         </MessageBlockFrame>
       ) : null}
 
       {isTool ? (
         <MessageBlockFrame
           accessory={metadataAccessory}
+          accessoryVisible={isToolOpen}
           className={getAssistantBlockWidthClass(wide)}
         >
           <Tool
-            className="border-muted-foreground/20 bg-muted/20 shadow-none"
             defaultOpen={false}
+            onOpenChange={(open) => onToolOpenChange(message, open)}
+            open={isToolOpen}
             size="compact"
             toolPart={toToolPart(message)}
           />
@@ -267,6 +283,7 @@ const StableAssistantStreamBlock = ({
 }) => {
   const showReasoning = Boolean(reasoning)
   const showContent = Boolean(content)
+  const isReasoningStreaming = isStreaming && !content
   const showThinkingPlaceholder = isStreaming && !showReasoning && !showContent
 
   if (!showReasoning && !showThinkingPlaceholder && !showContent) {
@@ -277,6 +294,7 @@ const StableAssistantStreamBlock = ({
     <div className="group/message w-full min-w-0 overflow-visible">
       <MessageBlockFrame
         accessory={metadataAccessory}
+        accessoryVisible={isReasoningOpen}
         className={getAssistantBlockWidthClass(wide)}
         overlayClassName={wide ? getInsetOverlayClass('right') : undefined}
         overlay={
@@ -301,8 +319,12 @@ const StableAssistantStreamBlock = ({
               onOpenChange={(open) => onReasoningOpenChange(message, open)}
               open={isReasoningOpen}
             >
-              <ReasoningTrigger className="max-w-full" streaming={isStreaming}>
-                Reasoning
+              <ReasoningTrigger
+                className="max-w-full"
+                preview={getReasoningPreview(reasoning)}
+                streaming={isReasoningStreaming}
+              >
+                Reasoning:
               </ReasoningTrigger>
               <ReasoningContent
                 className={cn(
@@ -314,7 +336,7 @@ const StableAssistantStreamBlock = ({
                   !isReasoningOpen && 'w-0 p-0',
                 )}
                 markdown
-                streaming={isStreaming}
+                streaming={isReasoningStreaming}
               >
                 {reasoning}
               </ReasoningContent>
@@ -322,7 +344,7 @@ const StableAssistantStreamBlock = ({
           ) : null}
 
           {showThinkingPlaceholder ? (
-            <ThinkingBar className="h-7 w-fit max-w-full py-0 text-xs" />
+            <AgentWorkPendingIndicator className="w-fit max-w-full" />
           ) : null}
 
           {showContent ? (
@@ -344,3 +366,6 @@ const StableAssistantStreamBlock = ({
   )
 }
 
+const getReasoningPreview = (reasoning: string) => {
+  return reasoning.replace(/\s+/g, ' ').trim()
+}

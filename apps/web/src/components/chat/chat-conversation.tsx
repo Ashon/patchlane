@@ -55,6 +55,7 @@ export const ChatConversation = ({
   const [reasoningOpen, setReasoningOpen] = useState<Record<string, boolean>>(
     {},
   )
+  const [toolOpen, setToolOpen] = useState<Record<string, boolean>>({})
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
   const groups = useMemo(() => groupMessages(messages), [messages])
   const renderItems = useMemo(
@@ -98,6 +99,13 @@ export const ChatConversation = ({
     }))
   }
 
+  const setToolVisibility = (message: ConversationMessage, open: boolean) => {
+    setToolOpen((current) => ({
+      ...current,
+      [message.id]: open,
+    }))
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {header}
@@ -131,7 +139,7 @@ export const ChatConversation = ({
 
                   return (
                     <div
-                      className="absolute left-0 top-0 w-full pb-2"
+                      className="absolute left-0 top-0 w-full"
                       data-index={virtualItem.index}
                       key={virtualItem.key}
                       ref={virtualizer.measureElement}
@@ -153,12 +161,14 @@ export const ChatConversation = ({
                           metaMessage={item.metaMessage}
                           onReasoningOpenChange={setReasoningVisibility}
                           onRewind={onRewindMessage}
+                          onToolOpenChange={setToolVisibility}
                           preserveEmpty={preserveEmptyMessages}
                           reasoningOpen={reasoningOpen[item.message.id]}
                           rewindDisabled={inputLoading}
                           showAvatar={showAssistantAvatar}
                           showMeta={showMessageMeta}
                           showStreamingPlaceholder={showStreamingPlaceholder}
+                          toolOpen={toolOpen[item.message.id]}
                           wide={wideMessages}
                         />
                       )}
@@ -209,4 +219,3 @@ export const ChatConversation = ({
     </section>
   )
 }
-

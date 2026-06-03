@@ -41,6 +41,7 @@ type AgentRunMessageRow = {
   role: AgentRunMessage['role']
   content: string
   tool_name: string | null
+  tool_input_json: string | null
   metadata_json: string | null
   created_at: string
   sequence: number
@@ -339,8 +340,8 @@ export class AgentRunStore {
     const statement = this.database.sqlite.prepare(
       `
       INSERT INTO agent_run_messages (
-        id, run_id, role, content, tool_name, metadata_json, created_at, sequence
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        id, run_id, role, content, tool_name, tool_input_json, metadata_json, created_at, sequence
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     )
 
@@ -351,6 +352,7 @@ export class AgentRunStore {
         message.role,
         message.content,
         message.toolName ?? null,
+        message.toolInput ? JSON.stringify(message.toolInput) : null,
         message.metadata ? JSON.stringify(message.metadata) : null,
         message.createdAt,
         index,
@@ -365,6 +367,7 @@ const toMessage = (row: AgentRunMessageRow) => {
     role: row.role,
     content: row.content,
     toolName: optionalString(row.tool_name),
+    toolInput: parseToolInput(row.tool_input_json),
     metadata: parseMessageMetadata(row.metadata_json),
     createdAt: row.created_at,
   })
@@ -389,6 +392,24 @@ const parseMessageMetadata = (value: string | null) => {
 
   try {
     return agentRunMessageMetadataSchema.parse(JSON.parse(value))
+  } catch {
+    return undefined
+  }
+}
+
+const parseToolInput = (value: string | null) => {
+  if (!value) {
+    return undefined
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+
+    return typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined
   } catch {
     return undefined
   }

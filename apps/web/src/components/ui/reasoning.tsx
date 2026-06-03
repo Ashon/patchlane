@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { ChevronDownIcon } from 'lucide-react'
+import { Brain } from 'lucide-react'
 import React, {
   createContext,
   useContext,
@@ -9,8 +9,11 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import {
+  AgentWorkDisclosureTrigger,
+  AgentWorkPulseIndicator,
+} from './agent-work-disclosure'
 import { Markdown } from './markdown'
-import { TextShimmer } from './text-shimmer'
 
 type ReasoningContextType = {
   isOpen: boolean
@@ -70,6 +73,7 @@ function Reasoning({
 export type ReasoningTriggerProps = {
   children: React.ReactNode
   className?: string
+  preview?: React.ReactNode
   streaming?: boolean
 } & React.ButtonHTMLAttributes<HTMLButtonElement>
 
@@ -77,27 +81,18 @@ function ReasoningTrigger({
   children,
   className,
   onClick,
+  preview,
   streaming = false,
   type = 'button',
   ...props
 }: ReasoningTriggerProps) {
   const { isOpen, onOpenChange } = useReasoningContext()
-  const label =
-    streaming && typeof children === 'string' ? (
-      <TextShimmer duration={3} spread={24}>
-        {children}
-      </TextShimmer>
-    ) : (
-      children
-    )
 
   return (
-    <button
-      aria-expanded={isOpen}
-      className={cn(
-        'inline-flex h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-xs leading-none text-muted-foreground transition-colors hover:text-foreground',
-        className,
-      )}
+    <AgentWorkDisclosureTrigger
+      className={className}
+      icon={<ReasoningStateIcon streaming={streaming} />}
+      label={children}
       onClick={(event) => {
         onClick?.(event)
 
@@ -105,21 +100,24 @@ function ReasoningTrigger({
           onOpenChange(!isOpen)
         }
       }}
+      open={isOpen}
+      preview={preview}
+      streaming={streaming}
       type={type}
       {...props}
-    >
-      <span className="inline-flex min-w-0 items-center truncate text-primary">
-        {label}
-      </span>
-      <div
-        className={cn(
-          'grid size-4 shrink-0 place-items-center transition-transform',
-          isOpen ? 'rotate-180' : '',
-        )}
-      >
-        <ChevronDownIcon className="size-3.5" />
-      </div>
-    </button>
+    />
+  )
+}
+
+const ReasoningStateIcon = ({ streaming }: { streaming: boolean }) => {
+  if (streaming) {
+    return <AgentWorkPulseIndicator label="Thinking" />
+  }
+
+  return (
+    <span className="grid h-4 w-4 shrink-0 place-items-center text-primary">
+      <Brain className="h-3.5 w-3.5" />
+    </span>
   )
 }
 

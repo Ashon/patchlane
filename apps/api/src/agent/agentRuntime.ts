@@ -92,6 +92,7 @@ const toolPromptContentMaxChars = 6_000
 const defaultReadFileMaxLines = 240
 const maxReadFileMaxLines = 500
 const maxReadFileContentChars = 20_000
+const toolDispatchSleepMs = 1_000
 const toolIterationRetryPrompt = [
   'The tool loop reached the normal per-pass limit.',
   'Continue from the current context instead of stopping.',
@@ -121,6 +122,7 @@ type AgentMessageMetadataInput = {
   maxOutputTokens?: number
   durationMs?: number
   content?: string
+  reasoning?: string
   toolInput?: string
   toolOutput?: string
 }
@@ -134,9 +136,14 @@ const createAgentMessageMetadata = ({
   maxOutputTokens,
   durationMs,
   content,
+  reasoning,
   toolInput,
   toolOutput,
 }: AgentMessageMetadataInput): AgentRunMessageMetadata => {
+  const text = content === undefined ? undefined : splitAgentThinking(content)
+  const reasoningText = [reasoning, text?.reasoning].filter(Boolean).join('')
+  const contentText = text?.content.trim()
+
   return {
     durationMs,
     context: {
@@ -153,7 +160,10 @@ const createAgentMessageMetadata = ({
       iteration,
       maxOutputTokens,
     },
-    content: content === undefined ? undefined : getTextMetrics(content),
+    content: contentText ? getTextMetrics(contentText) : undefined,
+    reasoning: reasoningText.trim()
+      ? getTextMetrics(reasoningText.trim())
+      : undefined,
     tool:
       toolInput === undefined && toolOutput === undefined
         ? undefined
@@ -170,6 +180,32 @@ const getTextMetrics = (value: string) => {
   return {
     characters: Array.from(value).length,
     estimatedTokens: estimateTextTokens(value),
+  }
+}
+
+const splitAgentThinking = (value: string) => {
+  let content = value
+  let reasoning = ''
+
+  while (content.includes('<think>')) {
+    const openIndex = content.indexOf('<think>')
+    const before = content.slice(0, openIndex)
+    const afterOpen = content.slice(openIndex + '<think>'.length)
+    const closeIndex = afterOpen.indexOf('</think>')
+
+    if (closeIndex < 0) {
+      reasoning += afterOpen
+      content = before
+      break
+    }
+
+    reasoning += afterOpen.slice(0, closeIndex)
+    content = `${before}${afterOpen.slice(closeIndex + '</think>'.length)}`
+  }
+
+  return {
+    content: content.trimStart(),
+    reasoning: reasoning.trim(),
   }
 }
 
@@ -260,6 +296,9 @@ export class AgentRuntime {
 
           const message = completion.choices[0]?.message as {
             content?: string | null
+            reasoning?: unknown
+            reasoning_content?: unknown
+            reasoningContent?: unknown
             tool_calls?: Array<{
               id: string
               function: {
@@ -273,18 +312,23 @@ export class AgentRuntime {
             throw new Error('LLM returned an empty response')
           }
 
+          const assistantContent = mergeThinkingContent(
+            message.content || '',
+            getReasoningText(message),
+          )
+
           messages.push({
             role: 'assistant',
-            content: message.content || '',
+            content: assistantContent,
             tool_calls: message.tool_calls,
           })
 
           if (!message.tool_calls?.length) {
-            if (isToolIterationLimitContent(message.content || '')) {
+            if (isToolIterationLimitContent(assistantContent)) {
               break
             }
 
-            if (isContinuationOnlyContent(message.content || '')) {
+            if (isContinuationOnlyContent(assistantContent)) {
               messages.push({
                 role: 'system',
                 content: thinkingOnlyContinuationPrompt,
@@ -294,11 +338,11 @@ export class AgentRuntime {
 
             pendingMessages.push({
               role: 'assistant',
-              content: message.content || '',
+              content: assistantContent,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
                 durationMs: completionDurationMs,
-                content: message.content || '',
+                content: assistantContent,
               }),
             })
             awaitingUser = true
@@ -306,7 +350,7 @@ export class AgentRuntime {
           }
 
           const toolAdjacentAssistantContent = getToolAdjacentAssistantContent(
-            message.content || '',
+            assistantContent,
           )
 
           if (toolAdjacentAssistantContent) {
@@ -342,6 +386,7 @@ export class AgentRuntime {
             pendingMessages.push({
               role: 'tool',
               toolName: toolCall.function.name,
+              toolInput: parseToolInputArguments(toolCall.function.arguments),
               content: result.content,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
@@ -491,6 +536,8 @@ export class AgentRuntime {
 
           let assistantContent = ''
           let assistantMetadataEmitted = false
+          let reasoningBlockStarted = false
+          let reasoningBlockClosed = false
           const toolCallsByIndex = new Map<number, PendingToolCall>()
           const activeModel = model || run.model || endpoint.defaultModel
           const promptMessageCount = messages.length
@@ -517,12 +564,34 @@ export class AgentRuntime {
             const delta = chunk.choices[0]?.delta as StreamDelta | undefined
             const content =
               typeof delta?.content === 'string' ? delta.content : ''
+            const reasoning = getReasoningText(delta)
 
-            if (content) {
-              assistantContent += content
+            if (reasoning) {
+              const reasoningDelta = reasoningBlockStarted
+                ? reasoning
+                : `<think>${reasoning}`
+              reasoningBlockStarted = true
+              assistantContent += reasoningDelta
               emit({
                 type: 'assistant_delta',
-                content,
+                content: reasoningDelta,
+                metadata: assistantMetadataEmitted
+                  ? undefined
+                  : createAgentMessageMetadata(metadataBase),
+              })
+              assistantMetadataEmitted = true
+            }
+
+            if (content) {
+              const contentDelta =
+                reasoningBlockStarted && !reasoningBlockClosed
+                  ? `</think>${content}`
+                  : content
+              reasoningBlockClosed = reasoningBlockStarted
+              assistantContent += contentDelta
+              emit({
+                type: 'assistant_delta',
+                content: contentDelta,
                 metadata: assistantMetadataEmitted
                   ? undefined
                   : createAgentMessageMetadata(metadataBase),
@@ -645,6 +714,7 @@ export class AgentRuntime {
             run = await this.options.runStore.appendMessage(run.id, {
               role: 'tool',
               toolName,
+              toolInput: parseToolInputArguments(toolCall.function.arguments),
               content: result.content,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
@@ -745,6 +815,9 @@ export class AgentRuntime {
 
 type StreamDelta = {
   content?: unknown
+  reasoning?: unknown
+  reasoning_content?: unknown
+  reasoningContent?: unknown
   tool_calls?: StreamToolCallDelta[]
 }
 
@@ -762,6 +835,56 @@ type PendingToolCall = {
   function: {
     name?: string
     arguments: string
+  }
+}
+
+const getReasoningText = (value?: {
+  reasoning?: unknown
+  reasoning_content?: unknown
+  reasoningContent?: unknown
+}) => {
+  if (typeof value?.reasoning === 'string') {
+    return value.reasoning
+  }
+
+  if (typeof value?.reasoning_content === 'string') {
+    return value.reasoning_content
+  }
+
+  if (typeof value?.reasoningContent === 'string') {
+    return value.reasoningContent
+  }
+
+  return ''
+}
+
+const mergeThinkingContent = (content: string, reasoning: string) => {
+  const trimmedReasoning = reasoning.trim()
+
+  if (!trimmedReasoning || hasThinkingBlock(content)) {
+    return content
+  }
+
+  return `<think>${trimmedReasoning}</think>${content}`
+}
+
+const parseToolInputArguments = (
+  value: string,
+): Record<string, unknown> | undefined => {
+  if (!value) {
+    return undefined
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+
+    return typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : { value: parsed }
+  } catch {
+    return { value }
   }
 }
 
@@ -958,6 +1081,7 @@ const executeAgentTool = async (
   rawArguments: string,
   context: ToolContext,
 ): Promise<AgentToolResult> => {
+  await sleep(toolDispatchSleepMs)
   const args = parseToolArguments(rawArguments)
 
   try {
@@ -1081,6 +1205,11 @@ const toolResult = (value: unknown): AgentToolResult => ({
   content: JSON.stringify(value, null, 2),
 })
 
+const sleep = (durationMs: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, durationMs)
+  })
+
 const parseToolArguments = (value: string) => {
   if (!value) {
     return {} as Record<string, unknown>
@@ -1172,7 +1301,7 @@ const isThinkingOnlyContent = (content: string) => {
 }
 
 const stripThinking = (content: string) => {
-  return content.replace(/<think>[\s\S]*?<\/think>/giu, '').trim()
+  return splitAgentThinking(content).content.trim()
 }
 
 const getToolAdjacentAssistantContent = (content: string) => {

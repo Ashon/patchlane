@@ -134,6 +134,13 @@ const getMessageMetadataItems = (metadata?: AgentRunMessageMetadata) => {
     })
   }
 
+  if (metadata.reasoning) {
+    items.push({
+      label: `reason ${formatCompactNumber(metadata.reasoning.estimatedTokens)} tok · ${formatCompactNumber(metadata.reasoning.characters)} ch`,
+      title: `reasoning characters: ${metadata.reasoning.characters.toLocaleString()}`,
+    })
+  }
+
   if (metadata.tool?.input) {
     items.push({
       label: `tool in ${formatCompactNumber(metadata.tool.input.estimatedTokens)} tok`,
@@ -190,9 +197,10 @@ const getEventTokenLabel = (metadata?: AgentRunMessageMetadata) => {
   }
 
   const contentTokens = metadata.content?.estimatedTokens
+  const reasoningTokens = metadata.reasoning?.estimatedTokens
 
-  if (contentTokens !== undefined) {
-    return `${formatCompactNumber(contentTokens)} tok`
+  if (contentTokens !== undefined || reasoningTokens !== undefined) {
+    return `${formatCompactNumber((contentTokens ?? 0) + (reasoningTokens ?? 0))} tok`
   }
 
   const toolInputTokens = metadata.tool?.input?.estimatedTokens
@@ -212,4 +220,3 @@ const getEventTokenLabel = (metadata?: AgentRunMessageMetadata) => {
 
   return null
 }
-

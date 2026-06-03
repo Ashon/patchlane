@@ -30,6 +30,7 @@ export const getInsetOverlayClass = (side: 'left' | 'right') =>
 
 export const MessageBlockFrame = ({
   accessory,
+  accessoryVisible = false,
   children,
   className,
   overlay,
@@ -37,25 +38,47 @@ export const MessageBlockFrame = ({
   overlaySide = 'right',
 }: {
   accessory?: ReactNode
+  accessoryVisible?: boolean
   children: ReactNode
   className?: string
   overlay?: ReactNode
   overlayClassName?: string
   overlaySide?: 'left' | 'right'
 }) => {
+  const accessoryNode = accessory ? (
+    <div
+      className={cn(
+        'shrink-0 transition-opacity',
+        accessoryVisible
+          ? 'pointer-events-auto opacity-100'
+          : 'pointer-events-none opacity-0 group-hover/block:pointer-events-auto group-hover/block:opacity-100 group-focus-within/block:pointer-events-auto group-focus-within/block:opacity-100',
+      )}
+    >
+      {accessory}
+    </div>
+  ) : null
+  const overlayNode = overlay ? (
+    <MessageActions className="pointer-events-none gap-1 opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100">
+      {overlay}
+    </MessageActions>
+  ) : null
+
   return (
     <div className={cn('group/block relative min-w-0 max-w-full', className)}>
       {children}
       {accessory || overlay ? (
         <MessageBlockSideRail className={overlayClassName} side={overlaySide}>
-          {accessory ? (
-            <div className="pointer-events-auto shrink-0">{accessory}</div>
-          ) : null}
-          {overlay ? (
-            <MessageActions className="pointer-events-none gap-1 opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100">
-              {overlay}
-            </MessageActions>
-          ) : null}
+          {overlaySide === 'right' ? (
+            <>
+              {overlayNode}
+              {accessoryNode}
+            </>
+          ) : (
+            <>
+              {accessoryNode}
+              {overlayNode}
+            </>
+          )}
         </MessageBlockSideRail>
       ) : null}
     </div>
@@ -85,4 +108,3 @@ const MessageBlockSideRail = ({
     </MessageActions>
   )
 }
-

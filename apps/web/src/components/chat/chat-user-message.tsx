@@ -25,7 +25,8 @@ export const UserMessageBubble = ({
     <Message className="group w-full min-w-0 justify-end">
       <div
         className={cn(
-          'group/message flex w-full min-w-0 flex-col items-end space-y-1',
+          'group/message flex w-full min-w-0 flex-col space-y-1 mb-2',
+          wide ? 'items-stretch' : 'items-end',
           !wide && 'max-w-[920px]',
         )}
       >
@@ -34,9 +35,9 @@ export const UserMessageBubble = ({
           <MessageBlockFrame
             accessory={metadataAccessory}
             className={
-              wide ? 'w-fit max-w-full' : 'w-fit max-w-[calc(100%_-_10rem)]'
+              wide ? 'w-full max-w-full' : 'w-fit max-w-[calc(100%_-_10rem)]'
             }
-            overlayClassName={wide ? getInsetOverlayClass('left') : undefined}
+            overlayClassName={wide ? getInsetOverlayClass('right') : undefined}
             overlay={
               <MessageStatusActions
                 message={message}
@@ -44,7 +45,7 @@ export const UserMessageBubble = ({
                 rewindDisabled={rewindDisabled}
               />
             }
-            overlaySide="left"
+            overlaySide={wide ? 'right' : 'left'}
           >
             <MessageContent
               className="max-w-full overflow-hidden rounded-lg bg-primary px-2.5 py-1.5 text-sm leading-5 text-primary-foreground prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto"
@@ -59,4 +60,3 @@ export const UserMessageBubble = ({
     </Message>
   )
 }
-

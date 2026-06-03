@@ -25,7 +25,7 @@ export const AssistantGroupMeta = ({
 
 export const MessageMeta = ({ message }: { message: ConversationMessage }) => {
   return (
-    <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <MessageSquare className="h-3.5 w-3.5" />
       <span>{message.role}</span>
       {message.createdAt ? (
@@ -146,4 +146,3 @@ const useCopyState = () => {
 
   return { copied, copy }
 }
-

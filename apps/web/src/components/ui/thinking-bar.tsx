@@ -1,7 +1,7 @@
 'use client'
 
 import { ChevronRight } from 'lucide-react'
-import { Loader } from '@/components/ui/loader'
+import { AgentWorkPulseIndicator } from '@/components/ui/agent-work-disclosure'
 import { TextShimmer } from '@/components/ui/text-shimmer'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +9,7 @@ type ThinkingBarProps = {
   className?: string
   onClick?: () => void
   onStop?: () => void
+  showText?: boolean
   stopLabel?: string
   text?: string
 }
@@ -17,15 +18,18 @@ export function ThinkingBar({
   className,
   onClick,
   onStop,
+  showText = true,
   stopLabel = 'Answer now',
   text = 'Thinking',
 }: ThinkingBarProps) {
   const content = (
     <>
-      <Loader className="text-muted-foreground" size="sm" variant="pulse-dot" />
-      <TextShimmer className="min-w-[4.5rem] font-medium leading-5">
-        {text}
-      </TextShimmer>
+      <AgentWorkPulseIndicator className="text-muted-foreground" />
+      {showText ? (
+        <TextShimmer className="min-w-[4.5rem] font-medium leading-5">
+          {text}
+        </TextShimmer>
+      ) : null}
     </>
   )
 

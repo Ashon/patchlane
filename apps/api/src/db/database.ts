@@ -107,6 +107,7 @@ export class AppDatabase {
         role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool', 'system')),
         content TEXT NOT NULL,
         tool_name TEXT,
+        tool_input_json TEXT,
         metadata_json TEXT,
         created_at TEXT NOT NULL,
         sequence INTEGER NOT NULL,
@@ -182,6 +183,7 @@ export class AppDatabase {
     this.ensureColumn('agent_runs', 'pr_url', 'TEXT')
     this.ensureColumn('agent_runs', 'result_summary', 'TEXT')
     this.ensureColumn('agent_runs', 'context_json', 'TEXT')
+    this.ensureColumn('agent_run_messages', 'tool_input_json', 'TEXT')
     this.ensureColumn('agent_run_messages', 'metadata_json', 'TEXT')
     this.ensureColumn('agent_projects', 'repository_url', 'TEXT')
     this.ensureColumn('agent_projects', 'repository_ref', 'TEXT')
