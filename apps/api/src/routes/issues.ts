@@ -22,6 +22,11 @@ import {
 } from '../issues/issueAnalysisAgent'
 import { reconcileIssuePlanningState } from '../issues/issueReconciliation'
 import type { IssueStore } from '../issues/issueStore'
+import {
+  buildIssuePlanningTaskPrompt,
+  buildIssueRequirementTaskPrompt,
+  buildIssueRunTaskPrompt,
+} from '../issues/issueTaskPrompts'
 import type { LlmEndpointStore } from '../llm/endpointStore'
 import {
   createWorktreeFromCache,
@@ -208,7 +213,11 @@ export const createIssuesRouter = ({
         issueId: readyIssue.id,
         branchName,
         title: readyIssue.title,
-        task: buildRunTask({ branchName, issue: readyIssue, project }),
+        task: buildIssueRunTaskPrompt({
+          branchName,
+          issue: readyIssue,
+          project,
+        }),
       })
       await workspaceStore.linkAgentRun(taskWorkspace.id, run.id)
       const issue = await issueStore.markRunStarted(readyIssue.id, run.id, {
@@ -273,7 +282,7 @@ export const createIssuesRouter = ({
       issueId: context.issue.id,
       kind: 'requirements',
       projectId: context.project.id,
-      task: buildRequirementTaskPrompt({
+      task: buildIssueRequirementTaskPrompt({
         branchName: context.branchName,
         issue: context.issue,
         projectName: context.project.name,
@@ -286,7 +295,7 @@ export const createIssuesRouter = ({
       issueId: context.issue.id,
       kind: 'planning',
       projectId: context.project.id,
-      task: buildPlanningTaskPrompt({
+      task: buildIssuePlanningTaskPrompt({
         branchName: context.branchName,
         issue: context.issue,
         projectName: context.project.name,
@@ -562,91 +571,6 @@ export const createIssuesRouter = ({
     const toolSettings = await toolSettingsStore.get()
     return toolSettings.github.enabled ? toolSettings.github.token : undefined
   }
-}
-
-const buildRunTask = ({
-  branchName,
-  issue,
-  project,
-}: {
-  branchName: string
-  issue: Awaited<ReturnType<IssueStore['getIssue']>>
-  project: Awaited<ReturnType<IssueStore['getProject']>>
-}) => {
-  return [
-    `Issue: ${issue.title}`,
-    `Priority: ${issue.priority}`,
-    `Project: ${project.name}`,
-    project.repositoryUrl
-      ? `Repository: ${project.repositoryUrl}`
-      : 'Repository: not configured',
-    project.repositoryRef
-      ? `Repository ref: ${project.repositoryRef}`
-      : 'Repository ref: default',
-    `Project policy: ${project.description}`,
-    `Branch/worktree target: ${branchName}`,
-    '',
-    'Issue description:',
-    issue.description,
-    '',
-    issue.analysis
-      ? `Current analysis:\n${issue.analysis}`
-      : 'Current analysis: not available',
-    '',
-    'Execution policy:',
-    '- Inspect the workspace before editing.',
-    '- Keep work isolated to this issue branch/worktree context.',
-    '- Implement the requested change when the issue is actionable.',
-    '- Run relevant verification and summarize outcomes.',
-    '- If the issue is blocked, stop and explain exactly what input is needed.',
-  ].join('\n')
-}
-
-const buildRequirementTaskPrompt = ({
-  branchName,
-  issue,
-  projectName,
-}: {
-  branchName: string
-  issue: Awaited<ReturnType<IssueStore['getIssue']>>
-  projectName: string
-}) => {
-  return [
-    'Analyze requirements for this issue. This task is generated from the Projects planning flow.',
-    '',
-    `Project: ${projectName}`,
-    `Issue: ${issue.title}`,
-    `Priority: ${issue.priority}`,
-    `Target branch/worktree: ${branchName}`,
-    '',
-    'Issue description:',
-    issue.description,
-  ].join('\n')
-}
-
-const buildPlanningTaskPrompt = ({
-  branchName,
-  issue,
-  projectName,
-  requirementRunId,
-}: {
-  branchName: string
-  issue: Awaited<ReturnType<IssueStore['getIssue']>>
-  projectName: string
-  requirementRunId: string
-}) => {
-  return [
-    'Create a concrete work plan for the coding agent. This task is generated from the Projects planning flow.',
-    '',
-    `Project: ${projectName}`,
-    `Issue: ${issue.title}`,
-    `Priority: ${issue.priority}`,
-    `Target branch/worktree: ${branchName}`,
-    `Requirement analysis task: ${requirementRunId}`,
-    '',
-    'Issue description:',
-    issue.description,
-  ].join('\n')
 }
 
 const isIssueAnalysisReady = (

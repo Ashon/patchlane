@@ -9,6 +9,8 @@
     "dev:api": "pnpm --filter @patchlane/api dev",
     "dev:web": "pnpm --filter @patchlane/web dev",
     "build": "pnpm -r build",
+    "test:e2e": "tsx --tsconfig tsconfig.e2e.json --test \"e2e/**/*.test.ts\"",
+    "perf:e2e": "tsx --tsconfig tsconfig.e2e.json e2e/agent-issue-performance.ts",
     "format": "prettier --write . --ignore-path .gitignore --ignore-unknown",
     "format:check": "prettier --check . --ignore-path .gitignore --ignore-unknown",
     "lint": "eslint .",
@@ -23,6 +25,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "prettier": "^3.8.3",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.60.0"
   }

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import {
+  type AgentRun,
   agentProjectListSchema,
   agentProjectSchema,
   createAgentProjectSchema,
@@ -353,6 +354,46 @@ export class IssueStore {
     return { ...updated, events: [...updated.events, event] }
   }
 
+  async markRunFinished(
+    run: Pick<
+      AgentRun,
+      'branchName' | 'id' | 'issueId' | 'prUrl' | 'status' | 'workspaceId'
+    >,
+  ) {
+    if (!run.issueId) {
+      return undefined
+    }
+
+    const issue = await this.getIssue(run.issueId).catch(() => undefined)
+
+    if (!issue || issue.agentRunId !== run.id) {
+      return issue
+    }
+
+    const nextStatus = getIssueStatusFromRun(run)
+    const updated = issueSchema.parse({
+      ...issue,
+      branchName: run.branchName ?? issue.branchName,
+      prUrl: run.prUrl ?? issue.prUrl,
+      status: nextStatus,
+      workspaceId: run.workspaceId ?? issue.workspaceId,
+      updatedAt: new Date().toISOString(),
+    })
+    const statusChanged = updated.status !== issue.status
+    const event = createEvent({
+      issueId: issue.id,
+      type: statusChanged ? 'status_changed' : 'updated',
+      message: getRunFinishedEventMessage(run, updated.status),
+    })
+
+    this.database.transaction(() => {
+      this.updateIssueRow(updated)
+      this.insertEvents([event])
+    })
+
+    return { ...updated, events: [...updated.events, event] }
+  }
+
   async unlinkAgentRunReferences(run: {
     id: string
     issueId?: string
@@ -665,4 +706,37 @@ const buildBranchName = (prefix: string, title: string, id: string) => {
     .slice(0, 48)
 
   return `${prefix}/${slug || 'issue'}-${id.slice(0, 8)}`
+}
+
+const getIssueStatusFromRun = (
+  run: Pick<AgentRun, 'prUrl' | 'status'>,
+): IssueStatus => {
+  if (run.prUrl) {
+    return 'review'
+  }
+
+  if (run.status === 'completed') {
+    return 'completed'
+  }
+
+  if (run.status === 'failed') {
+    return 'failed'
+  }
+
+  if (run.status === 'awaiting_user') {
+    return 'awaiting_user'
+  }
+
+  return 'running'
+}
+
+const getRunFinishedEventMessage = (
+  run: Pick<AgentRun, 'id' | 'status'>,
+  status: IssueStatus,
+) => {
+  if (status === 'review') {
+    return `Agent run ${run.id.slice(0, 8)} opened a pull request.`
+  }
+
+  return `Agent run ${run.id.slice(0, 8)} finished with status ${run.status}.`
 }

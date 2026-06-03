@@ -20,6 +20,16 @@ import {
 import { estimateTextTokens, prepareAgentContext } from './agentContext'
 import type { AgentRunStore } from './agentRunStore'
 import { createPullRequest } from './githubPr'
+import {
+  buildCodingSystemPrompt,
+  buildDurabilityRetryPrompt,
+  replayRecoveryPrompt,
+  thinkingOnlyContinuationPrompt,
+  toolIterationLimitMessage,
+  toolIterationRetryPrompt,
+} from './prompts/codingPrompts'
+import { toToolPromptContent } from './prompts/toolResultPrompts'
+import { agentTools } from './tools/agentToolDefinitions'
 
 type AgentRuntimeOptions = {
   runStore: AgentRunStore
@@ -88,30 +98,10 @@ const maxToolIterations = 8
 const retryToolIterations = 4
 const totalToolIterations = maxToolIterations + retryToolIterations
 const defaultDurabilityMaxRetries = 2
-const toolPromptContentMaxChars = 6_000
 const defaultReadFileMaxLines = 240
 const maxReadFileMaxLines = 500
 const maxReadFileContentChars = 20_000
 const toolDispatchSleepMs = 0
-const toolIterationRetryPrompt = [
-  'The tool loop reached the normal per-pass limit.',
-  'Continue from the current context instead of stopping.',
-  'Use only the highest-value remaining tool calls.',
-  'If the requested work is complete, call finish. If you are blocked, call request_user_input.',
-].join('\n')
-const toolIterationLimitMessage =
-  'Tool iteration limit reached after an automatic retry. Review the current changes and continue the run.'
-const thinkingOnlyContinuationPrompt = [
-  'Your previous response contained only private reasoning and did not call a tool, ask a blocking question, or finish the task.',
-  'Do not stop on private reasoning. Continue now with a concrete tool call, finish, or request_user_input.',
-  'Avoid repeating broad exploration. Use the compacted context and choose the next highest-value coding action.',
-].join('\n')
-const replayRecoveryPrompt = [
-  'Replay recovery mode:',
-  '- The previous attempt stalled after repeated exploration or a tool iteration limit.',
-  "- Do not repeat the same generic 'different approach' reasoning.",
-  '- Use allowed tools directly, inspect only targeted file windows, and move toward editing, verification, finish, or request_user_input.',
-].join('\n')
 
 type AgentMessageMetadataInput = {
   context: AgentRunContext
@@ -182,7 +172,9 @@ const createAgentMessageMetadata = ({
   }
 }
 
-const getCompletionTokenUsage = (value: unknown): AgentRunTokenUsage | undefined => {
+const getCompletionTokenUsage = (
+  value: unknown,
+): AgentRunTokenUsage | undefined => {
   const payload = isRecord(value) && isRecord(value.usage) ? value.usage : value
 
   if (!isRecord(payload)) {
@@ -219,7 +211,8 @@ const getCompletionTokenUsage = (value: unknown): AgentRunTokenUsage | undefined
       getFirstTokenCount(completionDetails, [
         'reasoning_tokens',
         'reasoningTokens',
-      ]) ?? getFirstTokenCount(payload, ['reasoning_tokens', 'reasoningTokens']),
+      ]) ??
+      getFirstTokenCount(payload, ['reasoning_tokens', 'reasoningTokens']),
     cachedInputTokens:
       getFirstTokenCount(promptDetails, ['cached_tokens', 'cachedTokens']) ??
       getFirstTokenCount(payload, ['cached_tokens', 'cachedTokens']),
@@ -242,10 +235,7 @@ const getUsageDetails = (value: RecordValue, keys: string[]) => {
   return undefined
 }
 
-const getFirstTokenCount = (
-  value: RecordValue | undefined,
-  keys: string[],
-) => {
+const getFirstTokenCount = (value: RecordValue | undefined, keys: string[]) => {
   if (!value) {
     return undefined
   }
@@ -338,7 +328,10 @@ export class AgentRuntime {
       ) {
         const preparedContext = prepareAgentContext({
           messages: run.messages,
-          systemPrompt: getSystemPrompt(workspace, this.options.settings),
+          systemPrompt: buildCodingSystemPrompt({
+            settings: this.options.settings,
+            workspace,
+          }),
           tokenBudget: this.options.contextTokenBudget,
         })
         run = await this.options.runStore.setContext(
@@ -348,7 +341,11 @@ export class AgentRuntime {
         const messages = [...preparedContext.messages]
         const recoveryPrompt =
           durabilityAttempt > 0
-            ? getDurabilityRetryPrompt(durabilityAttempt, durabilityMaxRetries)
+            ? buildDurabilityRetryPrompt({
+                attempt: durabilityAttempt,
+                maxRetries: durabilityMaxRetries,
+                totalToolIterations,
+              })
             : getReplayRecoveryPrompt(run)
 
         if (recoveryPrompt) {
@@ -452,9 +449,8 @@ export class AgentRuntime {
             break
           }
 
-          const toolAdjacentAssistantContent = getToolAdjacentAssistantContent(
-            assistantContent,
-          )
+          const toolAdjacentAssistantContent =
+            getToolAdjacentAssistantContent(assistantContent)
 
           if (toolAdjacentAssistantContent) {
             pendingMessages.push({
@@ -571,7 +567,13 @@ export class AgentRuntime {
         role: 'system',
         content: message,
       })
-      return this.options.runStore.setStatus(run.id, 'failed', message)
+      const failedRun = await this.options.runStore.setStatus(
+        run.id,
+        'failed',
+        message,
+      )
+      await this.options.onRunFinished?.(failedRun)
+      return failedRun
     }
   }
 
@@ -606,7 +608,10 @@ export class AgentRuntime {
       ) {
         const preparedContext = prepareAgentContext({
           messages: run.messages,
-          systemPrompt: getSystemPrompt(workspace, this.options.settings),
+          systemPrompt: buildCodingSystemPrompt({
+            settings: this.options.settings,
+            workspace,
+          }),
           tokenBudget: this.options.contextTokenBudget,
         })
         run = await this.options.runStore.setContext(
@@ -617,7 +622,11 @@ export class AgentRuntime {
         const messages = [...preparedContext.messages]
         const recoveryPrompt =
           durabilityAttempt > 0
-            ? getDurabilityRetryPrompt(durabilityAttempt, durabilityMaxRetries)
+            ? buildDurabilityRetryPrompt({
+                attempt: durabilityAttempt,
+                maxRetries: durabilityMaxRetries,
+                totalToolIterations,
+              })
             : getReplayRecoveryPrompt(run)
 
         if (recoveryPrompt) {
@@ -933,6 +942,7 @@ export class AgentRuntime {
         'failed',
         message,
       )
+      await this.options.onRunFinished?.(failedRun)
       emit({ type: 'error', error: message, run: failedRun })
       return failedRun
     }
@@ -1039,168 +1049,6 @@ const mergeToolCallDelta = (
 
   toolCallsByIndex.set(index, current)
 }
-
-const toToolPromptContent = (content: string) => {
-  if (content.length <= toolPromptContentMaxChars) {
-    return content
-  }
-
-  const omittedChars = content.length - toolPromptContentMaxChars
-  return `${content.slice(0, toolPromptContentMaxChars)}\n\n[truncated ${omittedChars} characters for in-loop context budget]`
-}
-
-const agentTools = [
-  {
-    type: 'function',
-    function: {
-      name: 'list_files',
-      description: 'List files and directories in the sandbox workspace.',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Relative directory path. Defaults to workspace root.',
-          },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'read_file',
-      description:
-        'Read a UTF-8 source file from the sandbox workspace. For large files, request a line window with startLine and maxLines instead of rereading the whole file.',
-      parameters: {
-        type: 'object',
-        required: ['path'],
-        properties: {
-          path: { type: 'string' },
-          startLine: {
-            type: 'number',
-            description: '1-based starting line. Defaults to 1.',
-          },
-          maxLines: {
-            type: 'number',
-            description:
-              'Maximum lines to return. Defaults to 240 and caps at 500.',
-          },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'write_file',
-      description: 'Write a UTF-8 source file in the sandbox workspace.',
-      parameters: {
-        type: 'object',
-        required: ['path', 'content'],
-        properties: {
-          path: { type: 'string' },
-          content: { type: 'string' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'run_command',
-      description:
-        'Run an allowlisted command in the sandbox workspace without shell expansion. Put the executable in command and only its arguments in args; never repeat the command name inside args.',
-      parameters: {
-        type: 'object',
-        required: ['command'],
-        properties: {
-          command: {
-            type: 'string',
-            description:
-              "Executable name only, for example 'ls', 'pnpm', 'node', or 'git'.",
-          },
-          args: {
-            type: 'array',
-            items: { type: 'string' },
-            description:
-              "Arguments only. For 'ls -la', use command='ls' and args=['-la'], not args=['ls','-la'].",
-          },
-          cwd: { type: 'string' },
-          timeoutMs: { type: 'number' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'git_status',
-      description: 'Return git status for the sandbox workspace.',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'git_diff',
-      description: 'Return git diff for the sandbox workspace.',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_pull_request',
-      description:
-        'Create a GitHub pull request after changes are committed and pushed.',
-      parameters: {
-        type: 'object',
-        required: ['title', 'body', 'head', 'base'],
-        properties: {
-          title: { type: 'string' },
-          body: { type: 'string' },
-          head: {
-            type: 'string',
-            description: 'Pushed branch name, for example agent/my-change',
-          },
-          base: {
-            type: 'string',
-            description: 'Base branch, for example main',
-          },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'request_user_input',
-      description: 'Ask the user a blocking clarification question.',
-      parameters: {
-        type: 'object',
-        required: ['question'],
-        properties: {
-          question: { type: 'string' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'finish',
-      description: 'Mark the agent run completed with a concise final summary.',
-      parameters: {
-        type: 'object',
-        required: ['summary'],
-        properties: {
-          summary: { type: 'string' },
-        },
-      },
-    },
-  },
-]
 
 const executeAgentTool = async (
   name: string,
@@ -1394,17 +1242,6 @@ const getDurabilityMaxRetries = (value: number | undefined) => {
   return Math.max(0, Math.floor(parsed))
 }
 
-const getDurabilityRetryPrompt = (attempt: number, maxRetries: number) => {
-  return [
-    'Durability auto-retry mode:',
-    `- The previous tool pass exhausted its ${totalToolIterations} tool-call budget without finishing.`,
-    `- This is automatic retry ${attempt} of ${maxRetries}.`,
-    '- Continue from the persisted tool results and compacted context.',
-    '- Do not repeat broad file listing or generic exploration.',
-    '- Prefer targeted reads, concrete edits, focused verification, finish, or request_user_input if truly blocked.',
-  ].join('\n')
-}
-
 const isContinuationOnlyContent = (content: string) => {
   return (
     isThinkingOnlyContent(content) ||
@@ -1495,29 +1332,6 @@ const formatReadFileResult = (
     truncated: startLine > 1 || endLine < totalLines || charTruncated,
     content,
   }
-}
-
-const getSystemPrompt = (
-  workspace: SandboxWorkspace,
-  settings: SandboxSettings,
-) => {
-  const allowedCommands = settings.allowedCommands.join(', ')
-
-  return [
-    'You are a coding agent running inside an isolated sandbox workspace.',
-    'Communicate with the user through the run thread. Ask for clarification only when blocked.',
-    'Use tools to inspect files, edit files, run tests/builds, inspect git diff, commit, push, and create a pull request when requested.',
-    'Do not claim that work is complete until you have inspected relevant files and run reasonable verification.',
-    'Summarize tool findings in natural language. Never copy raw tool result JSON or [tool:name] transcript blocks into replies or reasoning.',
-    "When a tool call is the next step, call the tool directly instead of emitting visible progress narration like 'Let me check...' or 'I will try...'.",
-    'Use command tools with explicit command and args only. Never rely on shell metacharacters.',
-    'Use read_file with startLine/maxLines for large files. Do not repeatedly read an entire large file when a smaller line window is enough.',
-    `Allowed run_command commands: ${allowedCommands}. Prefer rg and sed for source search/slices; do not assume grep, head, awk, wc, or shell pipelines are available unless listed.`,
-    `Workspace path: ${workspace.path}`,
-    workspace.repositoryUrl
-      ? `Repository: ${workspace.repositoryUrl}`
-      : 'Repository: not configured',
-  ].join('\n')
 }
 
 const getErrorMessage = (error: unknown) => {

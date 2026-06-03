@@ -4,5 +4,7 @@ packages:
 
 onlyBuiltDependencies:
   - esbuild
+  - unrs-resolver
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
+  unrs-resolver: true

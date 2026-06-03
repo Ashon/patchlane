@@ -97,10 +97,23 @@ export const reconcileIssueAfterAgentRun = async (
   stores: IssueReconciliationStores,
   run: AgentRun,
 ): Promise<IssueReconciliationResult | undefined> => {
-  if (
-    !run.issueId ||
-    (run.kind !== 'requirements' && run.kind !== 'planning')
-  ) {
+  if (!run.issueId) {
+    return undefined
+  }
+
+  if (run.kind === 'coding') {
+    const issue = await stores.issueStore.markRunFinished(run)
+
+    return issue
+      ? {
+          issue,
+          promoted: false,
+          runs: [run],
+        }
+      : undefined
+  }
+
+  if (run.kind !== 'requirements' && run.kind !== 'planning') {
     return undefined
   }
 
