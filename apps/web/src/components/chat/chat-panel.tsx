@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import type { LlmChatMessage, LlmEndpoint } from '@agent-fleet/shared'
+import type { LlmChatMessage, LlmEndpoint } from '@patchlane/shared'
 import {
   ChatConversation,
   type ConversationMessage,

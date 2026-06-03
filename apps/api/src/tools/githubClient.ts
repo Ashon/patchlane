@@ -1,4 +1,4 @@
-import type { GitHubToolTestResult } from '@agent-fleet/shared'
+import type { GitHubToolTestResult } from '@patchlane/shared'
 
 const githubUserUrl = 'https://api.github.com/user'
 
@@ -13,7 +13,7 @@ export const testGitHubToken = async (
       headers: {
         accept: 'application/vnd.github+json',
         authorization: `Bearer ${token}`,
-        'user-agent': 'agent-fleet-local',
+        'user-agent': 'patchlane-local',
       },
     })
 

@@ -1,4 +1,4 @@
-import type { AgentRunContext, AgentRunMessage } from '@agent-fleet/shared'
+import type { AgentRunContext, AgentRunMessage } from '@patchlane/shared'
 
 type ChatMessage = Record<string, unknown>
 

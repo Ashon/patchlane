@@ -1,13 +1,13 @@
 {
-  "name": "agent-fleet",
+  "name": "patchlane",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.4.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @agent-fleet/api dev\" \"pnpm --filter @agent-fleet/web dev\"",
-    "dev:api": "pnpm --filter @agent-fleet/api dev",
-    "dev:web": "pnpm --filter @agent-fleet/web dev",
+    "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @patchlane/api dev\" \"pnpm --filter @patchlane/web dev\"",
+    "dev:api": "pnpm --filter @patchlane/api dev",
+    "dev:web": "pnpm --filter @patchlane/web dev",
     "build": "pnpm -r build",
     "format": "prettier --write . --ignore-path .gitignore --ignore-unknown",
     "format:check": "prettier --check . --ignore-path .gitignore --ignore-unknown",

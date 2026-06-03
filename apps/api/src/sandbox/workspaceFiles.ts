@@ -4,7 +4,7 @@ import type {
   SandboxFileContent,
   SandboxFileEntry,
   SandboxWorkspace,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { badRequest } from '../http/errors'
 import { ensureWorkspacePath } from './sandboxExecutor'
 

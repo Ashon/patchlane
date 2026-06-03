@@ -123,13 +123,13 @@ const AppContent = () => {
       return 'Workspaces'
     }
 
-    return 'Agent Fleet'
+    return 'Patchlane'
   }, [issues, location.pathname, projects, selectedIssueId, selectedRun])
 
   const supervisorChatSystemPrompt = useMemo(
     () =>
       [
-        'You are the Supervisor Chat for Agent Fleet.',
+        'You are the Supervisor Chat for Patchlane.',
         'Help coordinate project issues, agent tasks, workspace setup, endpoints, and verification across the whole app.',
         `Current app context: ${supervisorContextLabel}.`,
         'If the user asks for an app action you cannot perform through this chat endpoint, explain the exact page or control they should use.',

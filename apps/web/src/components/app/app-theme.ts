@@ -1,6 +1,6 @@
 import type { ThemeMode } from './app-types'
 
-export const themeStorageKey = 'agent-fleet-theme'
+export const themeStorageKey = 'patchlane-theme'
 export const themeModes = ['light', 'dark', 'system'] satisfies ThemeMode[]
 
 export const getStoredThemeMode = (): ThemeMode => {

@@ -11,7 +11,7 @@ import {
   startIssueSchema,
   updateAgentProjectSchema,
   updateIssueSchema,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import type { AgentRunStore } from '../agent/agentRunStore'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'

@@ -3,7 +3,7 @@ import type {
   LlmChatRequest,
   LlmEndpoint,
   LlmEndpointTestResult,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 
 const LOCAL_API_KEY = 'local-llm'
 

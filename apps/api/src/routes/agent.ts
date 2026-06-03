@@ -4,7 +4,7 @@ import {
   continueAgentRunSchema,
   createAgentRunSchema,
   rewindAgentRunSchema,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { AgentRuntime } from '../agent/agentRuntime'
 import type { AgentRunStore } from '../agent/agentRunStore'
 import { asyncHandler } from '../http/asyncHandler'
@@ -14,7 +14,7 @@ import type { IssueStore } from '../issues/issueStore'
 import type { LlmEndpointStore } from '../llm/endpointStore'
 import { removeWorktreeFromCache } from '../sandbox/gitSandbox'
 import type { SandboxWorkspaceStore } from '../sandbox/sandboxWorkspaceStore'
-import type { SandboxSettings } from '@agent-fleet/shared'
+import type { SandboxSettings } from '@patchlane/shared'
 import type { ToolSettingsStore } from '../tools/toolSettingsStore'
 
 type AgentRouterOptions = {

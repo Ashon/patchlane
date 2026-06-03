@@ -4,7 +4,7 @@ import type {
   LlmEndpoint,
   SandboxFileEntry,
   SandboxWorkspace,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { createOpenAIClient } from '../llm/openaiClient'
 
 type IssueAnalysisAgentInput = {

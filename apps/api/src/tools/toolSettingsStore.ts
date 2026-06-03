@@ -6,7 +6,7 @@ import {
   type PublicToolSettings,
   type ToolSettings,
   type UpdateGitHubToolSettingsInput,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import {
   AppDatabase,
   fromSqlBoolean,

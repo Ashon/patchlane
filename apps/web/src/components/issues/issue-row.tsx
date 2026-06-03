@@ -1,4 +1,4 @@
-import type { AgentRun, Issue } from '@agent-fleet/shared'
+import type { AgentRun, Issue } from '@patchlane/shared'
 import { Bot, CheckCircle2, GitBranch, Loader2, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'

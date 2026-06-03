@@ -4,7 +4,7 @@ import type {
   AgentRun,
   IssuePriority,
   IssueStatus,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { Github, Layers3 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'

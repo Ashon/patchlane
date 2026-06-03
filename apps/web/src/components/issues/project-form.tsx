@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import type { LlmEndpoint, SandboxWorkspace } from '@agent-fleet/shared'
+import type { LlmEndpoint, SandboxWorkspace } from '@patchlane/shared'
 import { Loader2, Plus, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,7 +40,7 @@ export const ProjectForm = ({
         <Field label="Name">
           <Input
             onChange={(event) => onChange({ name: event.target.value })}
-            placeholder="agent-fleet"
+            placeholder="patchlane"
             required
             value={draft.name}
           />

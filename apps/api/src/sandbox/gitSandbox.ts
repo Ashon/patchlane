@@ -1,6 +1,6 @@
 import { mkdir, stat } from 'node:fs/promises'
 import path from 'node:path'
-import type { SandboxSettings, SandboxWorkspace } from '@agent-fleet/shared'
+import type { SandboxSettings, SandboxWorkspace } from '@patchlane/shared'
 import { buildSandboxEnv } from './sandboxExecutor'
 import { runProcess } from './processRunner'
 

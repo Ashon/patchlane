@@ -1,7 +1,7 @@
 import type {
   CreateSandboxWorkspaceInput,
   SandboxWorkspace,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'

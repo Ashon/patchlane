@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { AgentRun } from '@agent-fleet/shared'
+import type { AgentRun } from '@patchlane/shared'
 import { getAgentTaskConversationMessages } from './agent-task-messages'
 import {
   mergeToolResultMessage,

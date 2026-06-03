@@ -1,6 +1,7 @@
-# Agent Fleet
+# Patchlane
 
-OpenAI API compatible local LLM endpoints for an agent fleet control plane.
+Patchlane is an issue-driven agentic coding workspace for planning,
+executing, reviewing, and turning scoped project issues into pull requests.
 
 ## Stack
 

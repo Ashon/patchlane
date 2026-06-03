@@ -25,7 +25,7 @@ import type {
   UpdateGitHubToolSettingsInput,
   UpdateLlmEndpointInput,
   UpdateIssueInput,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 
 const apiBaseUrl = (

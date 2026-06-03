@@ -1,4 +1,4 @@
-import type { AgentRun, Issue } from '@agent-fleet/shared'
+import type { AgentRun, Issue } from '@patchlane/shared'
 import { ListChecks } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Page, PageHeader } from '@/components/layout/page-primitives'

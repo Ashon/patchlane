@@ -1,5 +1,5 @@
 import { type FormEvent, useMemo, useState } from 'react'
-import type { CreateAgentProjectInput } from '@agent-fleet/shared'
+import type { CreateAgentProjectInput } from '@patchlane/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Layers3, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'

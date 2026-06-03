@@ -1,5 +1,5 @@
 import { type FormEvent, useMemo, useState } from 'react'
-import type { Issue } from '@agent-fleet/shared'
+import type { Issue } from '@patchlane/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,

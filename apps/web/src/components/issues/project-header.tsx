@@ -1,4 +1,4 @@
-import type { AgentProject, SandboxWorkspace } from '@agent-fleet/shared'
+import type { AgentProject, SandboxWorkspace } from '@patchlane/shared'
 import { Badge } from '@/components/ui/badge'
 import { ProjectRepositoryBadge, StateBadge } from './common'
 

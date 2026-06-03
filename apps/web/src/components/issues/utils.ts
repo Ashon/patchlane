@@ -6,7 +6,7 @@ import type {
   Issue,
   IssueStatus,
   UpdateAgentProjectInput,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import type { QueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query-client'
 import { emptyProjectDraft } from './constants'

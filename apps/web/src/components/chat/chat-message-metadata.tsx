@@ -1,4 +1,4 @@
-import type { AgentRunMessageMetadata } from '@agent-fleet/shared'
+import type { AgentRunMessageMetadata } from '@patchlane/shared'
 import { Button } from '@/components/ui/button'
 import { MessageAction } from '@/components/ui/message'
 import { overlayActionButtonClass } from './chat-message-action-button'

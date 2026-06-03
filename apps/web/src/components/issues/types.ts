@@ -1,6 +1,6 @@
 import type {
   IssuePriority,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 
 export type ProjectDraft = {
   targetId: string | null

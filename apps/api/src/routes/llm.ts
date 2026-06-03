@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express'
-import { llmChatRequestSchema } from '@agent-fleet/shared'
+import { llmChatRequestSchema } from '@patchlane/shared'
 import type { LlmEndpointStore } from '../llm/endpointStore'
 import {
   createChatCompletion,

@@ -3,7 +3,7 @@ import {
   createSandboxWorkspaceSchema,
   sandboxExecRequestSchema,
   type SandboxSettings,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
 import { executeSandboxCommand } from '../sandbox/sandboxExecutor'

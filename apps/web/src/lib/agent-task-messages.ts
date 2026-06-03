@@ -1,4 +1,4 @@
-import type { AgentRun } from '@agent-fleet/shared'
+import type { AgentRun } from '@patchlane/shared'
 import type { ConversationMessage } from '../components/chat/chat-conversation'
 import { splitThinking } from './chat-format'
 

@@ -1,7 +1,7 @@
 import type {
   GitHubToolTestResult,
   LlmEndpointTestResult,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'

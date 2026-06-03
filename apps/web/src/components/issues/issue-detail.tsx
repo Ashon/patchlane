@@ -1,4 +1,4 @@
-import type { AgentRun, Issue, SandboxWorkspace } from '@agent-fleet/shared'
+import type { AgentRun, Issue, SandboxWorkspace } from '@patchlane/shared'
 import { Bot, ClipboardList } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Markdown } from '@/components/ui/markdown'

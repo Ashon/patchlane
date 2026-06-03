@@ -2,7 +2,7 @@ import type {
   AgentProject,
   AgentRun,
   Issue,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { useMemo } from 'react'
 import { Bot, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'

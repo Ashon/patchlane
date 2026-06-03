@@ -8,7 +8,7 @@ import type {
   SandboxFileContent,
   SandboxSettings,
   SandboxWorkspace,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { createOpenAIClient } from '../llm/openaiClient'
 import { executeSandboxCommand } from '../sandbox/sandboxExecutor'
 import { getGitAuthEnv } from '../sandbox/gitSandbox'

@@ -66,7 +66,7 @@ export const AppShell = ({
               </div>
               <div className="min-w-0">
                 <h1 className="truncate text-sm font-semibold tracking-normal">
-                  Agent Fleet
+                  Patchlane
                 </h1>
               </div>
             </div>

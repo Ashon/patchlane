@@ -7,7 +7,7 @@ import {
   type CreateLlmEndpointInput,
   type LlmEndpoint,
   type UpdateLlmEndpointInput,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import {
   AppDatabase,
   fromSqlBoolean,

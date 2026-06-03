@@ -2,7 +2,7 @@ import type {
   CreateLlmEndpointInput,
   LlmEndpoint,
   LlmEndpointTestResult,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import {
   type FormEvent,
   useCallback,

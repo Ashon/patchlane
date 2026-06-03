@@ -5,7 +5,7 @@ import {
   type SandboxExecRequest,
   type SandboxSettings,
   type SandboxWorkspace,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { badRequest } from '../http/errors'
 import { ensureWithinRoot } from './sandboxWorkspaceStore'
 import { runProcess } from './processRunner'

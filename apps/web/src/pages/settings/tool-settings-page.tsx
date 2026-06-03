@@ -2,7 +2,7 @@ import type {
   GitHubToolTestResult,
   PublicToolSettings,
   UpdateGitHubToolSettingsInput,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { type FormEvent, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {

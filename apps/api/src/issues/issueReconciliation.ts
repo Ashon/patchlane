@@ -1,4 +1,4 @@
-import type { AgentRun, Issue } from '@agent-fleet/shared'
+import type { AgentRun, Issue } from '@patchlane/shared'
 import type { AgentRunStore } from '../agent/agentRunStore'
 import { combineIssuePlanningAnalysis } from './issueAnalysisAgent'
 import type { IssueStore } from './issueStore'

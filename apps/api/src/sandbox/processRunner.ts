@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import type { SandboxExecResult } from '@agent-fleet/shared'
+import type { SandboxExecResult } from '@patchlane/shared'
 
 type RunProcessInput = {
   command: string

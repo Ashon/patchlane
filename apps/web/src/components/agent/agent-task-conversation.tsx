@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { AgentRun, LlmEndpoint } from '@agent-fleet/shared'
+import type { AgentRun, LlmEndpoint } from '@patchlane/shared'
 import {
   ChevronDown,
   Network,

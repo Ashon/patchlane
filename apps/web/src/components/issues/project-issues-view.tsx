@@ -6,7 +6,7 @@ import type {
   IssuePriority,
   LlmEndpoint,
   SandboxWorkspace,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {

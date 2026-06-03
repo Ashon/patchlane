@@ -42,7 +42,7 @@ export const env = {
   webOrigin: process.env.WEB_ORIGIN?.trim() || 'http://localhost:8788',
   databaseFile: path.resolve(
     process.cwd(),
-    process.env.DATABASE_FILE || '.data/agent-fleet.sqlite',
+    process.env.DATABASE_FILE || '.data/patchlane.sqlite',
   ),
   llmEndpointsFile: path.resolve(
     process.cwd(),

@@ -8,7 +8,7 @@ import {
   type CreateSandboxWorkspaceInput,
   type SandboxWorkspace,
   type SandboxWorkspaceKind,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { AppDatabase, optionalString } from '../db/database'
 import { readLegacyJson } from '../db/legacyJson'
 import { notFound } from '../http/errors'

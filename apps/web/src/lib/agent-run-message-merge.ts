@@ -1,4 +1,4 @@
-import type { AgentRun, AgentRunMessageMetadata } from '@agent-fleet/shared'
+import type { AgentRun, AgentRunMessageMetadata } from '@patchlane/shared'
 import { splitThinking } from './chat-format'
 
 export type AgentRunMessage = AgentRun['messages'][number]

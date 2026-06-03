@@ -1,4 +1,4 @@
-import type { LlmEndpoint } from '@agent-fleet/shared'
+import type { LlmEndpoint } from '@patchlane/shared'
 import { Cpu, MessageSquare } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

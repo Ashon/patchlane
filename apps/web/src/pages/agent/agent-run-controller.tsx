@@ -18,7 +18,7 @@ import type {
   IssueStatus,
   LlmEndpoint,
   SandboxWorkspace,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { parseAsString, useQueryState } from 'nuqs'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'

@@ -1,4 +1,4 @@
-import type { AgentRunMessageMetadata } from '@agent-fleet/shared'
+import type { AgentRunMessageMetadata } from '@patchlane/shared'
 import type { ReactNode } from 'react'
 
 export type ConversationMessage = {

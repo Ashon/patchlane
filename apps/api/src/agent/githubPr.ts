@@ -1,4 +1,4 @@
-import type { SandboxWorkspace } from '@agent-fleet/shared'
+import type { SandboxWorkspace } from '@patchlane/shared'
 
 type CreatePullRequestInput = {
   workspace: SandboxWorkspace
@@ -31,7 +31,7 @@ export const createPullRequest = async ({
         accept: 'application/vnd.github+json',
         authorization: `Bearer ${token}`,
         'content-type': 'application/json',
-        'user-agent': 'agent-fleet-local',
+        'user-agent': 'patchlane-local',
       },
       body: JSON.stringify({
         title,

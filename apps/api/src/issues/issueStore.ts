@@ -17,7 +17,7 @@ import {
   type IssueStatus,
   type UpdateAgentProjectInput,
   type UpdateIssueInput,
-} from '@agent-fleet/shared'
+} from '@patchlane/shared'
 import { AppDatabase, optionalString } from '../db/database'
 import { notFound } from '../http/errors'
 
