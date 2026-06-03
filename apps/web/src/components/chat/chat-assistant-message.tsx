@@ -241,7 +241,7 @@ const AssistantMessagePart = ({
         >
           <MessageContent
             className={cn(
-              'max-w-full overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto',
+              'max-w-full overflow-hidden rounded-lg px-2.5 py-1.5 text-sm leading-5 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 [&_*]:max-w-full [&_pre]:overflow-x-auto mb-2',
               isSystem &&
                 'border-destructive/25 bg-destructive/10 text-destructive',
             )}

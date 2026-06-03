@@ -77,11 +77,6 @@ const validateCommandRequest = (
   command: string,
   args: string[],
 ) => {
-  if (command === 'git') {
-    validateGitCommand(args)
-    return
-  }
-
   if (command === 'find') {
     validateFindCommand(workspace, args)
     return
@@ -110,16 +105,6 @@ const normalizeCommandArgs = (command: string, args: string[]) => {
   return args
 }
 
-const blockedGitSubcommands = new Set([
-  'reset',
-  'clean',
-  'restore',
-  'checkout',
-  'switch',
-  'rebase',
-  'stash',
-  'worktree',
-])
 const blockedFindActions = new Set([
   '-delete',
   '-exec',
@@ -128,14 +113,6 @@ const blockedFindActions = new Set([
   '-okdir',
 ])
 const pathGuardedCommands = new Set(['mkdir', 'cp', 'mv', 'touch'])
-
-const validateGitCommand = (args: string[]) => {
-  const subcommand = args.find((arg) => !arg.startsWith('-'))
-
-  if (subcommand && blockedGitSubcommands.has(subcommand)) {
-    throw badRequest(`Git subcommand '${subcommand}' is blocked in the sandbox`)
-  }
-}
 
 const validateFindCommand = (workspace: SandboxWorkspace, args: string[]) => {
   for (const arg of args) {
