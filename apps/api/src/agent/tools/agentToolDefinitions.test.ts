@@ -23,6 +23,7 @@ describe('Given agent tool definitions', () => {
       'git_status',
       'git_diff',
       'create_pull_request',
+      'add_issue_comment',
       'request_user_input',
       'finish',
     ])
@@ -41,6 +42,20 @@ describe('Given agent tool definitions', () => {
   it('when describing finish, then it requires a final summary', () => {
     expect(toolByName('finish').parameters).toMatchObject({
       required: ['summary'],
+    })
+  })
+
+  it('when describing add_issue_comment, then it requires a user-facing body', () => {
+    const tool = toolByName('add_issue_comment')
+
+    expect(tool.description).toContain('user-facing update')
+    expect(tool.parameters).toMatchObject({
+      required: ['body'],
+      properties: {
+        kind: {
+          enum: ['progress', 'decision', 'blocked', 'summary'],
+        },
+      },
     })
   })
 })

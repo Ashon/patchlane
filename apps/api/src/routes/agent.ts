@@ -54,6 +54,8 @@ export const createAgentRouter = ({
       const settings = await toolSettingsStore.get()
       return settings.github.enabled ? settings.github.token : undefined
     },
+    addIssueComment: (issueId, input) =>
+      issueStore.addIssueComment(issueId, input),
     onRunFinished: async (run) => {
       await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)
     },

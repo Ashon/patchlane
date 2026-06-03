@@ -56,9 +56,19 @@ type WorkspacesResponse = {
 
 type IssueSnapshot = {
   agentRunId?: string
+  comments?: IssueCommentSnapshot[]
   id: string
   status: string
   workspaceId?: string
+}
+
+type IssueCommentSnapshot = {
+  author: string
+  body: string
+  createdAt: string
+  id: string
+  kind: string
+  runId?: string
 }
 
 type AgentRunSnapshot = {
@@ -111,10 +121,13 @@ type PerfSummary = {
     name: string
   }
   issue: {
+    commentCount: number
+    comments: IssueCommentSnapshot[]
     id: string
     status?: string
   }
   result: {
+    commentRecorded: boolean
     ok: boolean
     readmeUpdated: boolean
     runStatus: string
@@ -184,6 +197,8 @@ const main = async () => {
             'Update README.md so it contains this exact line:',
             expectedMarker,
             '',
+            'Before editing, record a concise user-facing progress update on this issue with add_issue_comment.',
+            'After verification, record a concise user-facing summary on this issue with add_issue_comment.',
             'Then verify the content with a command and finish the task.',
             'Do not ask for clarification.',
           ].join('\n'),
@@ -253,11 +268,19 @@ const main = async () => {
       'utf8',
     )
     const readmeUpdated = readme.includes(expectedMarker)
+    const comments = completedIssue?.comments ?? []
+    const commentRecorded = comments.some(
+      (comment) =>
+        comment.author === 'agent' &&
+        comment.runId === continueResponse.run.id &&
+        comment.body.trim().length > 0,
+    )
     const usage = summarizeUsage(continueResponse.run.messages)
     const runStatus = continueResponse.run.status
     const issueStatus = completedIssue?.status
     const ok =
       readmeUpdated &&
+      commentRecorded &&
       runStatus === 'completed' &&
       (issueStatus === 'completed' || issueStatus === 'review')
     const summary: PerfSummary = {
@@ -268,10 +291,13 @@ const main = async () => {
         name: endpoint.name,
       },
       issue: {
+        commentCount: comments.length,
+        comments,
         id: issueResponse.issue.id,
         status: issueStatus,
       },
       result: {
+        commentRecorded,
         ok,
         readmeUpdated,
         runStatus,
@@ -455,6 +481,9 @@ const printSummary = (summary: PerfSummary) => {
     `- run: ${summary.run.id} status=${summary.result.runStatus} issue=${summary.issue.status}`,
   )
   console.log(`- readme updated: ${summary.result.readmeUpdated}`)
+  console.log(
+    `- issue comments: ${summary.issue.commentCount} recorded=${summary.result.commentRecorded}`,
+  )
   console.log(`- tools: ${summary.run.toolNames.join(' -> ') || 'none'}`)
   console.log(
     `- timings: setup=${summary.timingsMs.setup}ms start=${summary.timingsMs.start}ms continue=${summary.timingsMs.continue}ms total=${summary.timingsMs.total}ms`,
@@ -468,6 +497,10 @@ const printSummary = (summary: PerfSummary) => {
 
   if (summary.run.resultSummary) {
     console.log(`- result: ${summary.run.resultSummary}`)
+  }
+
+  for (const comment of summary.issue.comments) {
+    console.log(`- comment(${comment.kind}): ${comment.body}`)
   }
 
   console.log(`\n${JSON.stringify(summary, null, 2)}`)

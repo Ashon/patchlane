@@ -35,6 +35,7 @@ describe('Given coding agent prompts', () => {
     expect(prompt).toContain('Allowed run_command commands: git, pnpm, rg, sed')
     expect(prompt).toContain('Never rely on shell metacharacters')
     expect(prompt).toContain('run reasonable verification')
+    expect(prompt).toContain('use add_issue_comment')
   })
 
   it('when building a durability retry prompt, then it preserves retry budget context', () => {

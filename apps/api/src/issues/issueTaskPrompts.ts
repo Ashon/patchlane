@@ -35,8 +35,9 @@ export const buildIssueRunTaskPrompt = ({
     '- Decide whether the issue is actionable, under-specified, or unsafe before editing.',
     '- For tiny obvious tasks, proceed directly after targeted inspection.',
     '- For larger or risky tasks, form a concise plan from the inspection results before making changes.',
+    '- Use add_issue_comment at meaningful progress points, decisions, blockers, and final issue summaries so the issue timeline stays useful without exposing raw logs.',
     '- Keep work isolated to this issue branch/worktree context.',
     '- Implement the requested change when actionable, run relevant verification, and call finish with the outcome.',
-    '- If blocked, call request_user_input with the exact missing decision or information.',
+    '- If blocked, first call add_issue_comment with kind=blocked, then call request_user_input with the exact missing decision or information.',
   ].join('\n')
 }

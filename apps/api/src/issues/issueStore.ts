@@ -4,7 +4,9 @@ import {
   agentProjectListSchema,
   agentProjectSchema,
   createAgentProjectSchema,
+  createIssueCommentSchema,
   createIssueSchema,
+  issueCommentSchema,
   issueEventSchema,
   issueListSchema,
   issueSchema,
@@ -12,8 +14,10 @@ import {
   updateIssueSchema,
   type AgentProject,
   type CreateAgentProjectInput,
+  type CreateIssueCommentInput,
   type CreateIssueInput,
   type Issue,
+  type IssueComment,
   type IssueEvent,
   type IssueStatus,
   type UpdateAgentProjectInput,
@@ -73,6 +77,16 @@ type IssueEventRow = {
   issue_id: string
   type: IssueEvent['type']
   message: string
+  created_at: string
+}
+
+type IssueCommentRow = {
+  id: string
+  issue_id: string
+  run_id: string | null
+  author: IssueComment['author']
+  kind: IssueComment['kind']
+  body: string
   created_at: string
 }
 
@@ -452,6 +466,27 @@ export class IssueStore {
     return { ...updated, events: [...updated.events, event] }
   }
 
+  async addIssueComment(issueId: string, input: CreateIssueCommentInput) {
+    const issue = await this.getIssue(issueId)
+    const parsed = createIssueCommentSchema.parse(input)
+    const comment = createComment({
+      ...parsed,
+      issueId: issue.id,
+    })
+    const updated = issueSchema.parse({
+      ...issue,
+      updatedAt: comment.createdAt,
+      comments: [...issue.comments, comment],
+    })
+
+    this.database.transaction(() => {
+      this.updateIssueRow(updated)
+      this.insertComments([comment])
+    })
+
+    return { issue: updated, comment }
+  }
+
   private getProjectById(id: string) {
     const row = this.database.sqlite
       .prepare('SELECT * FROM agent_projects WHERE id = ?')
@@ -512,6 +547,11 @@ export class IssueStore {
         'SELECT * FROM issue_events WHERE issue_id = ? ORDER BY created_at ASC',
       )
       .all(row.id) as unknown as IssueEventRow[]
+    const comments = this.database.sqlite
+      .prepare(
+        'SELECT * FROM issue_comments WHERE issue_id = ? ORDER BY created_at ASC',
+      )
+      .all(row.id) as unknown as IssueCommentRow[]
 
     return issueSchema.parse({
       id: row.id,
@@ -531,6 +571,7 @@ export class IssueStore {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       events: events.map(toIssueEvent),
+      comments: comments.map(toIssueComment),
     })
   }
 
@@ -608,6 +649,24 @@ export class IssueStore {
       )
     }
   }
+
+  private insertComments(comments: IssueComment[]) {
+    const statement = this.database.sqlite.prepare(
+      'INSERT INTO issue_comments (id, issue_id, run_id, author, kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+
+    for (const comment of comments) {
+      statement.run(
+        comment.id,
+        comment.issueId,
+        comment.runId ?? null,
+        comment.author,
+        comment.kind,
+        comment.body,
+        comment.createdAt,
+      )
+    }
+  }
 }
 
 const toIssueEvent = (row: IssueEventRow) => {
@@ -620,6 +679,18 @@ const toIssueEvent = (row: IssueEventRow) => {
   })
 }
 
+const toIssueComment = (row: IssueCommentRow) => {
+  return issueCommentSchema.parse({
+    id: row.id,
+    issueId: row.issue_id,
+    runId: optionalString(row.run_id),
+    author: row.author,
+    kind: row.kind,
+    body: row.body,
+    createdAt: row.created_at,
+  })
+}
+
 const createEvent = (
   event: Omit<IssueEvent, 'id' | 'createdAt'> & { createdAt?: string },
 ) => {
@@ -627,6 +698,16 @@ const createEvent = (
     ...event,
     id: randomUUID(),
     createdAt: event.createdAt || new Date().toISOString(),
+  })
+}
+
+const createComment = (
+  comment: Omit<IssueComment, 'id' | 'createdAt'> & { createdAt?: string },
+) => {
+  return issueCommentSchema.parse({
+    ...comment,
+    id: randomUUID(),
+    createdAt: comment.createdAt || new Date().toISOString(),
   })
 }
 

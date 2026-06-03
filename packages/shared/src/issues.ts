@@ -67,6 +67,13 @@ export const issueStatusSchema = z.enum([
   'failed',
 ])
 export const issuePrioritySchema = z.enum(['low', 'medium', 'high', 'urgent'])
+export const issueCommentAuthorSchema = z.enum(['agent', 'user', 'system'])
+export const issueCommentKindSchema = z.enum([
+  'progress',
+  'decision',
+  'blocked',
+  'summary',
+])
 
 export const issueEventSchema = z.object({
   id: z.string().min(1),
@@ -79,6 +86,16 @@ export const issueEventSchema = z.object({
     'status_changed',
   ]),
   message: z.string().min(1).max(4_000),
+  createdAt: isoDateSchema,
+})
+
+export const issueCommentSchema = z.object({
+  id: z.string().min(1),
+  issueId: z.string().min(1),
+  runId: z.string().min(1).optional(),
+  author: issueCommentAuthorSchema.default('agent'),
+  kind: issueCommentKindSchema.default('progress'),
+  body: z.string().trim().min(1).max(4_000),
   createdAt: isoDateSchema,
 })
 
@@ -100,6 +117,7 @@ export const issueSchema = z.object({
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
   events: z.array(issueEventSchema).default([]),
+  comments: z.array(issueCommentSchema).default([]),
 })
 
 export const createIssueSchema = z.object({
@@ -134,6 +152,13 @@ export const startIssueSchema = z.object({
   endpointId: z.string().min(1).optional(),
 })
 
+export const createIssueCommentSchema = z.object({
+  runId: z.string().min(1).optional(),
+  author: issueCommentAuthorSchema.default('agent'),
+  kind: issueCommentKindSchema.default('progress'),
+  body: z.string().trim().min(1).max(4_000),
+})
+
 export const agentProjectListSchema = z.array(agentProjectSchema)
 export const issueListSchema = z.array(issueSchema)
 
@@ -144,6 +169,10 @@ export type Issue = z.infer<typeof issueSchema>
 export type IssueStatus = z.infer<typeof issueStatusSchema>
 export type IssuePriority = z.infer<typeof issuePrioritySchema>
 export type IssueEvent = z.infer<typeof issueEventSchema>
+export type IssueComment = z.infer<typeof issueCommentSchema>
+export type IssueCommentAuthor = z.infer<typeof issueCommentAuthorSchema>
+export type IssueCommentKind = z.infer<typeof issueCommentKindSchema>
 export type CreateIssueInput = z.infer<typeof createIssueSchema>
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>
 export type StartIssueInput = z.infer<typeof startIssueSchema>
+export type CreateIssueCommentInput = z.input<typeof createIssueCommentSchema>

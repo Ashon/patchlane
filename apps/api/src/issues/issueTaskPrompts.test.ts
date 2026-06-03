@@ -46,6 +46,8 @@ describe('Given issue task prompts', () => {
     expect(prompt).toContain(
       'classify scope as tiny, small, medium, large, or risky',
     )
+    expect(prompt).toContain('Use add_issue_comment')
+    expect(prompt).toContain('kind=blocked')
     expect(prompt).toContain('run relevant verification')
   })
 })

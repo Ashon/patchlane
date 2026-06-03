@@ -175,6 +175,19 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_issue_events_issue_created_at
         ON issue_events (issue_id, created_at ASC);
+
+      CREATE TABLE IF NOT EXISTS issue_comments (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues (id) ON DELETE CASCADE,
+        run_id TEXT,
+        author TEXT NOT NULL CHECK (author IN ('agent', 'user', 'system')),
+        kind TEXT NOT NULL CHECK (kind IN ('progress', 'decision', 'blocked', 'summary')),
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_issue_comments_issue_created_at
+        ON issue_comments (issue_id, created_at ASC);
     `)
     this.ensureColumn('agent_runs', 'kind', "TEXT NOT NULL DEFAULT 'coding'")
     this.ensureColumn('agent_runs', 'project_id', 'TEXT')
@@ -227,6 +240,9 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_issues_updated_at
         ON issues (updated_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_issue_comments_issue_created_at
+        ON issue_comments (issue_id, created_at ASC);
 
       CREATE INDEX IF NOT EXISTS idx_sandbox_workspaces_project_kind
         ON sandbox_workspaces (project_id, kind);

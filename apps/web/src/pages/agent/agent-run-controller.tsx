@@ -637,6 +637,9 @@ export const AgentRunControllerProvider = ({
                     resultMessage,
                   ),
                 }))
+                if (event.toolName === 'add_issue_comment') {
+                  void refreshIssues()
+                }
                 return
               }
 

@@ -4,6 +4,8 @@ import type {
   AgentRunContext,
   AgentRunMessage,
   AgentRunMessageMetadata,
+  CreateIssueCommentInput,
+  IssueComment,
   LlmEndpoint,
   SandboxFileContent,
   SandboxSettings,
@@ -40,13 +42,19 @@ type AgentRuntimeOptions = {
   getEndpoint: (id?: string) => Promise<LlmEndpoint>
   getWorkspace: (id: string) => Promise<SandboxWorkspace>
   getGitHubToken: () => Promise<string | undefined>
+  addIssueComment?: (
+    issueId: string,
+    input: CreateIssueCommentInput,
+  ) => Promise<{ comment: IssueComment }>
   onRunFinished?: (run: AgentRun) => Promise<void>
 }
 
 type ToolContext = {
   settings: SandboxSettings
   workspace: SandboxWorkspace
+  run: Pick<AgentRun, 'id' | 'issueId'>
   githubToken?: string
+  addIssueComment?: AgentRuntimeOptions['addIssueComment']
 }
 
 type AgentToolResult = {
@@ -473,7 +481,9 @@ export class AgentRuntime {
               {
                 settings: this.options.settings,
                 workspace,
+                run,
                 githubToken,
+                addIssueComment: this.options.addIssueComment,
               },
             )
 
@@ -834,7 +844,9 @@ export class AgentRuntime {
               {
                 settings: this.options.settings,
                 workspace,
+                run,
                 githubToken,
+                addIssueComment: this.options.addIssueComment,
               },
             )
 
@@ -1149,6 +1161,36 @@ const executeAgentTool = async (
       })
 
       return { ...toolResult({ url }), prUrl: url }
+    }
+
+    if (name === 'add_issue_comment') {
+      if (!context.run.issueId) {
+        throw new Error('Issue comments are only available during issue runs')
+      }
+
+      if (!context.addIssueComment) {
+        throw new Error('Issue comment storage is not configured')
+      }
+
+      const { comment } = await context.addIssueComment(context.run.issueId, {
+        runId: context.run.id,
+        author: 'agent',
+        kind: getString(args.kind) as CreateIssueCommentInput['kind'],
+        body: requireString(args.body, 'body'),
+      })
+
+      return toolResult({
+        recorded: true,
+        comment: {
+          id: comment.id,
+          issueId: comment.issueId,
+          runId: comment.runId,
+          author: comment.author,
+          kind: comment.kind,
+          body: comment.body,
+          createdAt: comment.createdAt,
+        },
+      })
     }
 
     if (name === 'request_user_input') {
