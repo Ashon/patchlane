@@ -1,24 +1,18 @@
 import { useMemo, useRef, useState } from 'react'
 import type { LlmChatMessage, LlmEndpoint } from '@agent-fleet/shared'
-import { Cpu, MessageSquare, Send, Sparkles, Square } from 'lucide-react'
 import {
   ChatConversation,
   type ConversationMessage,
 } from '@/components/chat/chat-conversation'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { PromptInputAction } from '@/components/ui/prompt-input'
-import { PromptSuggestion } from '@/components/ui/prompt-suggestion'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { splitThinking } from '@/lib/chat-format'
-import { cn } from '@/lib/utils'
+import { ChatPanelEmptyState } from './chat-panel-empty-state'
+import { ChatPanelHeader } from './chat-panel-header'
+import { ChatPanelInputActions } from './chat-panel-input-actions'
+import {
+  chatSuggestions,
+  supervisorChatSuggestions,
+} from './chat-panel-suggestions'
 
 type ChatPanelProps = {
   contextLabel?: string
@@ -35,18 +29,6 @@ type ChatMessage = ConversationMessage & {
   role: 'user' | 'assistant'
   reasoning: string
 }
-
-const suggestions = [
-  '현재 모델의 장단점을 Markdown 표로 정리해줘.',
-  'TypeScript Express SSE 예제를 코드 블록으로 보여줘.',
-  '이 프로젝트에서 agent fleet 기능을 어떻게 확장할지 제안해줘.',
-]
-
-const supervisorSuggestions = [
-  '현재 페이지에서 다음 액션을 정리해줘.',
-  '열려 있는 이슈와 태스크 흐름을 점검해줘.',
-  'Agent Fleet 운영 관점에서 리스크를 찾아줘.',
-]
 
 export const ChatPanel = ({
   contextLabel,
@@ -66,7 +48,7 @@ export const ChatPanel = ({
 
   const canChat = Boolean(endpoint?.enabled)
   const isSidebar = variant === 'sidebar'
-  const panelSuggestions = isSidebar ? supervisorSuggestions : suggestions
+  const panelSuggestions = isSidebar ? supervisorChatSuggestions : chatSuggestions
 
   const apiMessages = useMemo<LlmChatMessage[]>(
     () =>
@@ -218,179 +200,38 @@ export const ChatPanel = ({
   return (
     <ChatConversation
       emptyState={
-        <div
-          className={cn(
-            'flex flex-col items-center justify-center gap-2.5 text-center',
-            isSidebar ? 'min-h-[240px]' : 'min-h-[32vh]',
-          )}
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-card text-primary shadow-sm">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold">
-              {isSidebar ? 'Ask the supervisor' : 'Start a conversation'}
-            </h3>
-            <p className="max-w-md text-sm text-muted-foreground">
-              {isSidebar
-                ? 'Use this panel while moving across projects, issues, settings, and agent tasks.'
-                : 'Streaming responses, reasoning panels, Markdown, tables, and code blocks are enabled.'}
-            </p>
-          </div>
-          <div
-            className={cn(
-              'flex flex-wrap justify-center gap-2',
-              isSidebar ? 'max-w-sm' : 'max-w-2xl',
-            )}
-          >
-            {panelSuggestions.map((suggestion) => (
-              <PromptSuggestion
-                disabled={!canChat || isStreaming}
-                key={suggestion}
-                onClick={() => void sendMessage(suggestion)}
-                type="button"
-              >
-                {suggestion}
-              </PromptSuggestion>
-            ))}
-          </div>
-        </div>
+        <ChatPanelEmptyState
+          canChat={canChat}
+          isSidebar={isSidebar}
+          isStreaming={isStreaming}
+          onSuggestionClick={(suggestion) => void sendMessage(suggestion)}
+          suggestions={panelSuggestions}
+        />
       }
       error={error}
       header={
-        isSidebar ? (
-          <header className="border-b bg-card p-1.5">
-            <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
-              <Select
-                disabled={!endpoints.length || loading || isStreaming}
-                onValueChange={onEndpointChange}
-                value={endpoint?.id ?? undefined}
-              >
-                <SelectTrigger className="h-8 min-w-0 bg-background text-xs">
-                  <SelectValue
-                    placeholder={
-                      loading ? 'Loading endpoints...' : 'Select model'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {endpoints.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name} / {item.defaultModel}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Badge
-                className={cn(
-                  'h-8 gap-1 px-2 text-xs',
-                  canChat
-                    ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300'
-                    : 'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
-                )}
-                variant="outline"
-              >
-                <Cpu className="h-3.5 w-3.5" />
-                {canChat ? 'Ready' : 'Unavailable'}
-              </Badge>
-              <Button
-                className="h-8 px-2.5"
-                disabled={!messages.length && !error}
-                onClick={clearChat}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Clear
-              </Button>
-            </div>
-          </header>
-        ) : (
-          <header className="flex min-h-10 flex-col gap-2 border-b bg-card px-3 py-2 md:flex-row md:items-center md:justify-between">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <MessageSquare className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="truncate text-sm font-semibold">{title}</h2>
-                <p className="truncate text-xs text-muted-foreground">
-                  {contextLabel ??
-                  (endpoint
-                    ? `${endpoint.name} / ${endpoint.defaultModel}`
-                    : 'No endpoint selected')}
-                </p>
-              </div>
-            </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <Select
-                disabled={!endpoints.length || loading || isStreaming}
-                onValueChange={onEndpointChange}
-                value={endpoint?.id ?? undefined}
-              >
-                <SelectTrigger className="h-8 w-full min-w-0 bg-background text-xs sm:w-[320px] xl:w-[400px]">
-                  <SelectValue
-                    placeholder={
-                      loading ? 'Loading endpoints...' : 'Select model'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {endpoints.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name} / {item.defaultModel}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Badge
-                className={cn(
-                  'gap-1',
-                  canChat
-                    ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300'
-                    : 'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
-                )}
-                variant="outline"
-              >
-                <Cpu className="h-3.5 w-3.5" />
-                {canChat ? 'Ready' : 'Unavailable'}
-              </Badge>
-              <Button
-                disabled={!messages.length && !error}
-                onClick={clearChat}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Clear
-              </Button>
-            </div>
-          </header>
-        )
+        <ChatPanelHeader
+          canChat={canChat}
+          contextLabel={contextLabel}
+          endpoint={endpoint}
+          endpoints={endpoints}
+          hasConversation={Boolean(messages.length || error)}
+          isSidebar={isSidebar}
+          isStreaming={isStreaming}
+          loading={loading}
+          onClear={clearChat}
+          onEndpointChange={onEndpointChange}
+          title={title}
+        />
       }
       inputActions={
-        isStreaming ? (
-          <PromptInputAction tooltip="Stop response">
-            <Button
-              onClick={stopStreaming}
-              size="icon"
-              type="button"
-              variant="outline"
-            >
-              <Square />
-            </Button>
-          </PromptInputAction>
-        ) : (
-          <PromptInputAction tooltip="Send message">
-            <Button
-              disabled={!canChat || !input.trim()}
-              onClick={() => void sendMessage()}
-              size="icon"
-              type="button"
-            >
-              <Send />
-            </Button>
-          </PromptInputAction>
-        )
+        <ChatPanelInputActions
+          canChat={canChat}
+          input={input}
+          isStreaming={isStreaming}
+          onSend={() => void sendMessage()}
+          onStop={stopStreaming}
+        />
       }
       inputDisabled={!canChat}
       inputFooter={
