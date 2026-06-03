@@ -10,12 +10,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
-import {
-  Navigate,
-  useLocation,
-  useNavigate,
-  useParams,
-} from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -41,7 +36,6 @@ import {
   normalizeIssueDraft,
   normalizeProjectDraft,
   toProjectDraft,
-  upsertAgentRuns,
   upsertIssue,
   upsertProject,
 } from '@/components/issues/utils'
@@ -143,7 +137,9 @@ export const ProjectDetailPage = () => {
     return { pathname, search: search ? `?${search}` : '' }
   }
 
-  const projectExists = projects.some((project) => project.id === activeProjectId)
+  const projectExists = projects.some(
+    (project) => project.id === activeProjectId,
+  )
   const project = projects.find((item) => item.id === activeProjectId) ?? null
   const projectIssues = useMemo(
     () => issues.filter((issue) => issue.projectId === activeProjectId),
@@ -287,28 +283,6 @@ export const ProjectDetailPage = () => {
     }
   }
 
-  const analyzeIssue = async (issue: Issue) => {
-    setRunningIssueId(issue.id)
-    setLocalError(null)
-
-    try {
-      const response = await api.analyzeIssue(issue.id, {
-        endpointId:
-          issue.endpointId ??
-          project?.defaultEndpointId ??
-          selectedEndpoint?.id,
-      })
-      upsertIssue(queryClient, response.issue)
-      upsertAgentRuns(queryClient, response.runs)
-      void setSelectedIssueId(response.issue.id)
-      navigate(buildRoute(`/projects/${activeProjectId}/tasks`))
-    } catch (actionError) {
-      setLocalError(getErrorMessage(actionError))
-    } finally {
-      setRunningIssueId(null)
-    }
-  }
-
   const startIssue = async (issue: Issue) => {
     setRunningIssueId(issue.id)
     setLocalError(null)
@@ -397,24 +371,28 @@ export const ProjectDetailPage = () => {
       <ErrorBanner message={visibleError} />
 
       <PageToolbar>
-          <Button
-            onClick={() => navigate(buildRoute(`/projects/${activeProjectId}/issues`))}
-            size="sm"
-            type="button"
-            variant={selectedTab === 'issues' ? 'secondary' : 'ghost'}
-          >
-            <ClipboardList className="h-4 w-4" />
-            Issues
-          </Button>
-          <Button
-            onClick={() => navigate(buildRoute(`/projects/${activeProjectId}/tasks`))}
-            size="sm"
-            type="button"
-            variant={selectedTab === 'tasks' ? 'secondary' : 'ghost'}
-          >
-            <ListChecks className="h-4 w-4" />
-            Tasks
-          </Button>
+        <Button
+          onClick={() =>
+            navigate(buildRoute(`/projects/${activeProjectId}/issues`))
+          }
+          size="sm"
+          type="button"
+          variant={selectedTab === 'issues' ? 'secondary' : 'ghost'}
+        >
+          <ClipboardList className="h-4 w-4" />
+          Issues
+        </Button>
+        <Button
+          onClick={() =>
+            navigate(buildRoute(`/projects/${activeProjectId}/tasks`))
+          }
+          size="sm"
+          type="button"
+          variant={selectedTab === 'tasks' ? 'secondary' : 'ghost'}
+        >
+          <ListChecks className="h-4 w-4" />
+          Tasks
+        </Button>
       </PageToolbar>
 
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -442,7 +420,6 @@ export const ProjectDetailPage = () => {
             endpoints={endpoints}
             issueDraft={issueDraft}
             issues={projectIssues}
-            onAnalyze={analyzeIssue}
             onIssueDraftChange={setIssueDraft}
             onOpenRun={onOpenAgentRun}
             onSelectIssue={(id) => void setSelectedIssueId(id)}

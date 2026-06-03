@@ -294,15 +294,6 @@ export const api = {
       body: JSON.stringify(input),
     })
   },
-  async analyzeIssue(id: string, input: { endpointId?: string }) {
-    return request<{ issue: Issue; runs?: AgentRun[] }>(
-      `/api/issues/${id}/analyze`,
-      {
-        method: 'POST',
-        body: JSON.stringify(input),
-      },
-    )
-  },
   async startIssue(id: string, input: StartIssueInput) {
     return request<{ run?: AgentRun; issue: Issue; runs?: AgentRun[] }>(
       `/api/issues/${id}/start`,

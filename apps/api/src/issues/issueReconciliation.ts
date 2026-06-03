@@ -1,6 +1,5 @@
 import type { AgentRun, Issue } from '@patchlane/shared'
 import type { AgentRunStore } from '../agent/agentRunStore'
-import { combineIssuePlanningAnalysis } from './issueAnalysisAgent'
 import type { IssueStore } from './issueStore'
 
 type IssueReconciliationStores = {
@@ -14,7 +13,7 @@ export type IssueReconciliationResult = {
   runs: AgentRun[]
 }
 
-export const reconcileIssuePlanningState = async ({
+export const reconcileIssueTaskState = async ({
   issueId,
   issueStore,
   runStore,
@@ -131,7 +130,7 @@ export const reconcileIssueAfterAgentRun = async (
     }
   }
 
-  return reconcileIssuePlanningState({
+  return reconcileIssueTaskState({
     ...stores,
     issueId: run.issueId,
   })
@@ -175,6 +174,28 @@ const buildRecoveredRequirementContext = (
       ? `Requirement task ${requirementRun.id.slice(0, 8)} is ${requirementRun.status}${requirementRun.error ? `: ${requirementRun.error}` : '.'}`
       : 'No requirement task is linked.',
   ].join('\n')
+}
+
+const combineIssuePlanningAnalysis = (
+  requirementAnalysis: string,
+  workPlan: string,
+) => {
+  return {
+    combinedAnalysis: [
+      '## Requirement Analysis',
+      normalizeSectionBody(requirementAnalysis),
+      '',
+      '## Work Plan',
+      normalizeSectionBody(workPlan),
+    ]
+      .join('\n')
+      .replace(/<think>[\s\S]*?<\/think>/giu, '')
+      .trim(),
+  }
+}
+
+const normalizeSectionBody = (value: string) => {
+  return value.replace(/^##\s+/gmu, '### ').trim()
 }
 
 const cleanResultText = (value?: string) => {

@@ -94,24 +94,6 @@ describe('agent issue workflow e2e', () => {
         )
         assert.equal(issueResponse.issue.status, 'backlog')
 
-        const readyIssueResponse = await apiRequest<IssueResponse>(
-          apiBaseUrl,
-          `/api/issues/${issueResponse.issue.id}`,
-          {
-            method: 'PATCH',
-            body: {
-              analysis:
-                'The task is ready. Update README.md and verify the expected text exists.',
-              endpointId: 'local-default',
-              planningRunId: 'e2e-planning-run',
-              requirementRunId: 'e2e-requirements-run',
-              status: 'ready',
-              workspaceId: projectResponse.project.workspaceId,
-            },
-          },
-        )
-        assert.equal(readyIssueResponse.issue.status, 'ready')
-
         const startResponse = await apiRequest<StartIssueResponse>(
           apiBaseUrl,
           `/api/issues/${issueResponse.issue.id}/start`,
@@ -127,6 +109,17 @@ describe('agent issue workflow e2e', () => {
         assert.equal(startResponse.run.kind, 'coding')
         assert.equal(startResponse.run.issueId, issueResponse.issue.id)
         assert.equal(startResponse.run.status, 'idle')
+        assert.equal(startResponse.issue.requirementRunId, undefined)
+        assert.equal(startResponse.issue.planningRunId, undefined)
+        assert.ok(
+          startResponse.run.messages.some(
+            (message) =>
+              message.role === 'user' &&
+              message.content?.includes(
+                'Own this issue from triage through completion',
+              ),
+          ),
+        )
 
         const continueResponse = await apiRequest<RunResponse>(
           apiBaseUrl,
@@ -229,6 +222,8 @@ type WorkspacesResponse = {
 type IssueSnapshot = {
   agentRunId?: string
   id: string
+  planningRunId?: string
+  requirementRunId?: string
   status: string
   workspaceId?: string
 }
@@ -238,6 +233,7 @@ type AgentRunSnapshot = {
   issueId?: string
   kind: string
   messages: Array<{
+    content?: string
     metadata?: {
       usage?: {
         totalTokens?: number

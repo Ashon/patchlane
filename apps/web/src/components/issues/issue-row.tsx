@@ -1,5 +1,5 @@
 import type { AgentRun, Issue } from '@patchlane/shared'
-import { Bot, CheckCircle2, GitBranch, Loader2, Play } from 'lucide-react'
+import { Bot, GitBranch, Loader2, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageListItem } from '@/components/layout/page-primitives'
 import { IssueStatusBadge, PriorityBadge } from './common'
@@ -9,7 +9,6 @@ export const IssueRow = ({
   agentRun,
   issue,
   loading,
-  onAnalyze,
   onOpenRun,
   onSelect,
   onStart,
@@ -21,7 +20,6 @@ export const IssueRow = ({
   agentRun?: AgentRun
   issue: Issue
   loading: boolean
-  onAnalyze: () => void
   onOpenRun: (runId: string) => void
   onSelect: () => void
   onStart: () => void
@@ -30,35 +28,14 @@ export const IssueRow = ({
   requirementRun?: AgentRun
   selected: boolean
 }) => {
-  const analyzed =
-    Boolean(
-      issue.analysis &&
-      issue.branchName &&
-      issue.requirementRunId &&
-      issue.planningRunId &&
-      issue.status !== 'backlog',
-    ) || planningRun?.status === 'completed'
   const workspaceReady = Boolean(issue.workspaceId ?? projectWorkspaceId)
   const activeTask = hasActiveIssueTask([agentRun, planningRun, requirementRun])
-  const planDisabledReason = !workspaceReady
+  const runDisabledReason = !workspaceReady
     ? 'Connect a repository or sandbox workspace to this project first.'
     : activeTask
       ? 'This issue has an active agent task.'
       : undefined
-  const runDisabledReason = !analyzed
-    ? 'Analyze requirements and create a plan first.'
-    : !workspaceReady
-      ? 'Connect a repository or sandbox workspace to this project first.'
-      : activeTask
-        ? 'This issue has an active agent task.'
-        : undefined
-  const canPlan = !loading && !planDisabledReason
   const canRun = !loading && !runDisabledReason
-  const taskSummary = [
-    requirementRun ? `Req ${requirementRun.status}` : null,
-    planningRun ? `Plan ${planningRun.status}` : null,
-    agentRun ? `Run ${agentRun.status}` : null,
-  ].filter(Boolean)
 
   return (
     <PageListItem selected={selected}>
@@ -84,26 +61,13 @@ export const IssueRow = ({
               </span>
             ) : null}
             <span className="shrink-0">{formatDateTime(issue.updatedAt)}</span>
-            {taskSummary.length ? (
-              <span className="min-w-0 truncate">
-                {taskSummary.join(' · ')}
-              </span>
+            {agentRun ? (
+              <span className="min-w-0 truncate">Agent {agentRun.status}</span>
             ) : null}
           </div>
         </button>
 
         <div className="flex shrink-0 items-center gap-1 md:justify-end">
-          <Button
-            disabled={!canPlan}
-            onClick={onAnalyze}
-            size="sm"
-            title={planDisabledReason}
-            type="button"
-            variant={analyzed ? 'ghost' : 'outline'}
-          >
-            {loading ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
-            {analyzed ? 'Re-plan' : 'Plan'}
-          </Button>
           {issue.agentRunId ? (
             <Button
               onClick={() => onOpenRun(issue.agentRunId!)}

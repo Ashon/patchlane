@@ -199,31 +199,12 @@ const main = async () => {
       throw new Error('Project repository cache workspace was not created')
     }
 
-    const readyIssueResponse = await apiRequest<IssueResponse>(
-      api.baseUrl,
-      `/api/issues/${issueResponse.issue.id}`,
-      {
-        method: 'PATCH',
-        body: {
-          analysis: [
-            'The issue is ready to run.',
-            `Required README marker: ${expectedMarker}`,
-            'Expected workflow: inspect, edit, verify, finish.',
-          ].join('\n'),
-          endpointId: endpoint.id,
-          planningRunId: `perf-planning-${Date.now()}`,
-          requirementRunId: `perf-requirements-${Date.now()}`,
-          status: 'ready',
-          workspaceId: projectResponse.project.workspaceId,
-        },
-      },
-    )
     const setupMs = performance.now() - setupStartedAt
 
     const startStartedAt = performance.now()
     const startResponse = await apiRequest<StartIssueResponse>(
       api.baseUrl,
-      `/api/issues/${readyIssueResponse.issue.id}/start`,
+      `/api/issues/${issueResponse.issue.id}/start`,
       {
         method: 'POST',
         body: {

@@ -9,24 +9,14 @@ import { EmptyState, IssueStatusBadge, PriorityBadge } from './common'
 export const IssueDetail = ({
   issue,
   onOpenRun,
-  planningRun,
-  requirementRun,
   run,
   workspace,
 }: {
   issue: Issue
   onOpenRun: (runId: string) => void
-  planningRun?: AgentRun
-  requirementRun?: AgentRun
   run?: AgentRun
   workspace?: SandboxWorkspace
 }) => {
-  const taskState = [
-    `Req ${requirementRun?.status || (issue.requirementRunId ? 'created' : 'pending')}`,
-    `Plan ${planningRun?.status || (issue.planningRunId ? 'created' : 'pending')}`,
-    `Code ${run?.status || 'pending'}`,
-  ].join(' / ')
-
   return (
     <Page>
       <PageHeader
@@ -43,37 +33,12 @@ export const IssueDetail = ({
       <div className="border-b bg-muted/20 px-3 py-2">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <IssueFact label="Sandbox" value={workspace?.name || 'Not ready'} />
-          <IssueFact
-            label="Branch"
-            value={issue.branchName || 'Not analyzed'}
-          />
+          <IssueFact label="Branch" value={issue.branchName || 'Not started'} />
           <IssueFact label="PR" value={issue.prUrl || 'Not created'} />
-          <IssueFact label="Tasks" value={taskState} />
+          <IssueFact label="Agent" value={run?.status || 'Not started'} />
         </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {issue.requirementRunId ? (
-            <Button
-              onClick={() => onOpenRun(issue.requirementRunId!)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <Bot />
-              Requirements
-            </Button>
-          ) : null}
-          {issue.planningRunId ? (
-            <Button
-              onClick={() => onOpenRun(issue.planningRunId!)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <Bot />
-              Work plan
-            </Button>
-          ) : null}
-          {run ? (
+        {run ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
             <Button
               onClick={() => onOpenRun(run.id)}
               size="sm"
@@ -81,24 +46,34 @@ export const IssueDetail = ({
               variant="secondary"
             >
               <Bot />
-              Coding
+              Agent run
             </Button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
 
       <ScrollArea className="min-h-0 flex-1" viewportClassName="px-4 py-3">
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
           <ClipboardList className="h-3.5 w-3.5" />
-          Requirement analysis
+          Issue brief
         </div>
-        {issue.analysis ? (
-          <Markdown className="prose prose-sm max-w-none dark:prose-invert prose-h1:text-lg prose-h2:text-base prose-h3:text-sm prose-headings:mb-1.5 prose-headings:mt-3 prose-p:my-1.5 prose-ol:my-2 prose-ul:my-2 prose-li:my-0.5">
-            {issue.analysis}
-          </Markdown>
-        ) : (
-          <EmptyState>No analysis yet</EmptyState>
-        )}
+        <Markdown className="prose prose-sm max-w-none dark:prose-invert prose-h1:text-lg prose-h2:text-base prose-h3:text-sm prose-headings:mb-1.5 prose-headings:mt-3 prose-p:my-1.5 prose-ol:my-2 prose-ul:my-2 prose-li:my-0.5">
+          {issue.description}
+        </Markdown>
+        {issue.analysis && !run ? (
+          <div className="mt-5 border-t pt-3">
+            <div className="mb-2 text-xs font-semibold text-muted-foreground">
+              Prepared context
+            </div>
+            <Markdown className="prose prose-sm max-w-none dark:prose-invert prose-h1:text-lg prose-h2:text-base prose-h3:text-sm prose-headings:mb-1.5 prose-headings:mt-3 prose-p:my-1.5 prose-ol:my-2 prose-ul:my-2 prose-li:my-0.5">
+              {issue.analysis}
+            </Markdown>
+          </div>
+        ) : !run ? (
+          <EmptyState>
+            The agent will assess scope and plan when the run starts.
+          </EmptyState>
+        ) : null}
       </ScrollArea>
     </Page>
   )

@@ -1,10 +1,6 @@
 import { describe, expect, it } from '@jest/globals'
 import type { AgentProject, Issue } from '@patchlane/shared'
-import {
-  buildIssuePlanningTaskPrompt,
-  buildIssueRequirementTaskPrompt,
-  buildIssueRunTaskPrompt,
-} from './issueTaskPrompts'
+import { buildIssueRunTaskPrompt } from './issueTaskPrompts'
 
 describe('Given issue task prompts', () => {
   const project: AgentProject = {
@@ -31,7 +27,7 @@ describe('Given issue task prompts', () => {
     updatedAt: '2026-06-03T00:00:00.000Z',
   }
 
-  it('when building a coding run task, then it includes project, issue, branch, and execution policy', () => {
+  it('when building a coding run task, then it delegates triage, planning, and execution to the agent', () => {
     const prompt = buildIssueRunTaskPrompt({
       branchName: 'agent/refactor-prompts',
       issue,
@@ -42,34 +38,14 @@ describe('Given issue task prompts', () => {
     expect(prompt).toContain('Priority: high')
     expect(prompt).toContain('Project policy: Keep changes focused')
     expect(prompt).toContain('Branch/worktree target: agent/refactor-prompts')
-    expect(prompt).toContain('Current analysis:')
-    expect(prompt).toContain('Inspect the workspace before editing')
-    expect(prompt).toContain('Run relevant verification')
-  })
-
-  it('when building a requirement task, then it preserves target branch and issue description', () => {
-    const prompt = buildIssueRequirementTaskPrompt({
-      branchName: 'agent/refactor-prompts',
-      issue,
-      projectName: project.name,
-    })
-
-    expect(prompt).toContain('Analyze requirements for this issue')
-    expect(prompt).toContain('Project: Patchlane')
-    expect(prompt).toContain('Target branch/worktree: agent/refactor-prompts')
-    expect(prompt).toContain('Refactor prompt construction out of the route.')
-  })
-
-  it('when building a planning task, then it links the requirement task id', () => {
-    const prompt = buildIssuePlanningTaskPrompt({
-      branchName: 'agent/refactor-prompts',
-      issue,
-      projectName: project.name,
-      requirementRunId: 'run-requirements-1',
-    })
-
-    expect(prompt).toContain('Create a concrete work plan')
-    expect(prompt).toContain('Requirement analysis task: run-requirements-1')
-    expect(prompt).toContain('Target branch/worktree: agent/refactor-prompts')
+    expect(prompt).toContain('Prior issue context:')
+    expect(prompt).toContain('Own this issue from triage through completion')
+    expect(prompt).toContain(
+      'Do not wait for separate requirement-analysis or planning tasks',
+    )
+    expect(prompt).toContain(
+      'classify scope as tiny, small, medium, large, or risky',
+    )
+    expect(prompt).toContain('run relevant verification')
   })
 })

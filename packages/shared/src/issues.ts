@@ -130,10 +130,6 @@ export const updateIssueSchema = z
     message: 'At least one field is required',
   })
 
-export const analyzeIssueSchema = z.object({
-  endpointId: z.string().min(1).optional(),
-})
-
 export const startIssueSchema = z.object({
   endpointId: z.string().min(1).optional(),
 })
@@ -150,5 +146,4 @@ export type IssuePriority = z.infer<typeof issuePrioritySchema>
 export type IssueEvent = z.infer<typeof issueEventSchema>
 export type CreateIssueInput = z.infer<typeof createIssueSchema>
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>
-export type AnalyzeIssueInput = z.infer<typeof analyzeIssueSchema>
 export type StartIssueInput = z.infer<typeof startIssueSchema>

@@ -43,7 +43,6 @@ export const ProjectIssuesView = ({
   endpoints,
   issueDraft,
   issues,
-  onAnalyze,
   onIssueDraftChange,
   onOpenRun,
   onSelectIssue,
@@ -60,7 +59,6 @@ export const ProjectIssuesView = ({
   endpoints: LlmEndpoint[]
   issueDraft: IssueDraft
   issues: Issue[]
-  onAnalyze: (issue: Issue) => Promise<void>
   onIssueDraftChange: (updater: (current: IssueDraft) => IssueDraft) => void
   onOpenRun: (runId: string) => void
   onSelectIssue: (id: string | null) => void
@@ -103,10 +101,14 @@ export const ProjectIssuesView = ({
         }
       >
         <MetricBadge label="Total" value={issues.length} />
-        <MetricBadge label="Ready" value={countStatus(issues, 'ready')} />
-        <MetricBadge label="Planning" value={countStatus(issues, 'planning')} />
+        <MetricBadge label="Backlog" value={countStatus(issues, 'backlog')} />
         <MetricBadge label="Running" value={countStatus(issues, 'running')} />
+        <MetricBadge
+          label="Awaiting"
+          value={countStatus(issues, 'awaiting_user')}
+        />
         <MetricBadge label="Review" value={countStatus(issues, 'review')} />
+        <MetricBadge label="Done" value={countStatus(issues, 'completed')} />
       </PageActionBar>
 
       <Dialog onOpenChange={setIssueDialogOpen} open={issueDialogOpen}>
@@ -162,7 +164,12 @@ export const ProjectIssuesView = ({
                   </SelectTrigger>
                   <SelectContent>
                     {(
-                      ['low', 'medium', 'high', 'urgent'] satisfies IssuePriority[]
+                      [
+                        'low',
+                        'medium',
+                        'high',
+                        'urgent',
+                      ] satisfies IssuePriority[]
                     ).map((priority) => (
                       <SelectItem key={priority} value={priority}>
                         {priority}
@@ -211,14 +218,11 @@ export const ProjectIssuesView = ({
               {issues.map((issue) => (
                 <IssueRow
                   agentRun={
-                    issue.agentRunId
-                      ? runById.get(issue.agentRunId)
-                      : undefined
+                    issue.agentRunId ? runById.get(issue.agentRunId) : undefined
                   }
                   issue={issue}
                   key={issue.id}
                   loading={runningIssueId === issue.id}
-                  onAnalyze={() => void onAnalyze(issue)}
                   onOpenRun={onOpenRun}
                   onSelect={() => onSelectIssue(issue.id)}
                   onStart={() => void onStart(issue)}
@@ -249,16 +253,6 @@ export const ProjectIssuesView = ({
             <IssueDetail
               issue={selectedIssue}
               onOpenRun={onOpenRun}
-              planningRun={
-                selectedIssue.planningRunId
-                  ? runById.get(selectedIssue.planningRunId)
-                  : undefined
-              }
-              requirementRun={
-                selectedIssue.requirementRunId
-                  ? runById.get(selectedIssue.requirementRunId)
-                  : undefined
-              }
               run={
                 selectedIssue.agentRunId
                   ? runById.get(selectedIssue.agentRunId)
@@ -273,7 +267,7 @@ export const ProjectIssuesView = ({
           ) : (
             <div className="flex h-full min-h-[320px] items-center justify-center p-3">
               <EmptyState>
-                Select an issue to inspect requirements, plan, and run state
+                Select an issue to inspect context and agent run state
               </EmptyState>
             </div>
           )}

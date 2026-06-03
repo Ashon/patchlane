@@ -26,61 +26,17 @@ export const buildIssueRunTaskPrompt = ({
     issue.description,
     '',
     issue.analysis
-      ? `Current analysis:\n${issue.analysis}`
-      : 'Current analysis: not available',
+      ? `Prior issue context:\n${issue.analysis}`
+      : 'Prior issue context: none. You must assess the issue directly.',
     '',
-    'Execution policy:',
-    '- Inspect the workspace before editing.',
+    'Agent-driven workflow:',
+    '- Own this issue from triage through completion. Do not wait for separate requirement-analysis or planning tasks.',
+    '- Inspect the workspace enough to classify scope as tiny, small, medium, large, or risky.',
+    '- Decide whether the issue is actionable, under-specified, or unsafe before editing.',
+    '- For tiny obvious tasks, proceed directly after targeted inspection.',
+    '- For larger or risky tasks, form a concise plan from the inspection results before making changes.',
     '- Keep work isolated to this issue branch/worktree context.',
-    '- Implement the requested change when the issue is actionable.',
-    '- Run relevant verification and summarize outcomes.',
-    '- If the issue is blocked, stop and explain exactly what input is needed.',
-  ].join('\n')
-}
-
-export const buildIssueRequirementTaskPrompt = ({
-  branchName,
-  issue,
-  projectName,
-}: {
-  branchName: string
-  issue: Issue
-  projectName: string
-}) => {
-  return [
-    'Analyze requirements for this issue. This task is generated from the Projects planning flow.',
-    '',
-    `Project: ${projectName}`,
-    `Issue: ${issue.title}`,
-    `Priority: ${issue.priority}`,
-    `Target branch/worktree: ${branchName}`,
-    '',
-    'Issue description:',
-    issue.description,
-  ].join('\n')
-}
-
-export const buildIssuePlanningTaskPrompt = ({
-  branchName,
-  issue,
-  projectName,
-  requirementRunId,
-}: {
-  branchName: string
-  issue: Issue
-  projectName: string
-  requirementRunId: string
-}) => {
-  return [
-    'Create a concrete work plan for the coding agent. This task is generated from the Projects planning flow.',
-    '',
-    `Project: ${projectName}`,
-    `Issue: ${issue.title}`,
-    `Priority: ${issue.priority}`,
-    `Target branch/worktree: ${branchName}`,
-    `Requirement analysis task: ${requirementRunId}`,
-    '',
-    'Issue description:',
-    issue.description,
+    '- Implement the requested change when actionable, run relevant verification, and call finish with the outcome.',
+    '- If blocked, call request_user_input with the exact missing decision or information.',
   ].join('\n')
 }

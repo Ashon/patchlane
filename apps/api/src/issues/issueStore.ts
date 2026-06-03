@@ -30,15 +30,6 @@ type IssueAnalysisOptions = {
   requirementRunId?: string
 }
 
-type IssuePlanningStartOptions = {
-  branchName: string
-  endpointId?: string
-  eventMessage?: string
-  planningRunId: string
-  requirementRunId: string
-  workspaceId: string
-}
-
 type IssueRunStartOptions = {
   branchName?: string
   endpointId?: string
@@ -286,35 +277,6 @@ export class IssueStore {
       issueId: id,
       type: 'analyzed',
       message: options.eventMessage ?? `Analyzed for ${branchName}.`,
-    })
-
-    this.database.transaction(() => {
-      this.updateIssueRow(updated)
-      this.insertEvents([event])
-    })
-
-    return { ...updated, events: [...updated.events, event] }
-  }
-
-  async markPlanningStarted(id: string, options: IssuePlanningStartOptions) {
-    const issue = await this.getIssue(id)
-    const updated = issueSchema.parse({
-      ...issue,
-      status: 'planning',
-      endpointId: options.endpointId ?? issue.endpointId,
-      workspaceId: options.workspaceId,
-      requirementRunId: options.requirementRunId,
-      planningRunId: options.planningRunId,
-      branchName: options.branchName,
-      analysis: undefined,
-      updatedAt: new Date().toISOString(),
-    })
-    const event = createEvent({
-      issueId: id,
-      type: 'updated',
-      message:
-        options.eventMessage ??
-        `Planning tasks started for ${options.branchName}.`,
     })
 
     this.database.transaction(() => {
@@ -688,12 +650,12 @@ const buildIssueAnalysis = ({
     `Suggested branch/worktree: ${branchName}`,
     `Priority: ${issue.priority}`,
     '',
-    'Suggested flow:',
-    '1. Create or reuse an isolated branch/worktree for this issue.',
-    '2. Inspect the repository before editing.',
-    '3. Implement the requested change in the issue workspace.',
-    '4. Run relevant checks and summarize the result.',
-    '5. Move the issue to review when the agent needs human confirmation.',
+    'Agent execution context:',
+    '- The coding agent should assess scope directly in the task worktree.',
+    '- The agent should decide whether the issue is actionable, under-specified, or unsafe before editing.',
+    '- The agent should create its own plan when the inspected scope requires one.',
+    '- The agent should implement, verify, and finish from the same run when possible.',
+    '- The agent should ask for user input only when blocked by a concrete missing decision.',
   ].join('\n')
 }
 
