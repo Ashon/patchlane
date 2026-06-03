@@ -132,6 +132,32 @@ export const PageToolbar = ({
   )
 }
 
+export const PageActionBar = ({
+  actions,
+  children,
+  className,
+}: {
+  actions?: ReactNode
+  children: ReactNode
+  className?: string
+}) => {
+  return (
+    <div
+      className={cn(
+        'flex min-h-10 flex-col gap-2 border-b bg-background px-3 py-2 md:flex-row md:items-center md:justify-between',
+        className,
+      )}
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        {children}
+      </div>
+      {actions ? (
+        <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
+      ) : null}
+    </div>
+  )
+}
+
 export const PageScroll = ({
   children,
   className,

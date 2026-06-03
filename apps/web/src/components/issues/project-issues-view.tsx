@@ -7,7 +7,7 @@ import type {
   LlmEndpoint,
   SandboxWorkspace,
 } from '@agent-fleet/shared'
-import { ClipboardList, Loader2, Plus } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Page, PageHeader } from '@/components/layout/page-primitives'
+import { Page, PageActionBar } from '@/components/layout/page-primitives'
 import {
   Select,
   SelectContent,
@@ -86,19 +86,8 @@ export const ProjectIssuesView = ({
 
   return (
     <Page>
-      <PageHeader
+      <PageActionBar
         actions={
-          <>
-          <MetricBadge label="Ready" value={countStatus(issues, 'ready')} />
-          <MetricBadge
-            label="Planning"
-            value={countStatus(issues, 'planning')}
-          />
-          <MetricBadge
-            label="Running"
-            value={countStatus(issues, 'running')}
-          />
-          <MetricBadge label="Review" value={countStatus(issues, 'review')} />
           <Button
             onClick={() => setIssueDialogOpen(true)}
             size="sm"
@@ -107,12 +96,14 @@ export const ProjectIssuesView = ({
             <Plus className="h-4 w-4" />
             New issue
           </Button>
-          </>
         }
-        description={project.name}
-        icon={<ClipboardList className="h-4 w-4" />}
-        title="Issues"
-      />
+      >
+        <MetricBadge label="Total" value={issues.length} />
+        <MetricBadge label="Ready" value={countStatus(issues, 'ready')} />
+        <MetricBadge label="Planning" value={countStatus(issues, 'planning')} />
+        <MetricBadge label="Running" value={countStatus(issues, 'running')} />
+        <MetricBadge label="Review" value={countStatus(issues, 'review')} />
+      </PageActionBar>
 
       <Dialog onOpenChange={setIssueDialogOpen} open={issueDialogOpen}>
         <DialogContent className="max-w-2xl">
@@ -209,7 +200,7 @@ export const ProjectIssuesView = ({
         </DialogContent>
       </Dialog>
 
-      <div className="grid min-h-0 flex-1 overflow-hidden bg-muted/20 xl:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 overflow-hidden bg-background xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
         <ScrollArea className="min-h-0 border-b bg-background xl:border-b-0 xl:border-r">
           {issues.length ? (
             <div className="divide-y">
