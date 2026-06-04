@@ -6,6 +6,7 @@ import type {
 } from '@patchlane/shared'
 
 const LOCAL_API_KEY = 'local-llm'
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000
 
 export const createOpenAIClient = (endpoint: LlmEndpoint) => {
   const apiKey = endpoint.apiKeyEnvVar
@@ -15,7 +16,7 @@ export const createOpenAIClient = (endpoint: LlmEndpoint) => {
   return new OpenAI({
     apiKey,
     baseURL: endpoint.baseUrl,
-    timeout: 15_000,
+    timeout: readRequestTimeoutMs(),
   })
 }
 
@@ -82,4 +83,18 @@ const getErrorMessage = (error: unknown) => {
   }
 
   return 'Unknown error'
+}
+
+const readRequestTimeoutMs = () => {
+  const raw = process.env.LLM_REQUEST_TIMEOUT_MS
+
+  if (!raw) {
+    return DEFAULT_REQUEST_TIMEOUT_MS
+  }
+
+  const parsed = Number.parseInt(raw, 10)
+
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_REQUEST_TIMEOUT_MS
 }

@@ -11,6 +11,7 @@
     "build": "pnpm -r build",
     "test:e2e": "tsx --tsconfig tsconfig.e2e.json --test \"e2e/**/*.test.ts\"",
     "perf:e2e": "tsx --tsconfig tsconfig.e2e.json e2e/agent-issue-performance.ts",
+    "e2e:existing-issues": "tsx --tsconfig tsconfig.e2e.json e2e/agent-existing-issues-reset.ts",
     "format": "prettier --write . --ignore-path .gitignore --ignore-unknown",
     "format:check": "prettier --check . --ignore-path .gitignore --ignore-unknown",
     "lint": "eslint .",

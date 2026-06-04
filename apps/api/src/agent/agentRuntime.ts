@@ -462,6 +462,10 @@ export class AgentRuntime {
                 content: assistantContent,
               }),
             })
+            if (shouldAwaitUserAfterPlainTextAssistant(run)) {
+              awaitingUser = true
+              break
+            }
             messages.push({
               role: 'system',
               content: plainTextContinuationPrompt,
@@ -842,6 +846,11 @@ export class AgentRuntime {
                 }),
               })
               emit({ type: 'run', run })
+            }
+
+            if (shouldAwaitUserAfterPlainTextAssistant(run)) {
+              awaitingUser = true
+              break
             }
 
             messages.push({
@@ -1396,6 +1405,10 @@ const getReplayRecoveryPrompt = (run: AgentRun) => {
 
   return hasToolLimit || thinkingOnlyTail ? replayRecoveryPrompt : undefined
 }
+
+export const shouldAwaitUserAfterPlainTextAssistant = (
+  run: Pick<AgentRun, 'issueId'>,
+) => !run.issueId
 
 const getDurabilityMaxRetries = (value: number | undefined) => {
   const parsed = value ?? defaultDurabilityMaxRetries
