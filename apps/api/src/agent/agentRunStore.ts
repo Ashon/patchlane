@@ -27,6 +27,7 @@ type AgentRunRow = {
   kind: AgentRun['kind']
   project_id: string | null
   issue_id: string | null
+  subtask_id: string | null
   branch_name: string | null
   pr_url: string | null
   result_summary: string | null
@@ -91,6 +92,7 @@ export class AgentRunStore {
       kind: parsed.kind ?? 'coding',
       projectId: parsed.projectId,
       issueId: parsed.issueId,
+      subtaskId: parsed.subtaskId,
       branchName: parsed.branchName,
       status: 'idle',
       messages: [
@@ -218,7 +220,7 @@ export class AgentRunStore {
           `
           UPDATE agent_runs
           SET workspace_id = ?, endpoint_id = ?, model = ?, title = ?, kind = ?, project_id = ?, issue_id = ?,
-            branch_name = ?, pr_url = ?, result_summary = ?, status = ?, context_json = ?, error = ?, updated_at = ?
+            subtask_id = ?, branch_name = ?, pr_url = ?, result_summary = ?, status = ?, context_json = ?, error = ?, updated_at = ?
           WHERE id = ?
         `,
         )
@@ -230,6 +232,7 @@ export class AgentRunStore {
           updated.kind,
           updated.projectId ?? null,
           updated.issueId ?? null,
+          updated.subtaskId ?? null,
           updated.branchName ?? null,
           updated.prUrl ?? null,
           updated.resultSummary ?? null,
@@ -272,6 +275,7 @@ export class AgentRunStore {
       kind: row.kind ?? 'coding',
       projectId: optionalString(row.project_id),
       issueId: optionalString(row.issue_id),
+      subtaskId: optionalString(row.subtask_id),
       branchName: optionalString(row.branch_name),
       prUrl: optionalString(row.pr_url),
       resultSummary: optionalString(row.result_summary),
@@ -311,9 +315,9 @@ export class AgentRunStore {
       .prepare(
         `
         INSERT INTO agent_runs (
-          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -325,6 +329,7 @@ export class AgentRunStore {
         run.kind,
         run.projectId ?? null,
         run.issueId ?? null,
+        run.subtaskId ?? null,
         run.branchName ?? null,
         run.prUrl ?? null,
         run.resultSummary ?? null,

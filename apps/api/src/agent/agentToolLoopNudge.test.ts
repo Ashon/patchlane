@@ -71,4 +71,42 @@ describe('Given agent tool loop nudge', () => {
       ),
     ).toEqual(['run_command'])
   })
+
+  it('when broad exploration dominates the recent history, then it blocks all broad discovery tools', () => {
+    expect(
+      Array.from(
+        getBlockedToolNames([
+          'list_files',
+          'read_file',
+          'run_command',
+          'git_status',
+          'read_file',
+          'run_command',
+          'list_files',
+          'read_file',
+          'run_command',
+          'read_file',
+        ]),
+      ).sort(),
+    ).toEqual(['list_files', 'read_file', 'run_command'])
+
+    const prompt = getToolLoopNudgePrompt([
+      'write_file',
+      'list_files',
+      'read_file',
+      'run_command',
+      'git_status',
+      'read_file',
+      'run_command',
+      'list_files',
+      'read_file',
+      'run_command',
+      'git_diff',
+      'read_file',
+    ])
+
+    expect(prompt).toContain('too many calls on broad exploration')
+    expect(prompt).toContain('Do not list, grep, cat, or read more files')
+    expect(prompt).toContain('call finish')
+  })
 })

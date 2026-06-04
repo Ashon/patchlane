@@ -14,6 +14,14 @@ import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import {
+  IssueSubtaskKindBadge,
+  IssueSubtaskStatusBadge,
+} from '@/components/issues/common'
+import {
+  buildTaskWorkItems,
+  type TaskWorkItem,
+} from '@/components/issues/task-work-items'
+import {
   ErrorBanner,
   PageHeader,
   PageList,
@@ -67,6 +75,10 @@ export const AgentTasksPage = () => {
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   )
+  const taskItems = useMemo(
+    () => buildTaskWorkItems({ issues, runs }),
+    [issues, runs],
+  )
   const agentTaskLayout = useResizableDefaultLayout({
     id: 'patchlane-agent-tasks-layout',
     panelIds: agentTaskPanelIds,
@@ -97,7 +109,7 @@ export const AgentTasksPage = () => {
       onStartNewAgentRun={onStartNewAgentRun}
       projectById={projectById}
       runDeletingId={runDeletingId}
-      runs={runs}
+      items={taskItems}
       selectedRun={selectedRun}
       variant={resizableLayoutEnabled ? 'resizable' : 'stacked'}
     />
@@ -165,24 +177,24 @@ export const AgentTasksPage = () => {
 
 const AgentTaskListPane = ({
   agentRunning,
+  items,
   issueById,
   onDeleteAgentRun,
   onSelectAgentRun,
   onStartNewAgentRun,
   projectById,
   runDeletingId,
-  runs,
   selectedRun,
   variant,
 }: {
   agentRunning: boolean
+  items: TaskWorkItem[]
   issueById: Map<string, Issue>
   onDeleteAgentRun: (run: AgentRun) => void
   onSelectAgentRun: (run: AgentRun) => void
   onStartNewAgentRun: () => void
   projectById: Map<string, AgentProject>
   runDeletingId: string | null
-  runs: AgentRun[]
   selectedRun: AgentRun | null
   variant: 'resizable' | 'stacked'
 }) => {
@@ -212,26 +224,48 @@ const AgentTaskListPane = ({
         title="Agent tasks"
       />
       <PageScroll className="min-h-[220px] min-w-0">
-        {runs.length ? (
+        {items.length ? (
           <PageList>
-            {runs.map((run) => (
-              <AgentRunCard
-                deleting={runDeletingId === run.id}
-                key={run.id}
-                onDelete={() => onDeleteAgentRun(run)}
-                onSelect={() => onSelectAgentRun(run)}
-                issue={run.issueId ? issueById.get(run.issueId) : undefined}
-                project={
-                  run.projectId ? projectById.get(run.projectId) : undefined
-                }
-                run={run}
-                selected={selectedRun?.id === run.id}
-              />
-            ))}
+            {items.map((item) => {
+              if (item.type === 'subtask') {
+                const run = item.run
+
+                return (
+                  <AgentSubtaskCard
+                    deleting={run ? runDeletingId === run.id : false}
+                    item={item}
+                    key={item.id}
+                    onDelete={run ? () => onDeleteAgentRun(run) : undefined}
+                    onSelect={run ? () => onSelectAgentRun(run) : undefined}
+                    project={projectById.get(item.issue.projectId)}
+                    selected={run ? selectedRun?.id === run.id : false}
+                  />
+                )
+              }
+
+              return (
+                <AgentRunCard
+                  deleting={runDeletingId === item.run.id}
+                  key={item.id}
+                  onDelete={() => onDeleteAgentRun(item.run)}
+                  onSelect={() => onSelectAgentRun(item.run)}
+                  issue={
+                    item.run.issueId ? issueById.get(item.run.issueId) : undefined
+                  }
+                  project={
+                    item.run.projectId
+                      ? projectById.get(item.run.projectId)
+                      : undefined
+                  }
+                  run={item.run}
+                  selected={selectedRun?.id === item.run.id}
+                />
+              )
+            })}
           </PageList>
         ) : (
           <div className="p-2">
-            <EmptyState>No runs</EmptyState>
+            <EmptyState>No tasks</EmptyState>
           </div>
         )}
       </PageScroll>
@@ -337,6 +371,98 @@ const AgentTaskContentPane = ({
         )}
       </div>
     </PagePane>
+  )
+}
+
+const AgentSubtaskCard = ({
+  deleting,
+  item,
+  onDelete,
+  onSelect,
+  project,
+  selected,
+}: {
+  deleting: boolean
+  item: Extract<TaskWorkItem, { type: 'subtask' }>
+  onDelete?: () => void
+  onSelect?: () => void
+  project?: AgentProject
+  selected: boolean
+}) => {
+  const mainContent = (
+    <div className="min-w-0 overflow-hidden text-left">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0">
+          <IssueSubtaskKindBadge kind={item.subtask.kind} />
+        </span>
+        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
+          {item.subtask.title}
+        </h3>
+        <span className="shrink-0">
+          <IssueSubtaskStatusBadge status={item.subtask.status} />
+        </span>
+      </div>
+      {item.subtask.resultSummary || item.subtask.description ? (
+        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+          {item.subtask.resultSummary ?? item.subtask.description}
+        </p>
+      ) : null}
+      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+        <span className="shrink-0">{formatDateTime(item.updatedAt)}</span>
+        {project ? (
+          <span className="min-w-0 max-w-full truncate">{project.name}</span>
+        ) : null}
+        <span className="min-w-0 max-w-full truncate">
+          Issue: {item.issue.title}
+        </span>
+      </div>
+    </div>
+  )
+  const deleteButton =
+    item.run && onDelete ? (
+      <Button
+        disabled={deleting}
+        onClick={onDelete}
+        size="icon-sm"
+        type="button"
+        variant="ghost"
+      >
+        {deleting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+      </Button>
+    ) : null
+
+  const content = (
+    <>
+      {mainContent}
+      {deleteButton}
+    </>
+  )
+
+  if (!item.run || !onSelect) {
+    return (
+      <PageListItem interactive={false} selected={selected}>
+        <div className="grid min-w-0 grid-cols-1 gap-2">{content}</div>
+      </PageListItem>
+    )
+  }
+
+  return (
+    <PageListItem selected={selected}>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <button
+          className="min-w-0 overflow-hidden text-left"
+          onClick={onSelect}
+          type="button"
+        >
+          {mainContent}
+        </button>
+        {deleteButton}
+      </div>
+    </PageListItem>
   )
 }
 
@@ -553,6 +679,14 @@ const getAgentRunCardDescription = (run: AgentRun, issue?: Issue) => {
 const getAgentRunCardScope = (run: AgentRun, issue?: Issue) => {
   if (!issue) {
     return ''
+  }
+
+  const subtask = issue.subtasks.find(
+    (item) => item.id === run.subtaskId || item.agentRunId === run.id,
+  )
+
+  if (subtask) {
+    return `Subtask: ${subtask.title}`
   }
 
   if (isRedundantAgentRunText(issue.title, [run.title])) {

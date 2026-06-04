@@ -67,6 +67,21 @@ export const issueStatusSchema = z.enum([
   'failed',
 ])
 export const issuePrioritySchema = z.enum(['low', 'medium', 'high', 'urgent'])
+export const issueSubtaskStatusSchema = z.enum([
+  'pending',
+  'running',
+  'awaiting_user',
+  'completed',
+  'failed',
+  'skipped',
+])
+export const issueSubtaskKindSchema = z.enum([
+  'inspect',
+  'edit',
+  'verify',
+  'publish',
+  'followup',
+])
 export const issueCommentAuthorSchema = z.enum(['agent', 'user', 'system'])
 export const issueCommentKindSchema = z.enum([
   'progress',
@@ -99,6 +114,21 @@ export const issueCommentSchema = z.object({
   createdAt: isoDateSchema,
 })
 
+export const issueSubtaskSchema = z.object({
+  id: z.string().min(1),
+  issueId: z.string().min(1),
+  title: z.string().trim().min(1).max(160),
+  description: optionalTextSchema,
+  status: issueSubtaskStatusSchema.default('pending'),
+  kind: issueSubtaskKindSchema.default('edit'),
+  sequence: z.number().int().nonnegative(),
+  dependsOnSubtaskIds: z.array(z.string().min(1)).default([]),
+  agentRunId: z.string().min(1).optional(),
+  resultSummary: optionalTextSchema,
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+})
+
 export const issueSchema = z.object({
   id: z.string().min(1),
   title: z.string().trim().min(1).max(160),
@@ -118,6 +148,7 @@ export const issueSchema = z.object({
   updatedAt: isoDateSchema,
   events: z.array(issueEventSchema).default([]),
   comments: z.array(issueCommentSchema).default([]),
+  subtasks: z.array(issueSubtaskSchema).default([]),
 })
 
 export const createIssueSchema = z.object({
@@ -159,6 +190,33 @@ export const createIssueCommentSchema = z.object({
   body: z.string().trim().min(1).max(4_000),
 })
 
+export const createIssueSubtaskSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  description: optionalTextSchema,
+  kind: issueSubtaskKindSchema.default('edit'),
+  sequence: z.number().int().nonnegative().optional(),
+  dependsOnSubtaskIds: z.array(z.string().min(1)).default([]),
+})
+
+export const replaceIssueSubtasksSchema = z.object({
+  subtasks: z.array(createIssueSubtaskSchema).min(1).max(20),
+})
+
+export const updateIssueSubtaskSchema = z
+  .object({
+    title: z.string().trim().min(1).max(160).optional(),
+    description: optionalTextSchema,
+    status: issueSubtaskStatusSchema.optional(),
+    kind: issueSubtaskKindSchema.optional(),
+    sequence: z.number().int().nonnegative().optional(),
+    dependsOnSubtaskIds: z.array(z.string().min(1)).optional(),
+    agentRunId: z.string().min(1).optional(),
+    resultSummary: optionalTextSchema,
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'At least one field is required',
+  })
+
 export const agentProjectListSchema = z.array(agentProjectSchema)
 export const issueListSchema = z.array(issueSchema)
 
@@ -168,6 +226,9 @@ export type UpdateAgentProjectInput = z.infer<typeof updateAgentProjectSchema>
 export type Issue = z.infer<typeof issueSchema>
 export type IssueStatus = z.infer<typeof issueStatusSchema>
 export type IssuePriority = z.infer<typeof issuePrioritySchema>
+export type IssueSubtask = z.infer<typeof issueSubtaskSchema>
+export type IssueSubtaskStatus = z.infer<typeof issueSubtaskStatusSchema>
+export type IssueSubtaskKind = z.infer<typeof issueSubtaskKindSchema>
 export type IssueEvent = z.infer<typeof issueEventSchema>
 export type IssueComment = z.infer<typeof issueCommentSchema>
 export type IssueCommentAuthor = z.infer<typeof issueCommentAuthorSchema>
@@ -176,3 +237,8 @@ export type CreateIssueInput = z.infer<typeof createIssueSchema>
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>
 export type StartIssueInput = z.infer<typeof startIssueSchema>
 export type CreateIssueCommentInput = z.input<typeof createIssueCommentSchema>
+export type CreateIssueSubtaskInput = z.input<typeof createIssueSubtaskSchema>
+export type ReplaceIssueSubtasksInput = z.input<
+  typeof replaceIssueSubtasksSchema
+>
+export type UpdateIssueSubtaskInput = z.input<typeof updateIssueSubtaskSchema>

@@ -54,8 +54,10 @@ export const ProjectIssuesView = ({
   issues,
   onIssueDraftChange,
   onOpenRun,
+  onPlan,
   onSelectIssue,
   onStart,
+  planningIssueId,
   project,
   runById,
   runningIssueId,
@@ -70,8 +72,10 @@ export const ProjectIssuesView = ({
   issues: Issue[]
   onIssueDraftChange: (updater: (current: IssueDraft) => IssueDraft) => void
   onOpenRun: (runId: string) => void
+  onPlan: (issue: Issue) => Promise<void>
   onSelectIssue: (id: string | null) => void
   onStart: (issue: Issue) => Promise<void>
+  planningIssueId: string | null
   project: AgentProject
   runById: Map<string, AgentRun>
   runningIssueId: string | null
@@ -287,7 +291,11 @@ export const ProjectIssuesView = ({
           >
             <IssueDetailPane
               onOpenRun={onOpenRun}
+              onPlan={onPlan}
+              onStart={onStart}
+              planningIssueId={planningIssueId}
               runById={runById}
+              runningIssueId={runningIssueId}
               selectedIssue={selectedIssue}
               workspace={selectedWorkspace}
             />
@@ -307,7 +315,11 @@ export const ProjectIssuesView = ({
           />
           <IssueDetailPane
             onOpenRun={onOpenRun}
+            onPlan={onPlan}
+            onStart={onStart}
+            planningIssueId={planningIssueId}
             runById={runById}
+            runningIssueId={runningIssueId}
             selectedIssue={selectedIssue}
             workspace={selectedWorkspace}
           />
@@ -382,12 +394,20 @@ const IssueListPane = ({
 
 const IssueDetailPane = ({
   onOpenRun,
+  onPlan,
+  onStart,
+  planningIssueId,
   runById,
+  runningIssueId,
   selectedIssue,
   workspace,
 }: {
   onOpenRun: (runId: string) => void
+  onPlan: (issue: Issue) => Promise<void>
+  onStart: (issue: Issue) => Promise<void>
+  planningIssueId: string | null
   runById: Map<string, AgentRun>
+  runningIssueId: string | null
   selectedIssue: Issue | null
   workspace?: SandboxWorkspace
 }) => {
@@ -397,11 +417,15 @@ const IssueDetailPane = ({
         <IssueDetail
           issue={selectedIssue}
           onOpenRun={onOpenRun}
+          onPlan={() => void onPlan(selectedIssue)}
+          onStart={() => void onStart(selectedIssue)}
+          planning={planningIssueId === selectedIssue.id}
           run={
             selectedIssue.agentRunId
               ? runById.get(selectedIssue.agentRunId)
               : undefined
           }
+          running={runningIssueId === selectedIssue.id}
           workspace={workspace}
         />
       ) : (

@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import type {
   AgentProject,
   AgentRun,
+  IssueSubtaskKind,
+  IssueSubtaskStatus,
   IssuePriority,
   IssueStatus,
 } from '@patchlane/shared'
@@ -108,6 +110,36 @@ export const AgentRunStatusBadge = ({
 
   if (status === 'failed') {
     return <Badge variant="destructive">failed</Badge>
+  }
+
+  return <StateBadge tone="warning">{status}</StateBadge>
+}
+
+export const IssueSubtaskKindBadge = ({
+  kind,
+}: {
+  kind: IssueSubtaskKind
+}) => <Badge variant="outline">{kind}</Badge>
+
+export const IssueSubtaskStatusBadge = ({
+  status,
+}: {
+  status: IssueSubtaskStatus
+}) => {
+  if (status === 'completed') {
+    return <StateBadge tone="success">completed</StateBadge>
+  }
+
+  if (status === 'running') {
+    return <Badge variant="secondary">running</Badge>
+  }
+
+  if (status === 'failed') {
+    return <Badge variant="destructive">failed</Badge>
+  }
+
+  if (status === 'pending' || status === 'skipped') {
+    return <Badge variant="outline">{status}</Badge>
   }
 
   return <StateBadge tone="warning">{status}</StateBadge>

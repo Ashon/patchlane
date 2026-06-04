@@ -15,6 +15,7 @@ import type {
   LlmEndpointTestResult,
   PublicToolSettings,
   RewindAgentRunInput,
+  ReplaceIssueSubtasksInput,
   SandboxExecRequest,
   SandboxExecResult,
   SandboxSettings,
@@ -25,6 +26,7 @@ import type {
   UpdateGitHubToolSettingsInput,
   UpdateLlmEndpointInput,
   UpdateIssueInput,
+  UpdateIssueSubtaskInput,
 } from '@patchlane/shared'
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 
@@ -293,6 +295,53 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     })
+  },
+  async replaceIssueSubtasks(id: string, input: ReplaceIssueSubtasksInput) {
+    return request<{ issue: Issue }>(`/api/issues/${id}/subtasks`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+  },
+  async updateIssueSubtask(
+    id: string,
+    subtaskId: string,
+    input: UpdateIssueSubtaskInput,
+  ) {
+    return request<{ issue: Issue; subtask: Issue['subtasks'][number] }>(
+      `/api/issues/${id}/subtasks/${subtaskId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+    )
+  },
+  async planIssue(id: string, input: StartIssueInput) {
+    return request<{ issue: Issue }>(`/api/issues/${id}/plan`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+  async continueIssueWorkflow(id: string, input: StartIssueInput) {
+    return request<{ run?: AgentRun; issue: Issue; runs?: AgentRun[] }>(
+      `/api/issues/${id}/workflow/continue`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    )
+  },
+  async startIssueSubtask(
+    id: string,
+    subtaskId: string,
+    input: StartIssueInput,
+  ) {
+    return request<{ run: AgentRun; issue: Issue; runs: AgentRun[] }>(
+      `/api/issues/${id}/subtasks/${subtaskId}/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    )
   },
   async startIssue(id: string, input: StartIssueInput) {
     return request<{ run?: AgentRun; issue: Issue; runs?: AgentRun[] }>(

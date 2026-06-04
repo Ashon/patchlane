@@ -25,6 +25,7 @@ import { emptyIssueDraft } from '@/components/issues/constants'
 import { ProjectForm } from '@/components/issues/project-form'
 import { ProjectIssuesView } from '@/components/issues/project-issues-view'
 import { ProjectTasksView } from '@/components/issues/project-tasks-view'
+import { buildTaskWorkItems } from '@/components/issues/task-work-items'
 import type {
   IssueDraft,
   ProjectDetailTab,
@@ -70,6 +71,7 @@ export const ProjectDetailPage = () => {
     error: agentRunError,
     onAgentReplyChange,
     onContinueAgentRun,
+    onPlanIssue,
     onRewindAgentRun,
     onSendAgentMessage,
     onStartIssueRun,
@@ -83,6 +85,7 @@ export const ProjectDetailPage = () => {
   const [issueDraft, setIssueDraft] = useState<IssueDraft>(emptyIssueDraft)
   const [savingProject, setSavingProject] = useState(false)
   const [savingIssue, setSavingIssue] = useState(false)
+  const [planningIssueId, setPlanningIssueId] = useState<string | null>(null)
   const [runningIssueId, setRunningIssueId] = useState<string | null>(null)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
   const endpointsQuery = useQuery({
@@ -174,6 +177,10 @@ export const ProjectDetailPage = () => {
         (run) => run.projectId === activeProjectId || linkedRunIds.has(run.id),
       ),
     [activeProjectId, agentRuns, linkedRunIds],
+  )
+  const projectTaskItems = useMemo(
+    () => buildTaskWorkItems({ issues: projectIssues, runs: projectRuns }),
+    [projectIssues, projectRuns],
   )
   const selectedProjectRun =
     selectedRun && projectRuns.some((run) => run.id === selectedRun.id)
@@ -326,6 +333,20 @@ export const ProjectDetailPage = () => {
     }
   }
 
+  const planIssue = async (issue: Issue) => {
+    setPlanningIssueId(issue.id)
+    setLocalError(null)
+
+    try {
+      void setSelectedIssueId(issue.id)
+      await onPlanIssue(issue)
+    } catch (actionError) {
+      setLocalError(getErrorMessage(actionError))
+    } finally {
+      setPlanningIssueId(null)
+    }
+  }
+
   if (!project) {
     return (
       <Page className="items-center justify-center p-3">
@@ -349,7 +370,7 @@ export const ProjectDetailPage = () => {
               {projectIssues.length} issues
             </Badge>
             <Badge className="h-7 px-2 text-xs" variant="secondary">
-              {projectRuns.length} tasks
+              {projectTaskItems.length} tasks
             </Badge>
             {workspace ? (
               <Badge className="h-7 px-2 text-xs" variant="outline">
@@ -451,8 +472,10 @@ export const ProjectDetailPage = () => {
             issues={projectIssues}
             onIssueDraftChange={setIssueDraft}
             onOpenRun={openProjectTaskRun}
+            onPlan={planIssue}
             onSelectIssue={(id) => void setSelectedIssueId(id)}
             onStart={startIssue}
+            planningIssueId={planningIssueId}
             project={project}
             runById={runById}
             runningIssueId={runningIssueId}

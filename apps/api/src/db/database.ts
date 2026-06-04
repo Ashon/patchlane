@@ -85,6 +85,7 @@ export class AppDatabase {
         kind TEXT NOT NULL DEFAULT 'coding' CHECK (kind IN ('coding', 'requirements', 'planning', 'verification', 'publish', 'followup')),
         project_id TEXT,
         issue_id TEXT,
+        subtask_id TEXT,
         branch_name TEXT,
         pr_url TEXT,
         result_summary TEXT,
@@ -188,10 +189,32 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_issue_comments_issue_created_at
         ON issue_comments (issue_id, created_at ASC);
+
+      CREATE TABLE IF NOT EXISTS issue_subtasks (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues (id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'awaiting_user', 'completed', 'failed', 'skipped')),
+        kind TEXT NOT NULL CHECK (kind IN ('inspect', 'edit', 'verify', 'publish', 'followup')),
+        sequence INTEGER NOT NULL,
+        depends_on_json TEXT NOT NULL DEFAULT '[]',
+        agent_run_id TEXT,
+        result_summary TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_issue_subtasks_issue_sequence
+        ON issue_subtasks (issue_id, sequence ASC);
+
+      CREATE INDEX IF NOT EXISTS idx_issue_subtasks_agent_run_id
+        ON issue_subtasks (agent_run_id);
     `)
     this.ensureColumn('agent_runs', 'kind', "TEXT NOT NULL DEFAULT 'coding'")
     this.ensureColumn('agent_runs', 'project_id', 'TEXT')
     this.ensureColumn('agent_runs', 'issue_id', 'TEXT')
+    this.ensureColumn('agent_runs', 'subtask_id', 'TEXT')
     this.ensureColumn('agent_runs', 'branch_name', 'TEXT')
     this.ensureColumn('agent_runs', 'pr_url', 'TEXT')
     this.ensureColumn('agent_runs', 'result_summary', 'TEXT')
@@ -232,6 +255,9 @@ export class AppDatabase {
       CREATE INDEX IF NOT EXISTS idx_agent_runs_issue_id
         ON agent_runs (issue_id);
 
+      CREATE INDEX IF NOT EXISTS idx_agent_runs_subtask_id
+        ON agent_runs (subtask_id);
+
       CREATE INDEX IF NOT EXISTS idx_agent_runs_kind_created_at
         ON agent_runs (kind, created_at DESC);
 
@@ -243,6 +269,12 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_issue_comments_issue_created_at
         ON issue_comments (issue_id, created_at ASC);
+
+      CREATE INDEX IF NOT EXISTS idx_issue_subtasks_issue_sequence
+        ON issue_subtasks (issue_id, sequence ASC);
+
+      CREATE INDEX IF NOT EXISTS idx_issue_subtasks_agent_run_id
+        ON issue_subtasks (agent_run_id);
 
       CREATE INDEX IF NOT EXISTS idx_sandbox_workspaces_project_kind
         ON sandbox_workspaces (project_id, kind);
@@ -324,6 +356,7 @@ export class AppDatabase {
           kind TEXT NOT NULL DEFAULT 'coding' CHECK (kind IN ('coding', 'requirements', 'planning', 'verification', 'publish', 'followup')),
           project_id TEXT,
           issue_id TEXT,
+          subtask_id TEXT,
           branch_name TEXT,
           pr_url TEXT,
           result_summary TEXT,
@@ -335,11 +368,11 @@ export class AppDatabase {
         );
 
         INSERT INTO agent_runs_new (
-          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
         )
         SELECT
-          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, NULL, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
         FROM agent_runs;
 

@@ -110,8 +110,8 @@ type AgentRuntimeStreamEvent =
 
 type AgentRuntimeStreamEmit = (event: AgentRuntimeStreamEvent) => void
 
-const maxToolIterations = 8
-const retryToolIterations = 4
+const maxToolIterations = 16
+const retryToolIterations = 8
 const totalToolIterations = maxToolIterations + retryToolIterations
 const defaultDurabilityMaxRetries = 2
 const defaultReadFileMaxLines = 240
@@ -1341,7 +1341,7 @@ const getRecentToolNames = (messages: AgentRunMessage[]) => {
   return messages
     .filter((message) => message.role === 'tool' && message.toolName)
     .map((message) => message.toolName as string)
-    .slice(-8)
+    .slice(-12)
 }
 
 const sleep = (durationMs: number) =>

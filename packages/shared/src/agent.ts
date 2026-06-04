@@ -91,6 +91,7 @@ export const agentRunSchema = z.object({
   kind: agentRunKindSchema.default('coding'),
   projectId: z.string().min(1).optional(),
   issueId: z.string().min(1).optional(),
+  subtaskId: z.string().min(1).optional(),
   branchName: z.string().trim().min(1).max(200).optional(),
   prUrl: z.string().url().optional(),
   resultSummary: z.string().max(8_000).optional(),
@@ -112,6 +113,7 @@ export const createAgentRunSchema = z.object({
   kind: agentRunKindSchema.optional(),
   projectId: z.string().min(1).optional(),
   issueId: z.string().min(1).optional(),
+  subtaskId: z.string().min(1).optional(),
   branchName: z.string().trim().min(1).max(200).optional(),
   task: z.string().trim().min(1).max(20_000),
 })

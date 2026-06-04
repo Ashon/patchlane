@@ -100,6 +100,18 @@ export const reconcileIssueAfterAgentRun = async (
     return undefined
   }
 
+  if (run.subtaskId) {
+    const result = await stores.issueStore.markSubtaskRunFinished(run)
+
+    return result?.issue
+      ? {
+          issue: result.issue,
+          promoted: false,
+          runs: [run],
+        }
+      : undefined
+  }
+
   if (run.kind === 'coding') {
     const issue = await stores.issueStore.markRunFinished(run)
 

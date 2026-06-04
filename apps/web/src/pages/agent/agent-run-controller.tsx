@@ -55,6 +55,7 @@ type AgentRunControllerValue = {
   onCreateAgentRun: (event: FormEvent<HTMLFormElement>) => void
   onDeleteAgentRun: (run: AgentRun) => void
   onOpenAgentRun: (runId: string) => void
+  onPlanIssue: (issue: Issue) => Promise<void>
   onRewindAgentRun: (run: AgentRun, messageId: string) => void
   onSelectAgentRun: (run: AgentRun) => void
   onSendAgentMessage: () => void
@@ -808,7 +809,7 @@ export const AgentRunControllerProvider = ({
       setError(null)
 
       const project = projects.find((item) => item.id === issue.projectId)
-      const response = await api.startIssue(issue.id, {
+      const response = await api.continueIssueWorkflow(issue.id, {
         endpointId:
           issue.endpointId ?? project?.defaultEndpointId ?? endpoint?.id,
       })
@@ -830,6 +831,20 @@ export const AgentRunControllerProvider = ({
       upsertAgentRunsInCache,
       upsertIssue,
     ],
+  )
+
+  const planIssue = useCallback(
+    async (issue: Issue) => {
+      setError(null)
+
+      const project = projects.find((item) => item.id === issue.projectId)
+      const response = await api.planIssue(issue.id, {
+        endpointId:
+          issue.endpointId ?? project?.defaultEndpointId ?? endpoint?.id,
+      })
+      upsertIssue(response.issue)
+    },
+    [endpoint?.id, projects, upsertIssue],
   )
 
   const openAgentRun = useCallback(
@@ -908,6 +923,7 @@ export const AgentRunControllerProvider = ({
       onCreateAgentRun: createAgentRun,
       onDeleteAgentRun: deleteAgentRun,
       onOpenAgentRun: openAgentRun,
+      onPlanIssue: planIssue,
       onRewindAgentRun: rewindAgentRun,
       onSelectAgentRun: selectAgentRun,
       onSendAgentMessage: sendAgentMessage,
@@ -936,6 +952,7 @@ export const AgentRunControllerProvider = ({
       issuesError,
       loading,
       openAgentRun,
+      planIssue,
       projects,
       rewindAgentRun,
       runs,

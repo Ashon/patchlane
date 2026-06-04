@@ -28,12 +28,20 @@ export const IssueRow = ({
 }) => {
   const workspaceReady = Boolean(issue.workspaceId ?? projectWorkspaceId)
   const activeTask = hasActiveIssueTask([agentRun, planningRun, requirementRun])
+  const plannedWorkflow = issue.subtasks.length > 0
+  const workflowComplete =
+    plannedWorkflow &&
+    issue.subtasks.every(
+      (subtask) =>
+        subtask.status === 'completed' || subtask.status === 'skipped',
+    )
   const runDisabledReason = !workspaceReady
     ? 'Connect a repository or sandbox workspace to this project first.'
     : activeTask
       ? 'This issue has an active agent task.'
       : undefined
   const canRun = !loading && !runDisabledReason
+  const showRunAction = plannedWorkflow ? !workflowComplete : !issue.agentRunId
 
   return (
     <PageListItem selected={selected}>
@@ -59,7 +67,7 @@ export const IssueRow = ({
           </div>
         </button>
 
-        {!issue.agentRunId ? (
+        {showRunAction ? (
           <div className="flex shrink-0 items-center gap-1 md:justify-end">
             <Button
               disabled={!canRun}
@@ -69,7 +77,7 @@ export const IssueRow = ({
               type="button"
             >
               {loading ? <Loader2 className="animate-spin" /> : <Play />}
-              Run
+              {plannedWorkflow ? 'Continue' : 'Run'}
             </Button>
           </div>
         ) : null}

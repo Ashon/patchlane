@@ -75,6 +75,7 @@ export const getProjectLinkedRunIds = (issues: Issue[]) => {
       issue.requirementRunId,
       issue.planningRunId,
       issue.agentRunId,
+      ...issue.subtasks.map((subtask) => subtask.agentRunId),
     ]) {
       if (runId) {
         runIds.add(runId)

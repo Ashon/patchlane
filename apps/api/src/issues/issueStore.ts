@@ -6,22 +6,29 @@ import {
   createAgentProjectSchema,
   createIssueCommentSchema,
   createIssueSchema,
+  issueSubtaskSchema,
   issueCommentSchema,
   issueEventSchema,
   issueListSchema,
   issueSchema,
+  replaceIssueSubtasksSchema,
   updateAgentProjectSchema,
   updateIssueSchema,
+  updateIssueSubtaskSchema,
   type AgentProject,
   type CreateAgentProjectInput,
   type CreateIssueCommentInput,
   type CreateIssueInput,
+  type CreateIssueSubtaskInput,
   type Issue,
   type IssueComment,
   type IssueEvent,
   type IssueStatus,
+  type IssueSubtask,
+  type ReplaceIssueSubtasksInput,
   type UpdateAgentProjectInput,
   type UpdateIssueInput,
+  type UpdateIssueSubtaskInput,
 } from '@patchlane/shared'
 import { AppDatabase, optionalString } from '../db/database'
 import { notFound } from '../http/errors'
@@ -88,6 +95,21 @@ type IssueCommentRow = {
   kind: IssueComment['kind']
   body: string
   created_at: string
+}
+
+type IssueSubtaskRow = {
+  id: string
+  issue_id: string
+  title: string
+  description: string | null
+  status: IssueSubtask['status']
+  kind: IssueSubtask['kind']
+  sequence: number
+  depends_on_json: string
+  agent_run_id: string | null
+  result_summary: string | null
+  created_at: string
+  updated_at: string
 }
 
 export class IssueStore {
@@ -389,11 +411,35 @@ export class IssueStore {
     const clearsRequirement = issue.requirementRunId === run.id
     const clearsPlanning = issue.planningRunId === run.id
     const clearsCoding = issue.agentRunId === run.id
+    const linkedSubtask = issue.subtasks.find(
+      (subtask) => subtask.agentRunId === run.id,
+    )
 
-    if (!clearsRequirement && !clearsPlanning && !clearsCoding) {
+    if (
+      !clearsRequirement &&
+      !clearsPlanning &&
+      !clearsCoding &&
+      !linkedSubtask
+    ) {
       return issue
     }
 
+    const updatedSubtasks = linkedSubtask
+      ? issue.subtasks.map((subtask) =>
+          subtask.id === linkedSubtask.id
+            ? issueSubtaskSchema.parse({
+                ...subtask,
+                agentRunId: undefined,
+                status:
+                  subtask.status === 'running' ||
+                  subtask.status === 'awaiting_user'
+                    ? 'pending'
+                    : subtask.status,
+                updatedAt: new Date().toISOString(),
+              })
+            : subtask,
+        )
+      : issue.subtasks
     const shouldResetStatus =
       (clearsCoding &&
         (issue.status === 'running' || issue.status === 'awaiting_user')) ||
@@ -407,11 +453,21 @@ export class IssueStore {
         clearsCoding && issue.workspaceId === run.workspaceId
           ? undefined
           : issue.workspaceId,
-      status: shouldResetStatus
-        ? issue.analysis
-          ? 'ready'
-          : 'backlog'
-        : issue.status,
+      status: linkedSubtask
+        ? getIssueStatusFromSubtasks(
+            updatedSubtasks,
+            shouldResetStatus
+              ? issue.analysis
+                ? 'ready'
+                : 'backlog'
+              : issue.status,
+          )
+        : shouldResetStatus
+          ? issue.analysis
+            ? 'ready'
+            : 'backlog'
+          : issue.status,
+      subtasks: updatedSubtasks,
       updatedAt: new Date().toISOString(),
     })
     const event = createEvent({
@@ -422,6 +478,15 @@ export class IssueStore {
 
     this.database.transaction(() => {
       this.updateIssueRow(updated)
+      if (linkedSubtask) {
+        const updatedSubtask = updatedSubtasks.find(
+          (subtask) => subtask.id === linkedSubtask.id,
+        )
+
+        if (updatedSubtask) {
+          this.updateSubtaskRow(updatedSubtask)
+        }
+      }
       this.insertEvents([event])
     })
 
@@ -485,6 +550,157 @@ export class IssueStore {
     })
 
     return { issue: updated, comment }
+  }
+
+  async replaceIssueSubtasks(
+    issueId: string,
+    input: ReplaceIssueSubtasksInput,
+  ) {
+    const issue = await this.getIssue(issueId)
+    const parsed = replaceIssueSubtasksSchema.parse(input)
+    const now = new Date().toISOString()
+    const subtasks = parsed.subtasks.map((subtask, index) =>
+      createSubtask({
+        ...subtask,
+        issueId: issue.id,
+        sequence: index,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    )
+    const updated = issueSchema.parse({
+      ...issue,
+      status:
+        issue.status === 'backlog' || issue.status === 'planning'
+          ? 'ready'
+          : issue.status,
+      subtasks,
+      updatedAt: now,
+    })
+    const event = createEvent({
+      issueId: issue.id,
+      type: 'updated',
+      message: `Issue work plan updated with ${subtasks.length} subtasks.`,
+      createdAt: now,
+    })
+
+    this.database.transaction(() => {
+      this.updateIssueRow(updated)
+      this.database.sqlite
+        .prepare('DELETE FROM issue_subtasks WHERE issue_id = ?')
+        .run(issue.id)
+      this.insertSubtasks(subtasks)
+      this.insertEvents([event])
+    })
+
+    return { ...updated, events: [...updated.events, event] }
+  }
+
+  async updateIssueSubtask(
+    issueId: string,
+    subtaskId: string,
+    input: UpdateIssueSubtaskInput,
+    eventMessage = `Subtask ${subtaskId.slice(0, 8)} updated.`,
+  ) {
+    const issue = await this.getIssue(issueId)
+    const parsed = updateIssueSubtaskSchema.parse(input)
+    const currentSubtask = issue.subtasks.find(
+      (subtask) => subtask.id === subtaskId,
+    )
+
+    if (!currentSubtask) {
+      throw notFound(`Issue subtask '${subtaskId}' was not found`)
+    }
+
+    const now = new Date().toISOString()
+    const updatedSubtask = issueSubtaskSchema.parse({
+      ...currentSubtask,
+      ...parsed,
+      id: currentSubtask.id,
+      issueId: currentSubtask.issueId,
+      createdAt: currentSubtask.createdAt,
+      updatedAt: now,
+    })
+    const subtasks = issue.subtasks.map((subtask) =>
+      subtask.id === updatedSubtask.id ? updatedSubtask : subtask,
+    )
+    const updated = issueSchema.parse({
+      ...issue,
+      status: getIssueStatusFromSubtasks(subtasks, issue.status),
+      subtasks,
+      updatedAt: now,
+    })
+    const event = createEvent({
+      issueId: issue.id,
+      type: 'updated',
+      message: eventMessage,
+      createdAt: now,
+    })
+
+    this.database.transaction(() => {
+      this.updateIssueRow(updated)
+      this.updateSubtaskRow(updatedSubtask)
+      this.insertEvents([event])
+    })
+
+    return {
+      issue: { ...updated, events: [...updated.events, event] },
+      subtask: updatedSubtask,
+    }
+  }
+
+  async markSubtaskRunStarted(
+    issueId: string,
+    subtaskId: string,
+    agentRunId: string,
+  ) {
+    return this.updateIssueSubtask(
+      issueId,
+      subtaskId,
+      {
+        agentRunId,
+        status: 'running',
+      },
+      `Subtask ${subtaskId.slice(0, 8)} started agent run ${agentRunId.slice(0, 8)}.`,
+    )
+  }
+
+  async markSubtaskRunFinished(
+    run: Pick<
+      AgentRun,
+      'id' | 'issueId' | 'resultSummary' | 'status' | 'subtaskId'
+    >,
+  ) {
+    if (!run.issueId || !run.subtaskId) {
+      return undefined
+    }
+
+    const issue = await this.getIssue(run.issueId).catch(() => undefined)
+
+    if (!issue) {
+      return undefined
+    }
+
+    const subtask = issue.subtasks.find((item) => item.id === run.subtaskId)
+
+    if (!subtask) {
+      return { issue, subtask: undefined }
+    }
+
+    if (subtask.agentRunId && subtask.agentRunId !== run.id) {
+      return { issue, subtask }
+    }
+
+    return this.updateIssueSubtask(
+      issue.id,
+      subtask.id,
+      {
+        agentRunId: run.id,
+        resultSummary: run.resultSummary,
+        status: getSubtaskStatusFromRun(run.status),
+      },
+      `Subtask ${subtask.id.slice(0, 8)} finished with status ${run.status}.`,
+    )
   }
 
   private getProjectById(id: string) {
@@ -552,6 +768,11 @@ export class IssueStore {
         'SELECT * FROM issue_comments WHERE issue_id = ? ORDER BY created_at ASC',
       )
       .all(row.id) as unknown as IssueCommentRow[]
+    const subtasks = this.database.sqlite
+      .prepare(
+        'SELECT * FROM issue_subtasks WHERE issue_id = ? ORDER BY sequence ASC, created_at ASC',
+      )
+      .all(row.id) as unknown as IssueSubtaskRow[]
 
     return issueSchema.parse({
       id: row.id,
@@ -572,6 +793,7 @@ export class IssueStore {
       updatedAt: row.updated_at,
       events: events.map(toIssueEvent),
       comments: comments.map(toIssueComment),
+      subtasks: subtasks.map(toIssueSubtask),
     })
   }
 
@@ -667,6 +889,59 @@ export class IssueStore {
       )
     }
   }
+
+  private insertSubtasks(subtasks: IssueSubtask[]) {
+    const statement = this.database.sqlite.prepare(
+      `
+      INSERT INTO issue_subtasks (
+        id, issue_id, title, description, status, kind, sequence, depends_on_json,
+        agent_run_id, result_summary, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    )
+
+    for (const subtask of subtasks) {
+      statement.run(
+        subtask.id,
+        subtask.issueId,
+        subtask.title,
+        subtask.description ?? null,
+        subtask.status,
+        subtask.kind,
+        subtask.sequence,
+        JSON.stringify(subtask.dependsOnSubtaskIds),
+        subtask.agentRunId ?? null,
+        subtask.resultSummary ?? null,
+        subtask.createdAt,
+        subtask.updatedAt,
+      )
+    }
+  }
+
+  private updateSubtaskRow(subtask: IssueSubtask) {
+    this.database.sqlite
+      .prepare(
+        `
+        UPDATE issue_subtasks
+        SET title = ?, description = ?, status = ?, kind = ?, sequence = ?, depends_on_json = ?,
+          agent_run_id = ?, result_summary = ?, updated_at = ?
+        WHERE id = ? AND issue_id = ?
+      `,
+      )
+      .run(
+        subtask.title,
+        subtask.description ?? null,
+        subtask.status,
+        subtask.kind,
+        subtask.sequence,
+        JSON.stringify(subtask.dependsOnSubtaskIds),
+        subtask.agentRunId ?? null,
+        subtask.resultSummary ?? null,
+        subtask.updatedAt,
+        subtask.id,
+        subtask.issueId,
+      )
+  }
 }
 
 const toIssueEvent = (row: IssueEventRow) => {
@@ -691,6 +966,23 @@ const toIssueComment = (row: IssueCommentRow) => {
   })
 }
 
+const toIssueSubtask = (row: IssueSubtaskRow) => {
+  return issueSubtaskSchema.parse({
+    id: row.id,
+    issueId: row.issue_id,
+    title: row.title,
+    description: optionalString(row.description),
+    status: row.status,
+    kind: row.kind,
+    sequence: row.sequence,
+    dependsOnSubtaskIds: parseDependsOnSubtaskIds(row.depends_on_json),
+    agentRunId: optionalString(row.agent_run_id),
+    resultSummary: optionalString(row.result_summary),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  })
+}
+
 const createEvent = (
   event: Omit<IssueEvent, 'id' | 'createdAt'> & { createdAt?: string },
 ) => {
@@ -708,6 +1000,25 @@ const createComment = (
     ...comment,
     id: randomUUID(),
     createdAt: comment.createdAt || new Date().toISOString(),
+  })
+}
+
+const createSubtask = (
+  subtask: CreateIssueSubtaskInput & {
+    createdAt?: string
+    issueId: string
+    sequence: number
+    updatedAt?: string
+  },
+) => {
+  const now = new Date().toISOString()
+
+  return issueSubtaskSchema.parse({
+    ...subtask,
+    id: randomUUID(),
+    status: 'pending',
+    createdAt: subtask.createdAt || now,
+    updatedAt: subtask.updatedAt || now,
   })
 }
 
@@ -775,6 +1086,72 @@ const getIssueStatusFromRun = (
   }
 
   return 'running'
+}
+
+const getIssueStatusFromSubtasks = (
+  subtasks: IssueSubtask[],
+  fallback: IssueStatus,
+): IssueStatus => {
+  if (subtasks.length === 0) {
+    return fallback
+  }
+
+  if (subtasks.some((subtask) => subtask.status === 'running')) {
+    return 'running'
+  }
+
+  if (subtasks.some((subtask) => subtask.status === 'awaiting_user')) {
+    return 'awaiting_user'
+  }
+
+  if (subtasks.some((subtask) => subtask.status === 'failed')) {
+    return 'failed'
+  }
+
+  if (
+    subtasks.every(
+      (subtask) =>
+        subtask.status === 'completed' || subtask.status === 'skipped',
+    )
+  ) {
+    return 'completed'
+  }
+
+  if (fallback === 'backlog' || fallback === 'planning') {
+    return 'ready'
+  }
+
+  return fallback
+}
+
+const getSubtaskStatusFromRun = (
+  status: AgentRun['status'],
+): IssueSubtask['status'] => {
+  if (status === 'completed') {
+    return 'completed'
+  }
+
+  if (status === 'failed') {
+    return 'failed'
+  }
+
+  if (status === 'awaiting_user') {
+    return 'awaiting_user'
+  }
+
+  return 'running'
+}
+
+const parseDependsOnSubtaskIds = (value: string) => {
+  try {
+    const parsed = JSON.parse(value) as unknown
+
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : []
+  } catch {
+    return []
+  }
 }
 
 const getRunFinishedEventMessage = (

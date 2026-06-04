@@ -1,14 +1,22 @@
 import type { AgentRun, Issue, SandboxWorkspace } from '@patchlane/shared'
 import {
   Bot,
+  CheckCircle2,
+  Circle,
   CircleAlert,
   CircleDot,
+  CirclePause,
+  CircleX,
   ClipboardList,
   Flag,
   History,
   Lightbulb,
+  ListChecks,
+  Loader2,
+  Play,
   type LucideIcon,
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Markdown } from '@/components/ui/markdown'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -18,18 +26,35 @@ import { EmptyState, IssueStatusBadge, PriorityBadge } from './common'
 import { formatDateTime } from './utils'
 
 type IssueComment = Issue['comments'][number]
+type IssueSubtask = Issue['subtasks'][number]
 
 export const IssueDetail = ({
   issue,
   onOpenRun,
+  onPlan,
+  onStart,
+  planning,
   run,
+  running,
   workspace,
 }: {
   issue: Issue
   onOpenRun: (runId: string) => void
+  onPlan: () => void
+  onStart: () => void
+  planning: boolean
   run?: AgentRun
+  running: boolean
   workspace?: SandboxWorkspace
 }) => {
+  const workflowComplete = isIssueWorkflowComplete(issue)
+  const activeRun = run
+    ? run.status === 'idle' ||
+      run.status === 'running' ||
+      run.status === 'awaiting_user'
+    : false
+  const actionBusy = planning || running || activeRun
+
   return (
     <Page>
       <PageHeader
@@ -61,8 +86,66 @@ export const IssueDetail = ({
               <Bot />
               Agent run
             </Button>
+            {issue.subtasks.length === 0 ? (
+              <Button
+                disabled={actionBusy}
+                onClick={onPlan}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {planning ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <ListChecks />
+                )}
+                Plan
+              </Button>
+            ) : null}
+            {issue.subtasks.length > 0 && !workflowComplete ? (
+              <Button
+                disabled={actionBusy}
+                onClick={onStart}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {running ? <Loader2 className="animate-spin" /> : <Play />}
+                Continue
+              </Button>
+            ) : null}
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {issue.subtasks.length === 0 ? (
+              <Button
+                disabled={actionBusy}
+                onClick={onPlan}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {planning ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <ListChecks />
+                )}
+                Plan
+              </Button>
+            ) : !workflowComplete ? (
+              <Button
+                disabled={actionBusy}
+                onClick={onStart}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {running ? <Loader2 className="animate-spin" /> : <Play />}
+                Continue
+              </Button>
+            ) : null}
+          </div>
+        )}
       </div>
 
       <ScrollArea className="min-h-0 flex-1" viewportClassName="px-4 py-3">
@@ -72,6 +155,25 @@ export const IssueDetail = ({
             {issue.description}
           </Markdown>
         </section>
+
+        {issue.subtasks.length > 0 ? (
+          <section className="mt-5 border-t pt-3">
+            <IssueSectionHeader
+              count={issue.subtasks.length}
+              icon={ListChecks}
+              title="Work plan"
+            />
+            <div className="overflow-hidden rounded-md border">
+              {issue.subtasks.map((subtask) => (
+                <IssueSubtaskItem
+                  key={subtask.id}
+                  onOpenRun={onOpenRun}
+                  subtask={subtask}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {issue.comments.length > 0 ? (
           <section className="mt-5 border-t pt-3">
@@ -105,6 +207,16 @@ export const IssueDetail = ({
   )
 }
 
+const isIssueWorkflowComplete = (issue: Issue) => {
+  return (
+    issue.subtasks.length > 0 &&
+    issue.subtasks.every(
+      (subtask) =>
+        subtask.status === 'completed' || subtask.status === 'skipped',
+    )
+  )
+}
+
 const IssueSectionHeader = ({
   count,
   icon: Icon,
@@ -124,6 +236,57 @@ const IssueSectionHeader = ({
     ) : null}
   </div>
 )
+
+const IssueSubtaskItem = ({
+  onOpenRun,
+  subtask,
+}: {
+  onOpenRun: (runId: string) => void
+  subtask: IssueSubtask
+}) => {
+  const meta = getSubtaskStatusMeta(subtask.status)
+  const Icon = meta.icon
+  const agentRunId = subtask.agentRunId
+
+  return (
+    <article className="grid min-w-0 grid-cols-[16px_1fr_auto] gap-2 border-b px-2.5 py-2 last:border-b-0">
+      <Icon className={cn('mt-0.5 h-3.5 w-3.5', meta.iconClassName)} />
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="min-w-0 truncate text-sm font-medium">
+            {subtask.title}
+          </span>
+          <Badge variant="outline">{subtask.kind}</Badge>
+          <Badge className={meta.badgeClassName} variant="outline">
+            {subtask.status}
+          </Badge>
+        </div>
+        {subtask.description ? (
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+            {subtask.description}
+          </p>
+        ) : null}
+        {subtask.resultSummary ? (
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+            {subtask.resultSummary}
+          </p>
+        ) : null}
+      </div>
+      {agentRunId ? (
+        <Button
+          className="self-start"
+          onClick={() => onOpenRun(agentRunId)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Bot />
+          Run
+        </Button>
+      ) : null}
+    </article>
+  )
+}
 
 const IssueActivityItem = ({ comment }: { comment: IssueComment }) => {
   const meta = getCommentKindMeta(comment.kind)
@@ -157,6 +320,52 @@ const IssueActivityItem = ({ comment }: { comment: IssueComment }) => {
 const getCommentKindMeta = (kind: IssueComment['kind']) => {
   return commentKindMeta[kind] ?? commentKindMeta.progress
 }
+
+const getSubtaskStatusMeta = (status: IssueSubtask['status']) => {
+  return subtaskStatusMeta[status] ?? subtaskStatusMeta.pending
+}
+
+const subtaskStatusMeta = {
+  awaiting_user: {
+    badgeClassName:
+      'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    icon: CirclePause,
+    iconClassName: 'text-amber-700 dark:text-amber-300',
+  },
+  completed: {
+    badgeClassName:
+      'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    icon: CheckCircle2,
+    iconClassName: 'text-emerald-700 dark:text-emerald-300',
+  },
+  failed: {
+    badgeClassName: 'border-destructive/40 bg-destructive/10 text-destructive',
+    icon: CircleX,
+    iconClassName: 'text-destructive',
+  },
+  pending: {
+    badgeClassName: 'text-muted-foreground',
+    icon: Circle,
+    iconClassName: 'text-muted-foreground',
+  },
+  running: {
+    badgeClassName: 'border-primary/40 bg-primary/10 text-primary',
+    icon: CircleDot,
+    iconClassName: 'text-primary',
+  },
+  skipped: {
+    badgeClassName: 'text-muted-foreground',
+    icon: Circle,
+    iconClassName: 'text-muted-foreground',
+  },
+} satisfies Record<
+  IssueSubtask['status'],
+  {
+    badgeClassName: string
+    icon: LucideIcon
+    iconClassName: string
+  }
+>
 
 const commentKindMeta = {
   blocked: {
