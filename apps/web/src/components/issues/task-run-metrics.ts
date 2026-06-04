@@ -91,7 +91,7 @@ export const formatTaskRunMetricItems = (run?: AgentRun) => {
   }
 
   if (metrics.retryCount > 0) {
-    items.push(formatCount(metrics.retryCount, 'retry'))
+    items.push(formatCount(metrics.retryCount, 'retry', 'retries'))
   }
 
   if (metrics.awaitingUser > 0) {
@@ -114,8 +114,8 @@ const getProviderUsageKey = (
   return `${run.id}:${message.id}`
 }
 
-const formatCount = (value: number, label: string) =>
-  `${value.toLocaleString()} ${label}${value === 1 ? '' : 's'}`
+const formatCount = (value: number, label: string, plural = `${label}s`) =>
+  `${value.toLocaleString()} ${value === 1 ? label : plural}`
 
 const formatCompactNumber = (value: number) => {
   if (value < 1_000) {

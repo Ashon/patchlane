@@ -58,6 +58,23 @@ describe('task run metrics', () => {
       ['1 turn', '1.2k tok', '2.4s'],
     )
   })
+
+  it('formats retry counts with the correct plural spelling', () => {
+    assert.deepEqual(
+      formatTaskRunMetricItems(
+        run({
+          messages: [
+            message({
+              id: 'assistant-1',
+              metadata: requestMetadata(3, 1, 120),
+              role: 'assistant',
+            }),
+          ],
+        }),
+      ),
+      ['1 turn', '120 tok', '2 retries'],
+    )
+  })
 })
 
 const run = (patch: Partial<AgentRun> = {}): AgentRun => ({
