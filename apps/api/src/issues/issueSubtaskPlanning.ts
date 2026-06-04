@@ -1,11 +1,13 @@
 import {
+  replaceIssueTasksSchema,
   replaceIssueSubtasksSchema,
   type AgentProject,
   type Issue,
+  type ReplaceIssueTasksInput,
   type ReplaceIssueSubtasksInput,
 } from '@patchlane/shared'
 
-export const buildIssueSubtaskPlanningPrompt = ({
+export const buildIssueTaskPlanningPrompt = ({
   issue,
   project,
 }: {
@@ -13,18 +15,18 @@ export const buildIssueSubtaskPlanningPrompt = ({
   project: AgentProject
 }) => {
   return [
-    'Create a concise subtask plan for this project issue.',
+    'Create a concise issue task plan for this project issue.',
     'Return only JSON. Do not include markdown, prose, private reasoning, or raw tool logs.',
     '',
     'JSON schema:',
     JSON.stringify(
       {
-        subtasks: [
+        tasks: [
           {
             description:
               'Concrete expected outcome, target area, and verification signal.',
             kind: 'inspect | edit | verify | publish | followup',
-            title: 'Short actionable subtask title',
+            title: 'Short actionable issue task title',
           },
         ],
       },
@@ -33,12 +35,12 @@ export const buildIssueSubtaskPlanningPrompt = ({
     ),
     '',
     'Planning rules:',
-    '- Use 2 to 8 subtasks for complex work. Use 1 subtask only for truly tiny work.',
+    '- Use 2 to 8 issue tasks for complex work. Use 1 task only for truly tiny work.',
     '- Prefer inspect, edit, and verify as the minimum shape for non-trivial coding work.',
-    '- Each subtask must have a concrete completion signal and should fit in one focused agent run.',
-    '- Do not create vague subtasks like "implement everything" or "finish remaining work".',
-    '- Put verification in its own subtask when the change affects behavior, types, tests, or build output.',
-    '- Keep subtasks ordered so later tasks can consume earlier summaries.',
+    '- Each task must have a concrete completion signal and should fit in one focused agent run.',
+    '- Do not create vague tasks like "implement everything" or "finish remaining work".',
+    '- Put verification in its own task when the change affects behavior, types, tests, or build output.',
+    '- Keep tasks ordered so later tasks can consume earlier summaries.',
     '',
     `Project: ${project.name}`,
     `Project policy: ${project.description}`,
@@ -60,13 +62,28 @@ export const buildIssueSubtaskPlanningPrompt = ({
     .join('\n')
 }
 
+export const buildIssueSubtaskPlanningPrompt = buildIssueTaskPlanningPrompt
+
+export const parseIssueTaskPlan = (content: string): ReplaceIssueTasksInput => {
+  const jsonText = extractJsonObject(content)
+  const parsed = JSON.parse(jsonText) as unknown
+  const taskPlan = replaceIssueTasksSchema.safeParse(parsed)
+
+  if (taskPlan.success) {
+    return taskPlan.data
+  }
+
+  const legacyPlan = replaceIssueSubtasksSchema.parse(parsed)
+
+  return { tasks: legacyPlan.subtasks }
+}
+
 export const parseIssueSubtaskPlan = (
   content: string,
 ): ReplaceIssueSubtasksInput => {
-  const jsonText = extractJsonObject(content)
-  const parsed = JSON.parse(jsonText) as unknown
+  const taskPlan = parseIssueTaskPlan(content)
 
-  return replaceIssueSubtasksSchema.parse(parsed)
+  return { subtasks: taskPlan.tasks }
 }
 
 const extractJsonObject = (content: string) => {

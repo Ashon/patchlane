@@ -274,10 +274,6 @@ export const ProjectIssuesView = ({
             <IssueListPane
               issues={issues}
               onSelectIssue={onSelectIssue}
-              onStart={onStart}
-              projectWorkspaceId={project.workspaceId}
-              runById={runById}
-              runningIssueId={runningIssueId}
               selectedIssue={selectedIssue}
               variant="resizable"
             />
@@ -306,10 +302,6 @@ export const ProjectIssuesView = ({
           <IssueListPane
             issues={issues}
             onSelectIssue={onSelectIssue}
-            onStart={onStart}
-            projectWorkspaceId={project.workspaceId}
-            runById={runById}
-            runningIssueId={runningIssueId}
             selectedIssue={selectedIssue}
             variant="stacked"
           />
@@ -332,19 +324,11 @@ export const ProjectIssuesView = ({
 const IssueListPane = ({
   issues,
   onSelectIssue,
-  onStart,
-  projectWorkspaceId,
-  runById,
-  runningIssueId,
   selectedIssue,
   variant,
 }: {
   issues: Issue[]
   onSelectIssue: (id: string | null) => void
-  onStart: (issue: Issue) => Promise<void>
-  projectWorkspaceId?: string
-  runById: Map<string, AgentRun>
-  runningIssueId: string | null
   selectedIssue: Issue | null
   variant: 'resizable' | 'stacked'
 }) => {
@@ -360,25 +344,9 @@ const IssueListPane = ({
         <PageList>
           {issues.map((issue) => (
             <IssueRow
-              agentRun={
-                issue.agentRunId ? runById.get(issue.agentRunId) : undefined
-              }
               issue={issue}
               key={issue.id}
-              loading={runningIssueId === issue.id}
               onSelect={() => onSelectIssue(issue.id)}
-              onStart={() => void onStart(issue)}
-              planningRun={
-                issue.planningRunId
-                  ? runById.get(issue.planningRunId)
-                  : undefined
-              }
-              projectWorkspaceId={projectWorkspaceId}
-              requirementRun={
-                issue.requirementRunId
-                  ? runById.get(issue.requirementRunId)
-                  : undefined
-              }
               selected={selectedIssue?.id === issue.id}
             />
           ))}

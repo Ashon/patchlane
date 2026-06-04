@@ -3,7 +3,7 @@ import {
   type AgentProject,
   type AgentRun,
   type Issue,
-  type IssueSubtask,
+  type IssueTask,
   createAgentProjectSchema,
   createIssueSchema,
   replaceIssueSubtasksSchema,
@@ -11,6 +11,7 @@ import {
   startIssueSchema,
   updateAgentProjectSchema,
   updateIssueSchema,
+  updateIssueTaskSchema,
   updateIssueSubtaskSchema,
 } from '@patchlane/shared'
 import type { AgentRunStore } from '../agent/agentRunStore'
@@ -20,15 +21,15 @@ import { reconcileIssueTaskState } from '../issues/issueReconciliation'
 import type { IssueStore } from '../issues/issueStore'
 import {
   buildIssueRunTaskPrompt,
-  buildIssueSubtaskRunTaskPrompt,
+  buildIssueTaskRunTaskPrompt,
 } from '../issues/issueTaskPrompts'
 import {
-  buildIssueSubtaskPlanningPrompt,
-  parseIssueSubtaskPlan,
+  buildIssueTaskPlanningPrompt,
+  parseIssueTaskPlan,
 } from '../issues/issueSubtaskPlanning'
 import {
-  getIssueSubtaskRunKind,
-  getNextIssueSubtask,
+  getIssueTaskRunKind,
+  getNextIssueTask,
 } from '../issues/issueSubtaskWorkflow'
 import type { LlmEndpointStore } from '../llm/endpointStore'
 import { createChatCompletion } from '../llm/openaiClient'
@@ -136,6 +137,18 @@ export const createIssuesRouter = ({
     }),
   )
 
+  router.put(
+    '/:id/tasks',
+    asyncHandler(async (request, response) => {
+      const issue = await issueStore.replaceIssueTasks(
+        getRouteParam(request.params.id, 'id'),
+        request.body,
+      )
+
+      response.json({ issue })
+    }),
+  )
+
   router.patch(
     '/:id/subtasks/:subtaskId',
     asyncHandler(async (request, response) => {
@@ -149,16 +162,58 @@ export const createIssuesRouter = ({
     }),
   )
 
+  router.patch(
+    '/:id/tasks/:taskId',
+    asyncHandler(async (request, response) => {
+      const result = await issueStore.updateIssueTask(
+        getRouteParam(request.params.id, 'id'),
+        getRouteParam(request.params.taskId, 'taskId'),
+        updateIssueTaskSchema.parse(request.body),
+      )
+
+      response.json({ issue: result.issue, task: result.subtask })
+    }),
+  )
+
   router.post(
     '/:id/plan',
     asyncHandler(async (request, response) => {
       const input = startIssueSchema.parse(request.body)
       const id = getRouteParam(request.params.id, 'id')
-      const issue = await planIssueSubtasks(await issueStore.getIssue(id), {
+      const issue = await planIssueTasks(await issueStore.getIssue(id), {
         endpointId: input.endpointId,
       })
 
       response.status(201).json({ issue })
+    }),
+  )
+
+  router.post(
+    '/:id/tasks/:taskId/start',
+    asyncHandler(async (request, response) => {
+      const input = startIssueSchema.parse(request.body)
+      const id = getRouteParam(request.params.id, 'id')
+      const taskId = getRouteParam(request.params.taskId, 'taskId')
+      const issue = await issueStore.getIssue(id)
+      const task = issue.subtasks.find((item) => item.id === taskId)
+
+      if (!task) {
+        throw badRequest(`Issue task '${taskId}' was not found`)
+      }
+
+      if (task.status !== 'pending' && task.status !== 'awaiting_user') {
+        throw badRequest(
+          `Issue task '${taskId}' cannot be started from status ${task.status}`,
+        )
+      }
+
+      const { issue: updatedIssue, run } = await startIssueTaskRun({
+        endpointId: input.endpointId,
+        issue,
+        task,
+      })
+
+      response.status(201).json({ run, issue: updatedIssue, runs: [run] })
     }),
   )
 
@@ -181,10 +236,10 @@ export const createIssuesRouter = ({
         )
       }
 
-      const { issue: updatedIssue, run } = await startSubtaskRun({
+      const { issue: updatedIssue, run } = await startIssueTaskRun({
         endpointId: input.endpointId,
         issue,
-        subtask,
+        task: subtask,
       })
 
       response.status(201).json({ run, issue: updatedIssue, runs: [run] })
@@ -203,27 +258,27 @@ export const createIssuesRouter = ({
       })
 
       if (issue.subtasks.length === 0) {
-        issue = await planIssueSubtasks(issue, { endpointId: input.endpointId })
+        issue = await planIssueTasks(issue, { endpointId: input.endpointId })
       }
 
-      const activeRun = await findActiveSubtaskRun(issue)
+      const activeRun = await findActiveIssueTaskRun(issue)
 
       if (activeRun) {
         response.json({ run: activeRun, issue, runs: [activeRun] })
         return
       }
 
-      const subtask = getNextIssueSubtask(issue)
+      const task = getNextIssueTask(issue)
 
-      if (!subtask) {
+      if (!task) {
         response.json({ issue, runs: [] })
         return
       }
 
-      const { issue: updatedIssue, run } = await startSubtaskRun({
+      const { issue: updatedIssue, run } = await startIssueTaskRun({
         endpointId: input.endpointId,
         issue,
-        subtask,
+        task,
       })
 
       response.status(201).json({ run, issue: updatedIssue, runs: [run] })
@@ -394,7 +449,7 @@ export const createIssuesRouter = ({
     return toolSettings.github.enabled ? toolSettings.github.token : undefined
   }
 
-  async function planIssueSubtasks(
+  async function planIssueTasks(
     issue: Issue,
     options: { endpointId?: string } = {},
   ) {
@@ -418,7 +473,7 @@ export const createIssuesRouter = ({
         },
         {
           role: 'user',
-          content: buildIssueSubtaskPlanningPrompt({ issue, project }),
+          content: buildIssueTaskPlanningPrompt({ issue, project }),
         },
       ],
       temperature: 0.2,
@@ -426,32 +481,30 @@ export const createIssuesRouter = ({
     const content = completion.choices[0]?.message?.content
 
     if (!content) {
-      throw badRequest('The planning model returned an empty subtask plan')
+      throw badRequest('The planning model returned an empty task plan')
     }
 
     try {
-      return await issueStore.replaceIssueSubtasks(
+      return await issueStore.replaceIssueTasks(
         issue.id,
-        parseIssueSubtaskPlan(content),
+        parseIssueTaskPlan(content),
       )
     } catch (error) {
-      throw badRequest(
-        `Failed to parse subtask plan: ${getErrorMessage(error)}`,
-      )
+      throw badRequest(`Failed to parse task plan: ${getErrorMessage(error)}`)
     }
   }
 
-  async function findActiveSubtaskRun(issue: Issue) {
-    for (const subtask of issue.subtasks) {
-      if (subtask.status !== 'running' && subtask.status !== 'awaiting_user') {
+  async function findActiveIssueTaskRun(issue: Issue) {
+    for (const task of issue.subtasks) {
+      if (task.status !== 'running' && task.status !== 'awaiting_user') {
         continue
       }
 
-      if (!subtask.agentRunId) {
+      if (!task.agentRunId) {
         continue
       }
 
-      const run = await runStore.find(subtask.agentRunId)
+      const run = await runStore.find(task.agentRunId)
 
       if (run && isActiveRunStatus(run.status)) {
         return run
@@ -461,14 +514,14 @@ export const createIssuesRouter = ({
     return undefined
   }
 
-  async function startSubtaskRun({
+  async function startIssueTaskRun({
     endpointId,
     issue,
-    subtask,
+    task,
   }: {
     endpointId?: string
     issue: Issue
-    subtask: IssueSubtask
+    task: IssueTask
   }) {
     const { branchName, project, workspace } =
       await getOrCreateIssueTaskWorkspace(issue)
@@ -482,17 +535,17 @@ export const createIssuesRouter = ({
     const run = await runStore.create({
       workspaceId: workspace.id,
       endpointId: selectedEndpointId,
-      kind: getIssueSubtaskRunKind(subtask.kind),
+      kind: getIssueTaskRunKind(task.kind),
       projectId: project.id,
       issueId: issue.id,
-      subtaskId: subtask.id,
+      subtaskId: task.id,
       branchName,
-      title: `${issue.title}: ${subtask.title}`.slice(0, 120),
-      task: buildIssueSubtaskRunTaskPrompt({
+      title: `${issue.title}: ${task.title}`.slice(0, 120),
+      task: buildIssueTaskRunTaskPrompt({
         branchName,
         issue,
         project,
-        subtask,
+        task,
       }),
     })
     await workspaceStore.linkAgentRun(workspace.id, run.id)
@@ -501,9 +554,9 @@ export const createIssuesRouter = ({
       endpointId: selectedEndpointId,
       workspaceId: workspace.id,
     })
-    const { issue: updatedIssue } = await issueStore.markSubtaskRunStarted(
+    const { issue: updatedIssue } = await issueStore.markTaskRunStarted(
       startedIssue.id,
-      subtask.id,
+      task.id,
       run.id,
     )
 

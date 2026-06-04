@@ -2,12 +2,22 @@ import type { ReactNode } from 'react'
 import type {
   AgentProject,
   AgentRun,
-  IssueSubtaskKind,
-  IssueSubtaskStatus,
+  IssueTaskKind,
+  IssueTaskStatus,
   IssuePriority,
   IssueStatus,
+  IssueSubtaskKind,
+  IssueSubtaskStatus,
 } from '@patchlane/shared'
-import { Github, Layers3 } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronsUp,
+  CircleDot,
+  Github,
+  Layers3,
+  type LucideIcon,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
@@ -115,16 +125,18 @@ export const AgentRunStatusBadge = ({
   return <StateBadge tone="warning">{status}</StateBadge>
 }
 
-export const IssueSubtaskKindBadge = ({
-  kind,
-}: {
-  kind: IssueSubtaskKind
-}) => <Badge variant="outline">{kind}</Badge>
+export const IssueTaskKindBadge = ({ kind }: { kind: IssueTaskKind }) => (
+  <Badge variant="outline">{kind}</Badge>
+)
 
-export const IssueSubtaskStatusBadge = ({
+export const IssueSubtaskKindBadge = ({ kind }: { kind: IssueSubtaskKind }) => (
+  <IssueTaskKindBadge kind={kind} />
+)
+
+export const IssueTaskStatusBadge = ({
   status,
 }: {
-  status: IssueSubtaskStatus
+  status: IssueTaskStatus
 }) => {
   if (status === 'completed') {
     return <StateBadge tone="success">completed</StateBadge>
@@ -144,6 +156,12 @@ export const IssueSubtaskStatusBadge = ({
 
   return <StateBadge tone="warning">{status}</StateBadge>
 }
+
+export const IssueSubtaskStatusBadge = ({
+  status,
+}: {
+  status: IssueSubtaskStatus
+}) => <IssueTaskStatusBadge status={status} />
 
 export const IssueStatusBadge = ({ status }: { status: IssueStatus }) => {
   if (status === 'completed') {
@@ -167,17 +185,62 @@ export const IssueStatusBadge = ({ status }: { status: IssueStatus }) => {
   )
 }
 
-export const PriorityBadge = ({ priority }: { priority: IssuePriority }) => {
-  if (priority === 'urgent' || priority === 'high') {
-    return (
-      <Badge variant={priority === 'urgent' ? 'destructive' : 'secondary'}>
-        {priority}
-      </Badge>
-    )
-  }
+export const PriorityBadge = ({
+  className,
+  priority,
+}: {
+  className?: string
+  priority: IssuePriority
+}) => {
+  const meta = priorityMeta[priority]
+  const Icon = meta.icon
 
-  return <Badge variant="outline">{priority}</Badge>
+  return (
+    <Badge
+      aria-label={`Priority: ${priority}`}
+      className={cn(
+        'h-5 min-h-5 w-5 justify-center rounded-md p-0',
+        meta.className,
+        className,
+      )}
+      title={`Priority: ${priority}`}
+      variant={meta.variant}
+    >
+      <Icon />
+    </Badge>
+  )
 }
+
+const priorityMeta = {
+  high: {
+    className:
+      'border-amber-500/45 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300',
+    icon: ArrowUp,
+    variant: 'outline',
+  },
+  low: {
+    className: 'text-muted-foreground',
+    icon: ArrowDown,
+    variant: 'outline',
+  },
+  medium: {
+    className: 'text-muted-foreground',
+    icon: CircleDot,
+    variant: 'outline',
+  },
+  urgent: {
+    className: '',
+    icon: ChevronsUp,
+    variant: 'destructive',
+  },
+} satisfies Record<
+  IssuePriority,
+  {
+    className: string
+    icon: LucideIcon
+    variant: 'destructive' | 'outline'
+  }
+>
 
 export const StateBadge = ({
   children,

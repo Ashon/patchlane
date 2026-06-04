@@ -19,16 +19,18 @@ import {
   AgentRunKindBadge,
   AgentRunStatusBadge,
   EmptyState,
-  IssueSubtaskKindBadge,
-  IssueSubtaskStatusBadge,
+  IssueTaskKindBadge,
+  IssueTaskStatusBadge,
   MetricBadge,
 } from './common'
 import {
+  buildIssueTaskProgressSummaries,
   buildTaskWorkItems,
+  getIssueTaskProgressTotals,
   isTaskWorkItemRunning,
   type TaskWorkItem,
 } from './task-work-items'
-import { formatDateTime } from './utils'
+import { formatIssueReference } from './utils'
 
 const projectTaskPanelIds = ['project-task-list', 'project-task-chat']
 const projectTaskResizableMediaQuery = '(min-width: 640px)'
@@ -69,6 +71,10 @@ export const ProjectTasksView = ({
   const taskItems = useMemo(
     () => buildTaskWorkItems({ issues, runs }),
     [issues, runs],
+  )
+  const taskTotals = useMemo(
+    () => getIssueTaskProgressTotals(buildIssueTaskProgressSummaries(issues)),
+    [issues],
   )
   const projectTaskLayout = useResizableDefaultLayout({
     id: 'patchlane-project-tasks-layout',
@@ -120,13 +126,24 @@ export const ProjectTasksView = ({
     <Page className="min-h-[360px]">
       <PageHeader
         actions={
-          <>
-            <MetricBadge label="Total" value={taskItems.length} />
-            <MetricBadge
-              label="Running"
-              value={taskItems.filter(isTaskWorkItemRunning).length}
-            />
-          </>
+          taskTotals.total > 0 ? (
+            <>
+              <MetricBadge label="Tasks" value={taskTotals.total} />
+              <MetricBadge label="Done" value={taskTotals.completed} />
+              <MetricBadge
+                label="Active"
+                value={taskTotals.active + taskTotals.awaitingUser}
+              />
+            </>
+          ) : (
+            <>
+              <MetricBadge label="Total" value={taskItems.length} />
+              <MetricBadge
+                label="Running"
+                value={taskItems.filter(isTaskWorkItemRunning).length}
+              />
+            </>
+          )
         }
         description="Project-scoped agent task history"
         icon={<ListChecks className="h-4 w-4" />}
@@ -222,9 +239,9 @@ const TaskListItem = ({
   onSelectRun: (runId: string) => void
   selectedRun: AgentRun | null
 }) => {
-  if (item.type === 'subtask') {
+  if (item.type === 'issueTask') {
     return (
-      <SubtaskListItem
+      <IssueTaskListItem
         item={item}
         onSelectRun={onSelectRun}
         selected={item.run ? selectedRun?.id === item.run.id : false}
@@ -234,98 +251,81 @@ const TaskListItem = ({
 
   const run = item.run
   const issue = run.issueId ? issueById.get(run.issueId) : undefined
-  const subtask = getRunSubtask(run, issue)
-  const promptPreview = getTaskPromptPreview(run, issue)
+  const task = getRunIssueTask(run, issue)
+  const metaItems = [
+    issue ? formatIssueReference(issue) : null,
+    task ? `Task: ${task.title}` : null,
+  ].filter((value): value is string => Boolean(value))
 
   return (
     <PageListItem
       asChild
-      className="text-left"
+      className="py-2 text-left"
       selected={selectedRun?.id === run.id}
     >
       <button onClick={() => onSelectRun(run.id)} type="button">
-        <div className="grid min-w-0 gap-1.5">
-          <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="grid min-w-0 gap-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <AgentRunKindBadge kind={run.kind} />
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">
               {run.title}
             </span>
-            <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
-              {formatDateTime(run.updatedAt)}
-            </span>
-          </div>
-          {promptPreview ? (
-            <p className="truncate text-xs text-muted-foreground">
-              {promptPreview}
-            </p>
-          ) : null}
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <AgentRunKindBadge kind={run.kind} />
             <AgentRunStatusBadge status={run.status} />
-            {issue ? (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">
-                Issue: {issue.title}
-              </span>
-            ) : null}
-            {subtask ? (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">
-                Subtask: {subtask.title}
-              </span>
-            ) : null}
           </div>
+          {metaItems.length ? <TaskItemMeta items={metaItems} /> : null}
         </div>
       </button>
     </PageListItem>
   )
 }
 
-const SubtaskListItem = ({
+const IssueTaskListItem = ({
   item,
   onSelectRun,
   selected,
 }: {
-  item: Extract<TaskWorkItem, { type: 'subtask' }>
+  item: Extract<TaskWorkItem, { type: 'issueTask' }>
   onSelectRun: (runId: string) => void
   selected: boolean
 }) => {
+  const metaItems = [formatIssueReference(item.issue)]
   const content = (
-    <div className="grid min-w-0 gap-1.5">
-      <div className="flex min-w-0 items-start justify-between gap-2">
+    <div className="grid min-w-0 gap-1">
+      <div className="flex min-w-0 items-center gap-2">
+        <IssueTaskKindBadge kind={item.task.kind} />
         <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {item.subtask.title}
+          {item.task.title}
         </span>
-        <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
-          {formatDateTime(item.updatedAt)}
-        </span>
+        <IssueTaskStatusBadge status={item.task.status} />
       </div>
-      {item.subtask.resultSummary || item.subtask.description ? (
-        <p className="line-clamp-2 text-xs text-muted-foreground">
-          {item.subtask.resultSummary ?? item.subtask.description}
-        </p>
-      ) : null}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <IssueSubtaskKindBadge kind={item.subtask.kind} />
-        <IssueSubtaskStatusBadge status={item.subtask.status} />
-        <span className="min-w-0 truncate text-xs text-muted-foreground">
-          Issue: {item.issue.title}
-        </span>
-      </div>
+      <TaskItemMeta items={metaItems} />
     </div>
   )
 
   if (!item.run) {
-    return <PageListItem interactive={false}>{content}</PageListItem>
+    return (
+      <PageListItem className="py-2" interactive={false}>
+        {content}
+      </PageListItem>
+    )
   }
 
   const run = item.run
 
   return (
-    <PageListItem asChild className="text-left" selected={selected}>
+    <PageListItem asChild className="py-2 text-left" selected={selected}>
       <button onClick={() => onSelectRun(run.id)} type="button">
         {content}
       </button>
     </PageListItem>
   )
 }
+
+const TaskItemMeta = ({ items }: { items: string[] }) => (
+  <p className="min-w-0 truncate text-xs text-muted-foreground">
+    {items.join(' · ')}
+  </p>
+)
 
 const TaskChatPane = ({
   agentReplyDraft,
@@ -397,55 +397,20 @@ const TaskChatPane = ({
 }
 
 const getTaskDetailDescription = (run: AgentRun, issue?: Issue) => {
-  const subtask = getRunSubtask(run, issue)
+  const task = getRunIssueTask(run, issue)
   const items = [issue ? `Issue: ${issue.title}` : null, run.branchName].filter(
     Boolean,
   )
 
-  if (subtask) {
-    items.splice(1, 0, `Subtask: ${subtask.title}`)
+  if (task) {
+    items.splice(1, 0, `Task: ${task.title}`)
   }
 
   return items.length ? items.join(' · ') : 'Agent task chat'
 }
 
-const getRunSubtask = (run: AgentRun, issue?: Issue) => {
+const getRunIssueTask = (run: AgentRun, issue?: Issue) => {
   return issue?.subtasks.find(
-    (subtask) => subtask.id === run.subtaskId || subtask.agentRunId === run.id,
+    (task) => task.id === run.subtaskId || task.agentRunId === run.id,
   )
-}
-
-const getTaskPromptPreview = (run: AgentRun, issue?: Issue) => {
-  const prompt =
-    run.messages
-      .find((message) => message.role === 'user')
-      ?.content.split('\n')
-      .find(Boolean)
-      ?.trim() ?? ''
-
-  if (!prompt) {
-    return ''
-  }
-
-  const normalizedPrompt = normalizeTaskPreview(prompt)
-  const normalizedTitle = normalizeTaskPreview(run.title)
-  const normalizedIssue = normalizeTaskPreview(issue?.title ?? '')
-
-  if (
-    normalizedPrompt === normalizedTitle ||
-    normalizedPrompt === normalizedIssue ||
-    normalizedPrompt === normalizeTaskPreview(`Issue: ${issue?.title ?? ''}`)
-  ) {
-    return ''
-  }
-
-  return prompt.replace(/^(task|prompt|issue)\s*:\s*/i, '').trim()
-}
-
-const normalizeTaskPreview = (value: string) => {
-  return value
-    .toLowerCase()
-    .replace(/^(task|prompt|issue)\s*:\s*/i, '')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
 }

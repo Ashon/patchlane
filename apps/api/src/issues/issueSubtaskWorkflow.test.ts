@@ -1,16 +1,16 @@
 import { describe, expect, it } from '@jest/globals'
 import type { Issue } from '@patchlane/shared'
 import {
-  getIssueSubtaskRunKind,
-  getNextIssueSubtask,
-  isIssueSubtaskWorkflowComplete,
+  getIssueTaskRunKind,
+  getNextIssueTask,
+  isIssueTaskWorkflowComplete,
 } from './issueSubtaskWorkflow'
 
 const timestamp = '2026-06-03T00:00:00.000Z'
 
-describe('Given issue subtask workflow', () => {
-  it('when subtasks have dependencies, then it returns the first pending runnable subtask', () => {
-    const issue = issueWithSubtasks([
+describe('Given issue task workflow', () => {
+  it('when tasks have dependencies, then it returns the first pending runnable task', () => {
+    const issue = issueWithTasks([
       {
         id: 'inspect',
         status: 'completed',
@@ -30,11 +30,11 @@ describe('Given issue subtask workflow', () => {
       },
     ])
 
-    expect(getNextIssueSubtask(issue)?.id).toBe('edit')
+    expect(getNextIssueTask(issue)?.id).toBe('edit')
   })
 
-  it('when a pending subtask is waiting on an unfinished dependency, then it does not return it', () => {
-    const issue = issueWithSubtasks([
+  it('when a pending task is waiting on an unfinished dependency, then it does not return it', () => {
+    const issue = issueWithTasks([
       {
         id: 'inspect',
         status: 'running',
@@ -48,13 +48,13 @@ describe('Given issue subtask workflow', () => {
       },
     ])
 
-    expect(getNextIssueSubtask(issue)).toBeUndefined()
+    expect(getNextIssueTask(issue)).toBeUndefined()
   })
 
-  it('when all subtasks are completed or skipped, then the workflow is complete', () => {
+  it('when all tasks are completed or skipped, then the workflow is complete', () => {
     expect(
-      isIssueSubtaskWorkflowComplete(
-        issueWithSubtasks([
+      isIssueTaskWorkflowComplete(
+        issueWithTasks([
           {
             id: 'inspect',
             status: 'completed',
@@ -70,17 +70,17 @@ describe('Given issue subtask workflow', () => {
     ).toBe(true)
   })
 
-  it('when mapping subtask kinds, then verification and publish runs keep distinct run kinds', () => {
-    expect(getIssueSubtaskRunKind('inspect')).toBe('coding')
-    expect(getIssueSubtaskRunKind('edit')).toBe('coding')
-    expect(getIssueSubtaskRunKind('verify')).toBe('verification')
-    expect(getIssueSubtaskRunKind('publish')).toBe('publish')
-    expect(getIssueSubtaskRunKind('followup')).toBe('followup')
+  it('when mapping task kinds, then verification and publish runs keep distinct run kinds', () => {
+    expect(getIssueTaskRunKind('inspect')).toBe('coding')
+    expect(getIssueTaskRunKind('edit')).toBe('coding')
+    expect(getIssueTaskRunKind('verify')).toBe('verification')
+    expect(getIssueTaskRunKind('publish')).toBe('publish')
+    expect(getIssueTaskRunKind('followup')).toBe('followup')
   })
 })
 
-const issueWithSubtasks = (
-  subtasks: Array<{
+const issueWithTasks = (
+  tasks: Array<{
     dependsOnSubtaskIds?: string[]
     id: string
     status: Issue['subtasks'][number]['status']
@@ -89,21 +89,21 @@ const issueWithSubtasks = (
 ): Issue => ({
   comments: [],
   createdAt: timestamp,
-  description: 'Split this work into ordered subtasks.',
+  description: 'Split this work into ordered tasks.',
   events: [],
   id: 'issue-1',
   priority: 'medium',
   projectId: 'project-1',
   status: 'running',
-  subtasks: subtasks.map((subtask, index) => ({
+  subtasks: tasks.map((task, index) => ({
     createdAt: timestamp,
-    dependsOnSubtaskIds: subtask.dependsOnSubtaskIds ?? [],
-    id: subtask.id,
+    dependsOnSubtaskIds: task.dependsOnSubtaskIds ?? [],
+    id: task.id,
     issueId: 'issue-1',
-    kind: index === subtasks.length - 1 ? 'verify' : 'edit',
+    kind: index === tasks.length - 1 ? 'verify' : 'edit',
     sequence: index,
-    status: subtask.status,
-    title: subtask.title,
+    status: task.status,
+    title: task.title,
     updatedAt: timestamp,
   })),
   title: 'Workflow issue',

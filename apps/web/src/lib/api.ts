@@ -14,6 +14,7 @@ import type {
   LlmEndpoint,
   LlmEndpointTestResult,
   PublicToolSettings,
+  ReplaceIssueTasksInput,
   RewindAgentRunInput,
   ReplaceIssueSubtasksInput,
   SandboxExecRequest,
@@ -26,6 +27,7 @@ import type {
   UpdateGitHubToolSettingsInput,
   UpdateLlmEndpointInput,
   UpdateIssueInput,
+  UpdateIssueTaskInput,
   UpdateIssueSubtaskInput,
 } from '@patchlane/shared'
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
@@ -302,6 +304,12 @@ export const api = {
       body: JSON.stringify(input),
     })
   },
+  async replaceIssueTasks(id: string, input: ReplaceIssueTasksInput) {
+    return request<{ issue: Issue }>(`/api/issues/${id}/tasks`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+  },
   async updateIssueSubtask(
     id: string,
     subtaskId: string,
@@ -309,6 +317,19 @@ export const api = {
   ) {
     return request<{ issue: Issue; subtask: Issue['subtasks'][number] }>(
       `/api/issues/${id}/subtasks/${subtaskId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+    )
+  },
+  async updateIssueTask(
+    id: string,
+    taskId: string,
+    input: UpdateIssueTaskInput,
+  ) {
+    return request<{ issue: Issue; task: Issue['subtasks'][number] }>(
+      `/api/issues/${id}/tasks/${taskId}`,
       {
         method: 'PATCH',
         body: JSON.stringify(input),
@@ -337,6 +358,15 @@ export const api = {
   ) {
     return request<{ run: AgentRun; issue: Issue; runs: AgentRun[] }>(
       `/api/issues/${id}/subtasks/${subtaskId}/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    )
+  },
+  async startIssueTask(id: string, taskId: string, input: StartIssueInput) {
+    return request<{ run: AgentRun; issue: Issue; runs: AgentRun[] }>(
+      `/api/issues/${id}/tasks/${taskId}/start`,
       {
         method: 'POST',
         body: JSON.stringify(input),

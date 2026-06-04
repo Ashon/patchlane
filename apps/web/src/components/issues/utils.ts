@@ -137,6 +137,9 @@ export const upsertAgentRuns = (
 export const formatDateTime = (value: string) =>
   new Date(value).toLocaleString()
 
+export const formatIssueReference = (issue: Pick<Issue, 'id'>) =>
+  `#${issue.id.slice(0, 8)}`
+
 export const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) {
     return error.message

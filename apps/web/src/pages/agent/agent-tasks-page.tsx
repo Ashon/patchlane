@@ -14,13 +14,14 @@ import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import {
-  IssueSubtaskKindBadge,
-  IssueSubtaskStatusBadge,
+  IssueTaskKindBadge,
+  IssueTaskStatusBadge,
 } from '@/components/issues/common'
 import {
   buildTaskWorkItems,
   type TaskWorkItem,
 } from '@/components/issues/task-work-items'
+import { formatIssueReference } from '@/components/issues/utils'
 import {
   ErrorBanner,
   PageHeader,
@@ -227,11 +228,11 @@ const AgentTaskListPane = ({
         {items.length ? (
           <PageList>
             {items.map((item) => {
-              if (item.type === 'subtask') {
+              if (item.type === 'issueTask') {
                 const run = item.run
 
                 return (
-                  <AgentSubtaskCard
+                  <AgentIssueTaskCard
                     deleting={run ? runDeletingId === run.id : false}
                     item={item}
                     key={item.id}
@@ -250,7 +251,9 @@ const AgentTaskListPane = ({
                   onDelete={() => onDeleteAgentRun(item.run)}
                   onSelect={() => onSelectAgentRun(item.run)}
                   issue={
-                    item.run.issueId ? issueById.get(item.run.issueId) : undefined
+                    item.run.issueId
+                      ? issueById.get(item.run.issueId)
+                      : undefined
                   }
                   project={
                     item.run.projectId
@@ -374,7 +377,7 @@ const AgentTaskContentPane = ({
   )
 }
 
-const AgentSubtaskCard = ({
+const AgentIssueTaskCard = ({
   deleting,
   item,
   onDelete,
@@ -383,39 +386,29 @@ const AgentSubtaskCard = ({
   selected,
 }: {
   deleting: boolean
-  item: Extract<TaskWorkItem, { type: 'subtask' }>
+  item: Extract<TaskWorkItem, { type: 'issueTask' }>
   onDelete?: () => void
   onSelect?: () => void
   project?: AgentProject
   selected: boolean
 }) => {
+  const metaItems = [project?.name, formatIssueReference(item.issue)].filter(
+    (value): value is string => Boolean(value),
+  )
   const mainContent = (
     <div className="min-w-0 overflow-hidden text-left">
       <div className="flex min-w-0 items-center gap-2">
         <span className="shrink-0">
-          <IssueSubtaskKindBadge kind={item.subtask.kind} />
+          <IssueTaskKindBadge kind={item.task.kind} />
         </span>
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {item.subtask.title}
+          {item.task.title}
         </h3>
         <span className="shrink-0">
-          <IssueSubtaskStatusBadge status={item.subtask.status} />
+          <IssueTaskStatusBadge status={item.task.status} />
         </span>
       </div>
-      {item.subtask.resultSummary || item.subtask.description ? (
-        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-          {item.subtask.resultSummary ?? item.subtask.description}
-        </p>
-      ) : null}
-      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-        <span className="shrink-0">{formatDateTime(item.updatedAt)}</span>
-        {project ? (
-          <span className="min-w-0 max-w-full truncate">{project.name}</span>
-        ) : null}
-        <span className="min-w-0 max-w-full truncate">
-          Issue: {item.issue.title}
-        </span>
-      </div>
+      <TaskCardMeta items={metaItems} />
     </div>
   )
   const deleteButton =
@@ -445,7 +438,7 @@ const AgentSubtaskCard = ({
   if (!item.run || !onSelect) {
     return (
       <PageListItem interactive={false} selected={selected}>
-        <div className="grid min-w-0 grid-cols-1 gap-2">{content}</div>
+        <div className="grid min-w-0 grid-cols-1 gap-2 py-0">{content}</div>
       </PageListItem>
     )
   }
@@ -485,6 +478,11 @@ const AgentRunCard = ({
 }) => {
   const description = getAgentRunCardDescription(run, issue)
   const scopeLabel = getAgentRunCardScope(run, issue)
+  const metaItems = [
+    project?.name,
+    scopeLabel,
+    run.context ? formatAgentRunContext(run.context) : null,
+  ].filter((value): value is string => Boolean(value))
 
   return (
     <PageListItem selected={selected}>
@@ -506,26 +504,11 @@ const AgentRunCard = ({
             </span>
           </div>
           {description ? (
-            <p className="mt-1 truncate text-xs text-muted-foreground">
+            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
               {description}
             </p>
           ) : null}
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="shrink-0">{formatDateTime(run.updatedAt)}</span>
-            {project ? (
-              <span className="min-w-0 max-w-full truncate">
-                {project.name}
-              </span>
-            ) : null}
-            {scopeLabel ? (
-              <span className="min-w-0 max-w-full truncate">{scopeLabel}</span>
-            ) : null}
-            {run.context ? (
-              <span className="shrink-0">
-                {formatAgentRunContext(run.context)}
-              </span>
-            ) : null}
-          </div>
+          <TaskCardMeta className="mt-1" items={metaItems} />
         </button>
         <Button
           disabled={deleting}
@@ -542,6 +525,24 @@ const AgentRunCard = ({
         </Button>
       </div>
     </PageListItem>
+  )
+}
+
+const TaskCardMeta = ({
+  className,
+  items,
+}: {
+  className?: string
+  items: string[]
+}) => {
+  if (!items.length) {
+    return null
+  }
+
+  return (
+    <p className={cn('mt-1 min-w-0 truncate text-xs text-muted-foreground', className)}>
+      {items.join(' · ')}
+    </p>
   )
 }
 
@@ -681,19 +682,19 @@ const getAgentRunCardScope = (run: AgentRun, issue?: Issue) => {
     return ''
   }
 
-  const subtask = issue.subtasks.find(
+  const task = issue.subtasks.find(
     (item) => item.id === run.subtaskId || item.agentRunId === run.id,
   )
 
-  if (subtask) {
-    return `Subtask: ${subtask.title}`
+  if (task) {
+    return `Task: ${task.title}`
   }
 
   if (isRedundantAgentRunText(issue.title, [run.title])) {
     return ''
   }
 
-  return `Issue: ${issue.title}`
+  return formatIssueReference(issue)
 }
 
 const isGeneratedAgentRunPrompt = (value: string) => {
@@ -749,12 +750,4 @@ const getAgentRunContextUsage = (context: NonNullable<AgentRun['context']>) => {
     100,
     Math.round((context.estimatedTokens / context.tokenBudget) * 100),
   )
-}
-
-const formatDateTime = (value?: string) => {
-  if (!value) {
-    return 'Never'
-  }
-
-  return new Date(value).toLocaleString()
 }

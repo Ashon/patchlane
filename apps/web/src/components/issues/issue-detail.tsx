@@ -23,10 +23,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Page, PageHeader } from '@/components/layout/page-primitives'
 import { cn } from '@/lib/utils'
 import { EmptyState, IssueStatusBadge, PriorityBadge } from './common'
+import { IssueTaskProgress } from './issue-task-progress'
 import { formatDateTime } from './utils'
 
 type IssueComment = Issue['comments'][number]
-type IssueSubtask = Issue['subtasks'][number]
+type IssueTask = Issue['subtasks'][number]
 
 export const IssueDetail = ({
   issue,
@@ -58,13 +59,9 @@ export const IssueDetail = ({
   return (
     <Page>
       <PageHeader
-        actions={
-          <>
-            <IssueStatusBadge status={issue.status} />
-            <PriorityBadge priority={issue.priority} />
-          </>
-        }
+        actions={<IssueStatusBadge status={issue.status} />}
         description={issue.description}
+        icon={<PriorityBadge priority={issue.priority} />}
         title={issue.title}
       />
 
@@ -161,14 +158,15 @@ export const IssueDetail = ({
             <IssueSectionHeader
               count={issue.subtasks.length}
               icon={ListChecks}
-              title="Work plan"
+              title="Tasks"
             />
+            <IssueTaskProgress className="mb-3" issue={issue} />
             <div className="overflow-hidden rounded-md border">
-              {issue.subtasks.map((subtask) => (
-                <IssueSubtaskItem
-                  key={subtask.id}
+              {issue.subtasks.map((task) => (
+                <IssueTaskItem
+                  key={task.id}
                   onOpenRun={onOpenRun}
-                  subtask={subtask}
+                  task={task}
                 />
               ))}
             </div>
@@ -237,16 +235,16 @@ const IssueSectionHeader = ({
   </div>
 )
 
-const IssueSubtaskItem = ({
+const IssueTaskItem = ({
   onOpenRun,
-  subtask,
+  task,
 }: {
   onOpenRun: (runId: string) => void
-  subtask: IssueSubtask
+  task: IssueTask
 }) => {
-  const meta = getSubtaskStatusMeta(subtask.status)
+  const meta = getTaskStatusMeta(task.status)
   const Icon = meta.icon
-  const agentRunId = subtask.agentRunId
+  const agentRunId = task.agentRunId
 
   return (
     <article className="grid min-w-0 grid-cols-[16px_1fr_auto] gap-2 border-b px-2.5 py-2 last:border-b-0">
@@ -254,21 +252,22 @@ const IssueSubtaskItem = ({
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="min-w-0 truncate text-sm font-medium">
-            {subtask.title}
+            {task.title}
           </span>
-          <Badge variant="outline">{subtask.kind}</Badge>
+          <Badge variant="outline">Step {task.sequence + 1}</Badge>
+          <Badge variant="outline">{task.kind}</Badge>
           <Badge className={meta.badgeClassName} variant="outline">
-            {subtask.status}
+            {task.status}
           </Badge>
         </div>
-        {subtask.description ? (
+        {task.description ? (
           <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-            {subtask.description}
+            {task.description}
           </p>
         ) : null}
-        {subtask.resultSummary ? (
+        {task.resultSummary ? (
           <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-            {subtask.resultSummary}
+            {task.resultSummary}
           </p>
         ) : null}
       </div>
@@ -321,11 +320,11 @@ const getCommentKindMeta = (kind: IssueComment['kind']) => {
   return commentKindMeta[kind] ?? commentKindMeta.progress
 }
 
-const getSubtaskStatusMeta = (status: IssueSubtask['status']) => {
-  return subtaskStatusMeta[status] ?? subtaskStatusMeta.pending
+const getTaskStatusMeta = (status: IssueTask['status']) => {
+  return taskStatusMeta[status] ?? taskStatusMeta.pending
 }
 
-const subtaskStatusMeta = {
+const taskStatusMeta = {
   awaiting_user: {
     badgeClassName:
       'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
@@ -359,7 +358,7 @@ const subtaskStatusMeta = {
     iconClassName: 'text-muted-foreground',
   },
 } satisfies Record<
-  IssueSubtask['status'],
+  IssueTask['status'],
   {
     badgeClassName: string
     icon: LucideIcon

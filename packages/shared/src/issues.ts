@@ -202,6 +202,14 @@ export const replaceIssueSubtasksSchema = z.object({
   subtasks: z.array(createIssueSubtaskSchema).min(1).max(20),
 })
 
+export const issueTaskStatusSchema = issueSubtaskStatusSchema
+export const issueTaskKindSchema = issueSubtaskKindSchema
+export const issueTaskSchema = issueSubtaskSchema
+export const createIssueTaskSchema = createIssueSubtaskSchema
+export const replaceIssueTasksSchema = z.object({
+  tasks: z.array(createIssueTaskSchema).min(1).max(20),
+})
+
 export const updateIssueSubtaskSchema = z
   .object({
     title: z.string().trim().min(1).max(160).optional(),
@@ -216,6 +224,7 @@ export const updateIssueSubtaskSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: 'At least one field is required',
   })
+export const updateIssueTaskSchema = updateIssueSubtaskSchema
 
 export const agentProjectListSchema = z.array(agentProjectSchema)
 export const issueListSchema = z.array(issueSchema)
@@ -229,6 +238,9 @@ export type IssuePriority = z.infer<typeof issuePrioritySchema>
 export type IssueSubtask = z.infer<typeof issueSubtaskSchema>
 export type IssueSubtaskStatus = z.infer<typeof issueSubtaskStatusSchema>
 export type IssueSubtaskKind = z.infer<typeof issueSubtaskKindSchema>
+export type IssueTask = IssueSubtask
+export type IssueTaskStatus = IssueSubtaskStatus
+export type IssueTaskKind = IssueSubtaskKind
 export type IssueEvent = z.infer<typeof issueEventSchema>
 export type IssueComment = z.infer<typeof issueCommentSchema>
 export type IssueCommentAuthor = z.infer<typeof issueCommentAuthorSchema>
@@ -242,3 +254,6 @@ export type ReplaceIssueSubtasksInput = z.input<
   typeof replaceIssueSubtasksSchema
 >
 export type UpdateIssueSubtaskInput = z.input<typeof updateIssueSubtaskSchema>
+export type CreateIssueTaskInput = z.input<typeof createIssueTaskSchema>
+export type ReplaceIssueTasksInput = z.input<typeof replaceIssueTasksSchema>
+export type UpdateIssueTaskInput = z.input<typeof updateIssueTaskSchema>

@@ -2,7 +2,7 @@ import { describe, expect, it } from '@jest/globals'
 import type { AgentProject, Issue } from '@patchlane/shared'
 import {
   buildIssueRunTaskPrompt,
-  buildIssueSubtaskRunTaskPrompt,
+  buildIssueTaskRunTaskPrompt,
 } from './issueTaskPrompts'
 
 describe('Given issue task prompts', () => {
@@ -62,19 +62,19 @@ describe('Given issue task prompts', () => {
     expect(prompt).toContain('run relevant verification')
   })
 
-  it('when building a subtask run task, then it scopes execution to the current subtask and prior summaries', () => {
-    const subtask = {
+  it('when building an issue task run task, then it scopes execution to the current task and prior summaries', () => {
+    const task = {
       createdAt: '2026-06-03T00:00:00.000Z',
-      description: 'Add persistence and route support for issue subtasks.',
+      description: 'Add persistence and route support for issue tasks.',
       id: 'subtask-2',
       issueId: issue.id,
       kind: 'edit' as const,
       sequence: 1,
       status: 'pending' as const,
-      title: 'Persist subtasks',
+      title: 'Persist issue tasks',
       updatedAt: '2026-06-03T00:00:00.000Z',
     }
-    const prompt = buildIssueSubtaskRunTaskPrompt({
+    const prompt = buildIssueTaskRunTaskPrompt({
       branchName: 'agent/refactor-prompts',
       issue: {
         ...issue,
@@ -91,28 +91,28 @@ describe('Given issue task prompts', () => {
             title: 'Inspect workflow',
             updatedAt: '2026-06-03T00:00:00.000Z',
           },
-          subtask,
+          task,
         ],
       },
       project,
-      subtask,
+      task,
     })
 
-    expect(prompt).toContain('Current subtask: Persist subtasks')
-    expect(prompt).toContain('Subtask completion target:')
-    expect(prompt).toContain('Previous completed subtasks:')
+    expect(prompt).toContain('Current task: Persist issue tasks')
+    expect(prompt).toContain('Task completion target:')
+    expect(prompt).toContain('Previous completed tasks:')
     expect(prompt).toContain('Found issue store')
-    expect(prompt).toContain('Complete only this subtask')
+    expect(prompt).toContain('Complete only this task')
     expect(prompt).toContain('preserving the existing issue branch/worktree')
     expect(prompt).toContain('Do not restart the whole issue from scratch')
     expect(prompt).toContain('Budget tool calls aggressively')
-    expect(prompt).toContain('Edit subtask boundary')
-    expect(prompt).toContain('final subtask summary')
-    expect(prompt).toContain('Call finish when this subtask is complete')
+    expect(prompt).toContain('Edit task boundary')
+    expect(prompt).toContain('final task summary')
+    expect(prompt).toContain('Call finish when this task is complete')
   })
 
-  it('when building an inspect subtask run task, then it forbids implementation drift', () => {
-    const subtask = {
+  it('when building an inspect issue task run task, then it forbids implementation drift', () => {
+    const task = {
       createdAt: '2026-06-03T00:00:00.000Z',
       description: 'Catalog relevant tool result shapes and UI files.',
       id: 'subtask-inspect',
@@ -123,17 +123,17 @@ describe('Given issue task prompts', () => {
       title: 'Catalog tool output rendering',
       updatedAt: '2026-06-03T00:00:00.000Z',
     }
-    const prompt = buildIssueSubtaskRunTaskPrompt({
+    const prompt = buildIssueTaskRunTaskPrompt({
       branchName: 'agent/refactor-prompts',
       issue: {
         ...issue,
-        subtasks: [subtask],
+        subtasks: [task],
       },
       project,
-      subtask,
+      task,
     })
 
-    expect(prompt).toContain('Inspect subtask boundary')
+    expect(prompt).toContain('Inspect task boundary')
     expect(prompt).toContain('do not call write_file')
     expect(prompt).toContain('do not continue into implementation')
     expect(prompt).toContain('For catalog-style inspect work')

@@ -1,4 +1,4 @@
-import type { AgentProject, Issue, IssueSubtask } from '@patchlane/shared'
+import type { AgentProject, Issue, IssueTask } from '@patchlane/shared'
 
 export const buildIssueRunTaskPrompt = ({
   branchName,
@@ -49,21 +49,21 @@ export const buildIssueRunTaskPrompt = ({
   ].join('\n')
 }
 
-export const buildIssueSubtaskRunTaskPrompt = ({
+export const buildIssueTaskRunTaskPrompt = ({
   branchName,
   issue,
   project,
-  subtask,
+  task,
 }: {
   branchName: string
   issue: Issue
   project: AgentProject
-  subtask: IssueSubtask
+  task: IssueTask
 }) => {
-  const previousSubtaskSummaries = issue.subtasks
+  const previousTaskSummaries = issue.subtasks
     .filter(
       (item) =>
-        item.sequence < subtask.sequence &&
+        item.sequence < task.sequence &&
         (item.status === 'completed' || item.status === 'skipped'),
     )
     .map(
@@ -72,9 +72,9 @@ export const buildIssueSubtaskRunTaskPrompt = ({
 
   return [
     `Issue: ${issue.title}`,
-    `Current subtask: ${subtask.title}`,
-    `Subtask kind: ${subtask.kind}`,
-    `Subtask status: ${subtask.status}`,
+    `Current task: ${task.title}`,
+    `Task kind: ${task.kind}`,
+    `Task status: ${task.status}`,
     `Priority: ${issue.priority}`,
     `Project: ${project.name}`,
     project.repositoryUrl
@@ -89,60 +89,78 @@ export const buildIssueSubtaskRunTaskPrompt = ({
     'Issue description:',
     issue.description,
     '',
-    'Subtask completion target:',
-    subtask.description || subtask.title,
+    'Task completion target:',
+    task.description || task.title,
     '',
-    previousSubtaskSummaries.length
-      ? ['Previous completed subtasks:', ...previousSubtaskSummaries].join('\n')
-      : 'Previous completed subtasks: none.',
+    previousTaskSummaries.length
+      ? ['Previous completed tasks:', ...previousTaskSummaries].join('\n')
+      : 'Previous completed tasks: none.',
     '',
-    'Subtask execution rules:',
-    '- Complete only this subtask, while preserving the existing issue branch/worktree changes.',
-    '- Use earlier subtask summaries and the current workspace state as context. Do not restart the whole issue from scratch.',
+    'Task execution rules:',
+    '- Complete only this task, while preserving the existing issue branch/worktree changes.',
+    '- Use earlier task summaries and the current workspace state as context. Do not restart the whole issue from scratch.',
     '- Budget tool calls aggressively: after a handful of targeted reads or commands, either finish, make the focused edit, run the narrow verification, or ask for a precise blocker.',
-    getSubtaskKindGuidance(subtask),
-    '- If this is an inspect subtask, finish with concise findings and explicitly say no file changes were needed when appropriate.',
-    '- If this is an edit subtask, make the smallest correct change for this subtask and run focused verification when practical.',
-    '- If this is a verify subtask, run the relevant checks, fix only small directly related failures, and summarize any remaining risk.',
-    '- Use add_issue_comment for meaningful progress, blockers, and a final subtask summary.',
+    getIssueTaskKindGuidance(task),
+    '- If this is an inspect task, finish with concise findings and explicitly say no file changes were needed when appropriate.',
+    '- If this is an edit task, make the smallest correct change for this task and run focused verification when practical.',
+    '- If this is a verify task, run the relevant checks, fix only small directly related failures, and summarize any remaining risk.',
+    '- Use add_issue_comment for meaningful progress, blockers, and a final task summary.',
     '- Before finish, inspect git status/diff when file changes were made.',
-    '- Call finish when this subtask is complete. Do not claim the entire issue is complete unless this is the final subtask and all prior subtasks are done.',
+    '- Call finish when this task is complete. Do not claim the entire issue is complete unless this is the final task and all prior tasks are done.',
     '- If blocked, first add an issue comment with kind=blocked, then request_user_input with the precise missing decision.',
   ].join('\n')
 }
 
-const getSubtaskKindGuidance = (subtask: IssueSubtask) => {
-  if (subtask.kind === 'inspect') {
+export const buildIssueSubtaskRunTaskPrompt = ({
+  branchName,
+  issue,
+  project,
+  subtask,
+}: {
+  branchName: string
+  issue: Issue
+  project: AgentProject
+  subtask: IssueTask
+}) =>
+  buildIssueTaskRunTaskPrompt({
+    branchName,
+    issue,
+    project,
+    task: subtask,
+  })
+
+const getIssueTaskKindGuidance = (task: IssueTask) => {
+  if (task.kind === 'inspect') {
     return [
-      '- Inspect subtask boundary: do not modify files, do not call write_file, do not commit, and do not continue into implementation.',
-      '- Inspect only the smallest set of files needed to answer this subtask. If you have enough findings, add a concise progress/summary issue comment and call finish.',
+      '- Inspect task boundary: do not modify files, do not call write_file, do not commit, and do not continue into implementation.',
+      '- Inspect only the smallest set of files needed to answer this task. If you have enough findings, add a concise progress/summary issue comment and call finish.',
       '- For catalog-style inspect work, produce a compact inventory from existing evidence. Do not keep expanding the search after you can name the relevant files, data shapes, and risks.',
     ].join('\n')
   }
 
-  if (subtask.kind === 'edit') {
+  if (task.kind === 'edit') {
     return [
-      '- Edit subtask boundary: avoid broad rediscovery. Use prior inspect summaries, make the smallest relevant change, then run one focused verification.',
-      '- Do not expand scope into later subtasks. Leave broader verification or publishing to their own subtasks.',
+      '- Edit task boundary: avoid broad rediscovery. Use prior inspect summaries, make the smallest relevant change, then run one focused verification.',
+      '- Do not expand scope into later tasks. Leave broader verification or publishing to their own tasks.',
     ].join('\n')
   }
 
-  if (subtask.kind === 'verify') {
+  if (task.kind === 'verify') {
     return [
-      '- Verify subtask boundary: start from git status/diff and the previous subtask summaries.',
+      '- Verify task boundary: start from git status/diff and the previous task summaries.',
       '- Run the narrowest relevant check. Only edit if the check exposes a small directly related failure.',
       '- Do not perform another broad repository tour during verification.',
     ].join('\n')
   }
 
-  if (subtask.kind === 'publish') {
+  if (task.kind === 'publish') {
     return [
-      '- Publish subtask boundary: inspect status/diff, prepare the requested branch/PR action, and finish with links or blockers.',
+      '- Publish task boundary: inspect status/diff, prepare the requested branch/PR action, and finish with links or blockers.',
       '- Do not make unrelated code changes during publishing.',
     ].join('\n')
   }
 
   return [
-    '- Follow-up subtask boundary: address only the explicit follow-up target and finish once that target is resolved.',
+    '- Follow-up task boundary: address only the explicit follow-up target and finish once that target is resolved.',
   ].join('\n')
 }

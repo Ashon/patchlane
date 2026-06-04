@@ -1,87 +1,37 @@
-import type { AgentRun, Issue } from '@patchlane/shared'
-import { GitBranch, Loader2, Play } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import type { Issue } from '@patchlane/shared'
 import { PageListItem } from '@/components/layout/page-primitives'
 import { IssueStatusBadge, PriorityBadge } from './common'
-import { formatDateTime, hasActiveIssueTask } from './utils'
+import { IssueTaskProgress } from './issue-task-progress'
 
 export const IssueRow = ({
-  agentRun,
   issue,
-  loading,
   onSelect,
-  onStart,
-  planningRun,
-  projectWorkspaceId,
-  requirementRun,
   selected,
 }: {
-  agentRun?: AgentRun
   issue: Issue
-  loading: boolean
   onSelect: () => void
-  onStart: () => void
-  planningRun?: AgentRun
-  projectWorkspaceId?: string
-  requirementRun?: AgentRun
   selected: boolean
 }) => {
-  const workspaceReady = Boolean(issue.workspaceId ?? projectWorkspaceId)
-  const activeTask = hasActiveIssueTask([agentRun, planningRun, requirementRun])
-  const plannedWorkflow = issue.subtasks.length > 0
-  const workflowComplete =
-    plannedWorkflow &&
-    issue.subtasks.every(
-      (subtask) =>
-        subtask.status === 'completed' || subtask.status === 'skipped',
-    )
-  const runDisabledReason = !workspaceReady
-    ? 'Connect a repository or sandbox workspace to this project first.'
-    : activeTask
-      ? 'This issue has an active agent task.'
-      : undefined
-  const canRun = !loading && !runDisabledReason
-  const showRunAction = plannedWorkflow ? !workflowComplete : !issue.agentRunId
-
   return (
     <PageListItem selected={selected}>
-      <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-        <button className="min-w-0 text-left" onClick={onSelect} type="button">
-          <div className="flex min-w-0 items-start gap-2">
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+      <button
+        className="block w-full min-w-0 text-left"
+        onClick={onSelect}
+        type="button"
+      >
+        <div className="flex min-w-0 items-start gap-2">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            <PriorityBadge className="shrink-0" priority={issue.priority} />
+            <span className="min-w-0 truncate text-sm font-medium">
               {issue.title}
             </span>
-            <span className="flex shrink-0 items-center gap-1.5">
-              <IssueStatusBadge status={issue.status} />
-              <PriorityBadge priority={issue.priority} />
-            </span>
-          </div>
-          <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            {issue.branchName ? (
-              <span className="inline-flex min-w-0 items-center gap-1">
-                <GitBranch className="h-3 w-3 shrink-0" />
-                <span className="min-w-0 truncate">{issue.branchName}</span>
-              </span>
-            ) : null}
-            <span className="shrink-0">{formatDateTime(issue.updatedAt)}</span>
-          </div>
-        </button>
-
-        {showRunAction ? (
-          <div className="flex shrink-0 items-center gap-1 md:justify-end">
-            <Button
-              disabled={!canRun}
-              onClick={onStart}
-              size="sm"
-              title={runDisabledReason}
-              type="button"
-            >
-              {loading ? <Loader2 className="animate-spin" /> : <Play />}
-              {plannedWorkflow ? 'Continue' : 'Run'}
-            </Button>
-          </div>
-        ) : null}
-      </div>
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            <IssueStatusBadge status={issue.status} />
+          </span>
+        </div>
+        <IssueTaskProgress className="mt-2" issue={issue} size="compact" />
+      </button>
     </PageListItem>
   )
 }

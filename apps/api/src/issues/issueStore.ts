@@ -11,23 +11,28 @@ import {
   issueEventSchema,
   issueListSchema,
   issueSchema,
+  replaceIssueTasksSchema,
   replaceIssueSubtasksSchema,
   updateAgentProjectSchema,
   updateIssueSchema,
+  updateIssueTaskSchema,
   updateIssueSubtaskSchema,
   type AgentProject,
   type CreateAgentProjectInput,
   type CreateIssueCommentInput,
   type CreateIssueInput,
+  type CreateIssueTaskInput,
   type CreateIssueSubtaskInput,
   type Issue,
   type IssueComment,
   type IssueEvent,
   type IssueStatus,
   type IssueSubtask,
+  type ReplaceIssueTasksInput,
   type ReplaceIssueSubtasksInput,
   type UpdateAgentProjectInput,
   type UpdateIssueInput,
+  type UpdateIssueTaskInput,
   type UpdateIssueSubtaskInput,
 } from '@patchlane/shared'
 import { AppDatabase, optionalString } from '../db/database'
@@ -555,6 +560,7 @@ export class IssueStore {
   async replaceIssueSubtasks(
     issueId: string,
     input: ReplaceIssueSubtasksInput,
+    eventMessage?: string,
   ) {
     const issue = await this.getIssue(issueId)
     const parsed = replaceIssueSubtasksSchema.parse(input)
@@ -580,7 +586,9 @@ export class IssueStore {
     const event = createEvent({
       issueId: issue.id,
       type: 'updated',
-      message: `Issue work plan updated with ${subtasks.length} subtasks.`,
+      message:
+        eventMessage ??
+        `Issue task plan updated with ${subtasks.length} tasks.`,
       createdAt: now,
     })
 
@@ -594,6 +602,16 @@ export class IssueStore {
     })
 
     return { ...updated, events: [...updated.events, event] }
+  }
+
+  async replaceIssueTasks(issueId: string, input: ReplaceIssueTasksInput) {
+    const parsed = replaceIssueTasksSchema.parse(input)
+
+    return this.replaceIssueSubtasks(
+      issueId,
+      { subtasks: parsed.tasks },
+      `Issue task plan updated with ${parsed.tasks.length} tasks.`,
+    )
   }
 
   async updateIssueSubtask(
@@ -649,19 +667,41 @@ export class IssueStore {
     }
   }
 
+  async updateIssueTask(
+    issueId: string,
+    taskId: string,
+    input: UpdateIssueTaskInput,
+    eventMessage = `Task ${taskId.slice(0, 8)} updated.`,
+  ) {
+    return this.updateIssueSubtask(
+      issueId,
+      taskId,
+      updateIssueTaskSchema.parse(input),
+      eventMessage,
+    )
+  }
+
   async markSubtaskRunStarted(
     issueId: string,
     subtaskId: string,
     agentRunId: string,
   ) {
-    return this.updateIssueSubtask(
+    return this.markTaskRunStarted(issueId, subtaskId, agentRunId)
+  }
+
+  async markTaskRunStarted(
+    issueId: string,
+    taskId: string,
+    agentRunId: string,
+  ) {
+    return this.updateIssueTask(
       issueId,
-      subtaskId,
+      taskId,
       {
         agentRunId,
         status: 'running',
       },
-      `Subtask ${subtaskId.slice(0, 8)} started agent run ${agentRunId.slice(0, 8)}.`,
+      `Task ${taskId.slice(0, 8)} started agent run ${agentRunId.slice(0, 8)}.`,
     )
   }
 
@@ -691,7 +731,7 @@ export class IssueStore {
       return { issue, subtask }
     }
 
-    return this.updateIssueSubtask(
+    return this.updateIssueTask(
       issue.id,
       subtask.id,
       {
@@ -699,7 +739,7 @@ export class IssueStore {
         resultSummary: run.resultSummary,
         status: getSubtaskStatusFromRun(run.status),
       },
-      `Subtask ${subtask.id.slice(0, 8)} finished with status ${run.status}.`,
+      `Task ${subtask.id.slice(0, 8)} finished with status ${run.status}.`,
     )
   }
 
@@ -1004,7 +1044,7 @@ const createComment = (
 }
 
 const createSubtask = (
-  subtask: CreateIssueSubtaskInput & {
+  subtask: (CreateIssueSubtaskInput | CreateIssueTaskInput) & {
     createdAt?: string
     issueId: string
     sequence: number

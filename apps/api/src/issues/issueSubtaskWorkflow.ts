@@ -1,37 +1,39 @@
 import type { AgentRun, Issue } from '@patchlane/shared'
 
-export const isIssueSubtaskWorkflowComplete = (issue: Issue) => {
+export const isIssueTaskWorkflowComplete = (issue: Issue) => {
   return (
     issue.subtasks.length > 0 &&
     issue.subtasks.every(
-      (subtask) =>
-        subtask.status === 'completed' || subtask.status === 'skipped',
+      (task) => task.status === 'completed' || task.status === 'skipped',
     )
   )
 }
 
-export const getNextIssueSubtask = (issue: Issue) => {
-  const completedSubtaskIds = new Set(
+export const isIssueSubtaskWorkflowComplete = isIssueTaskWorkflowComplete
+
+export const getNextIssueTask = (issue: Issue) => {
+  const completedTaskIds = new Set(
     issue.subtasks
       .filter(
-        (subtask) =>
-          subtask.status === 'completed' || subtask.status === 'skipped',
+        (task) => task.status === 'completed' || task.status === 'skipped',
       )
-      .map((subtask) => subtask.id),
+      .map((task) => task.id),
   )
 
-  return issue.subtasks.find((subtask) => {
-    if (subtask.status !== 'pending') {
+  return issue.subtasks.find((task) => {
+    if (task.status !== 'pending') {
       return false
     }
 
-    return subtask.dependsOnSubtaskIds.every((subtaskId) =>
-      completedSubtaskIds.has(subtaskId),
+    return task.dependsOnSubtaskIds.every((taskId) =>
+      completedTaskIds.has(taskId),
     )
   })
 }
 
-export const getIssueSubtaskRunKind = (
+export const getNextIssueSubtask = getNextIssueTask
+
+export const getIssueTaskRunKind = (
   kind: Issue['subtasks'][number]['kind'],
 ): AgentRun['kind'] => {
   if (kind === 'verify') {
@@ -48,3 +50,5 @@ export const getIssueSubtaskRunKind = (
 
   return 'coding'
 }
+
+export const getIssueSubtaskRunKind = getIssueTaskRunKind
