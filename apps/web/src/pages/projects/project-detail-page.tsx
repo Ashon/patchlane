@@ -37,6 +37,7 @@ import {
   normalizeIssueDraft,
   normalizeProjectDraft,
   toProjectDraft,
+  upsertAgentRuns,
   upsertIssue,
   upsertProject,
 } from '@/components/issues/utils'
@@ -87,6 +88,7 @@ export const ProjectDetailPage = () => {
   const [savingIssue, setSavingIssue] = useState(false)
   const [planningIssueId, setPlanningIssueId] = useState<string | null>(null)
   const [runningIssueId, setRunningIssueId] = useState<string | null>(null)
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
   const endpointsQuery = useQuery({
     queryKey: queryKeys.endpoints,
@@ -347,6 +349,47 @@ export const ProjectDetailPage = () => {
     }
   }
 
+  const startIssueTask = async (
+    issue: Issue,
+    task: Issue['subtasks'][number],
+  ) => {
+    setUpdatingTaskId(task.id)
+    setLocalError(null)
+
+    try {
+      const response = await api.startIssueTask(issue.id, task.id, {
+        endpointId:
+          issue.endpointId || project?.defaultEndpointId || selectedEndpoint?.id,
+      })
+
+      upsertIssue(queryClient, response.issue)
+      upsertAgentRuns(queryClient, response.runs ?? [response.run])
+      openProjectTaskRun(response.run.id)
+    } catch (actionError) {
+      setLocalError(getErrorMessage(actionError))
+    } finally {
+      setUpdatingTaskId(null)
+    }
+  }
+
+  const updateIssueTaskStatus = async (
+    issue: Issue,
+    task: Issue['subtasks'][number],
+    status: Issue['subtasks'][number]['status'],
+  ) => {
+    setUpdatingTaskId(task.id)
+    setLocalError(null)
+
+    try {
+      const response = await api.updateIssueTask(issue.id, task.id, { status })
+      upsertIssue(queryClient, response.issue)
+    } catch (actionError) {
+      setLocalError(getErrorMessage(actionError))
+    } finally {
+      setUpdatingTaskId(null)
+    }
+  }
+
   if (!project) {
     return (
       <Page className="items-center justify-center p-3">
@@ -475,6 +518,8 @@ export const ProjectDetailPage = () => {
             onPlan={planIssue}
             onSelectIssue={(id) => void setSelectedIssueId(id)}
             onStart={startIssue}
+            onStartTask={startIssueTask}
+            onUpdateTaskStatus={updateIssueTaskStatus}
             planningIssueId={planningIssueId}
             project={project}
             runById={runById}
@@ -482,6 +527,7 @@ export const ProjectDetailPage = () => {
             savingIssue={savingIssue}
             selectedEndpoint={selectedEndpoint}
             selectedIssue={selectedIssue}
+            updatingTaskId={updatingTaskId}
             workspaces={workspaces}
           />
         ) : (

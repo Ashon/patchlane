@@ -1,8 +1,7 @@
-import type { AgentProject, AgentRun, Issue } from '@patchlane/shared'
+import type { AgentRun } from '@patchlane/shared'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { formatTaskRunMetricItems } from './task-run-metrics'
-import { formatIssueReference } from './utils'
 
 export const TaskListMeta = ({
   className,
@@ -22,24 +21,6 @@ export const TaskListMeta = ({
     >
       <span className="min-w-0 truncate">{metrics.join(' · ')}</span>
     </div>
-  )
-}
-
-export const IssueReferenceBadge = ({
-  issue,
-  project,
-}: {
-  issue?: Pick<Issue, 'number'>
-  project?: Pick<AgentProject, 'code'>
-}) => {
-  if (!issue) {
-    return null
-  }
-
-  return (
-    <Badge className="shrink-0 font-mono" variant="outline">
-      {formatIssueReference(issue, project)}
-    </Badge>
   )
 }
 

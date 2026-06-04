@@ -57,6 +57,8 @@ export const ProjectIssuesView = ({
   onPlan,
   onSelectIssue,
   onStart,
+  onStartTask,
+  onUpdateTaskStatus,
   planningIssueId,
   project,
   runById,
@@ -64,6 +66,7 @@ export const ProjectIssuesView = ({
   savingIssue,
   selectedEndpoint,
   selectedIssue,
+  updatingTaskId,
   workspaces,
 }: {
   createIssue: (event: FormEvent<HTMLFormElement>) => Promise<boolean>
@@ -75,6 +78,15 @@ export const ProjectIssuesView = ({
   onPlan: (issue: Issue) => Promise<void>
   onSelectIssue: (id: string | null) => void
   onStart: (issue: Issue) => Promise<void>
+  onStartTask: (
+    issue: Issue,
+    task: Issue['subtasks'][number],
+  ) => Promise<void>
+  onUpdateTaskStatus: (
+    issue: Issue,
+    task: Issue['subtasks'][number],
+    status: Issue['subtasks'][number]['status'],
+  ) => Promise<void>
   planningIssueId: string | null
   project: AgentProject
   runById: Map<string, AgentRun>
@@ -82,6 +94,7 @@ export const ProjectIssuesView = ({
   savingIssue: boolean
   selectedEndpoint: LlmEndpoint | null
   selectedIssue: Issue | null
+  updatingTaskId: string | null
   workspaces: SandboxWorkspace[]
 }) => {
   const [issueDialogOpen, setIssueDialogOpen] = useState(false)
@@ -274,6 +287,7 @@ export const ProjectIssuesView = ({
             <IssueListPane
               issues={issues}
               onSelectIssue={onSelectIssue}
+              project={project}
               selectedIssue={selectedIssue}
               variant="resizable"
             />
@@ -289,10 +303,14 @@ export const ProjectIssuesView = ({
               onOpenRun={onOpenRun}
               onPlan={onPlan}
               onStart={onStart}
+              onStartTask={onStartTask}
+              onUpdateTaskStatus={onUpdateTaskStatus}
               planningIssueId={planningIssueId}
+              project={project}
               runById={runById}
               runningIssueId={runningIssueId}
               selectedIssue={selectedIssue}
+              updatingTaskId={updatingTaskId}
               workspace={selectedWorkspace}
             />
           </ResizablePanel>
@@ -302,6 +320,7 @@ export const ProjectIssuesView = ({
           <IssueListPane
             issues={issues}
             onSelectIssue={onSelectIssue}
+            project={project}
             selectedIssue={selectedIssue}
             variant="stacked"
           />
@@ -309,10 +328,14 @@ export const ProjectIssuesView = ({
             onOpenRun={onOpenRun}
             onPlan={onPlan}
             onStart={onStart}
+            onStartTask={onStartTask}
+            onUpdateTaskStatus={onUpdateTaskStatus}
             planningIssueId={planningIssueId}
+            project={project}
             runById={runById}
             runningIssueId={runningIssueId}
             selectedIssue={selectedIssue}
+            updatingTaskId={updatingTaskId}
             workspace={selectedWorkspace}
           />
         </div>
@@ -324,11 +347,13 @@ export const ProjectIssuesView = ({
 const IssueListPane = ({
   issues,
   onSelectIssue,
+  project,
   selectedIssue,
   variant,
 }: {
   issues: Issue[]
   onSelectIssue: (id: string | null) => void
+  project: AgentProject
   selectedIssue: Issue | null
   variant: 'resizable' | 'stacked'
 }) => {
@@ -347,6 +372,7 @@ const IssueListPane = ({
               issue={issue}
               key={issue.id}
               onSelect={() => onSelectIssue(issue.id)}
+              project={project}
               selected={selectedIssue?.id === issue.id}
             />
           ))}
@@ -364,19 +390,34 @@ const IssueDetailPane = ({
   onOpenRun,
   onPlan,
   onStart,
+  onStartTask,
+  onUpdateTaskStatus,
   planningIssueId,
+  project,
   runById,
   runningIssueId,
   selectedIssue,
+  updatingTaskId,
   workspace,
 }: {
   onOpenRun: (runId: string) => void
   onPlan: (issue: Issue) => Promise<void>
   onStart: (issue: Issue) => Promise<void>
+  onStartTask: (
+    issue: Issue,
+    task: Issue['subtasks'][number],
+  ) => Promise<void>
+  onUpdateTaskStatus: (
+    issue: Issue,
+    task: Issue['subtasks'][number],
+    status: Issue['subtasks'][number]['status'],
+  ) => Promise<void>
   planningIssueId: string | null
+  project: AgentProject
   runById: Map<string, AgentRun>
   runningIssueId: string | null
   selectedIssue: Issue | null
+  updatingTaskId: string | null
   workspace?: SandboxWorkspace
 }) => {
   return (
@@ -387,13 +428,19 @@ const IssueDetailPane = ({
           onOpenRun={onOpenRun}
           onPlan={() => void onPlan(selectedIssue)}
           onStart={() => void onStart(selectedIssue)}
+          onStartTask={(task) => onStartTask(selectedIssue, task)}
+          onUpdateTaskStatus={(task, status) =>
+            onUpdateTaskStatus(selectedIssue, task, status)
+          }
           planning={planningIssueId === selectedIssue.id}
+          project={project}
           run={
             selectedIssue.agentRunId
               ? runById.get(selectedIssue.agentRunId)
               : undefined
           }
           running={runningIssueId === selectedIssue.id}
+          updatingTaskId={updatingTaskId}
           workspace={workspace}
         />
       ) : (

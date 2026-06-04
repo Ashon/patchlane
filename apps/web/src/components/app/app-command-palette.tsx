@@ -33,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/lib/errors'
 import { EmptyState, Field } from '@/components/issues/common'
-import { upsertIssue } from '@/components/issues/utils'
+import { formatIssueReference, upsertIssue } from '@/components/issues/utils'
 
 const priorities = ['low', 'medium', 'high', 'urgent'] satisfies IssuePriority[]
 type CommandView = 'menu' | 'project-picker' | 'issue-form'
@@ -327,6 +327,7 @@ export const AppCommandPalette = ({
                   key={project.id}
                   keywords={[
                     project.description,
+                    project.code,
                     project.repositoryUrl ?? '',
                     project.repositoryRef ?? '',
                   ]}
@@ -356,6 +357,7 @@ export const AppCommandPalette = ({
             <CommandGroup heading="Issues">
               {visibleIssues.map((issue) => {
                 const project = issuesByProject.get(issue.projectId)
+                const reference = formatIssueReference(issue, project)
 
                 return (
                   <CommandItem
@@ -363,9 +365,11 @@ export const AppCommandPalette = ({
                     key={issue.id}
                     keywords={[
                       issue.description,
+                      reference,
                       issue.status,
                       issue.priority,
                       project?.name ?? '',
+                      project?.code ?? '',
                     ]}
                     onSelect={() =>
                       navigateWithSearch(
@@ -376,12 +380,12 @@ export const AppCommandPalette = ({
                         },
                       )
                     }
-                    value={`${issue.title} issue ${issue.id}`}
+                    value={`${reference} ${issue.title} issue ${issue.id}`}
                   >
                     <FileText className="h-4 w-4" />
                     <CommandItemContent
                       subtitle={`${project?.name ?? 'Unknown project'} · ${issue.status}`}
-                      title={issue.title}
+                      title={`${reference} ${issue.title}`}
                     />
                     <CommandMeta>{issue.priority}</CommandMeta>
                   </CommandItem>
@@ -415,6 +419,7 @@ export const AppCommandPalette = ({
               key={project.id}
               keywords={[
                 project.description,
+                project.code,
                 project.repositoryUrl ?? '',
                 project.repositoryRef ?? '',
               ]}

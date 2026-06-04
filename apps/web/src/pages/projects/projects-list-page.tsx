@@ -238,12 +238,11 @@ export const ProjectsListPage = () => {
                             </Badge>
                           ) : null}
                         </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          {project.repositoryUrl || 'Repository not configured'}
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          {project.description}
-                        </div>
+                        {project.description ? (
+                          <div className="mt-1 truncate text-xs text-muted-foreground">
+                            {project.description}
+                          </div>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-2 md:justify-end">
                         <MetricBadge

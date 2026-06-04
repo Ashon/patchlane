@@ -24,6 +24,7 @@ import {
   AgentRunKindBadge,
   AgentRunStatusBadge,
   EmptyState,
+  IssueReferenceBadge,
   IssueTaskKindBadge,
   IssueTaskStatusBadge,
   MetricBadge,
@@ -35,11 +36,7 @@ import {
   isTaskWorkItemRunning,
   type TaskWorkItem,
 } from './task-work-items'
-import {
-  IssueReferenceBadge,
-  TaskListMeta,
-  TaskRunMetricBadge,
-} from './task-list-meta'
+import { TaskListMeta, TaskRunMetricBadge } from './task-list-meta'
 import { formatIssueReference } from './utils'
 
 const projectTaskPanelIds = ['project-task-list', 'project-task-chat']

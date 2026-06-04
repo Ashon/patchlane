@@ -14,6 +14,7 @@ import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import {
+  IssueReferenceBadge,
   IssueTaskKindBadge,
   IssueTaskStatusBadge,
 } from '@/components/issues/common'
@@ -22,7 +23,6 @@ import {
   type TaskWorkItem,
 } from '@/components/issues/task-work-items'
 import {
-  IssueReferenceBadge,
   TaskListMeta,
   TaskRunMetricBadge,
 } from '@/components/issues/task-list-meta'

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type {
   AgentProject,
   AgentRun,
+  Issue,
   IssueTaskKind,
   IssueTaskStatus,
   IssuePriority,
@@ -21,6 +22,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { formatIssueReference } from './utils'
 
 export const Field = ({
   children,
@@ -182,6 +184,24 @@ export const IssueStatusBadge = ({ status }: { status: IssueStatus }) => {
     >
       {status}
     </StateBadge>
+  )
+}
+
+export const IssueReferenceBadge = ({
+  issue,
+  project,
+}: {
+  issue?: Pick<Issue, 'number'>
+  project?: Pick<AgentProject, 'code'>
+}) => {
+  if (!issue) {
+    return null
+  }
+
+  return (
+    <Badge className="shrink-0 font-mono" variant="outline">
+      {formatIssueReference(issue, project)}
+    </Badge>
   )
 }
 

@@ -1,4 +1,10 @@
-import type { AgentRun, Issue, SandboxWorkspace } from '@patchlane/shared'
+import type {
+  AgentProject,
+  AgentRun,
+  Issue,
+  IssueTaskStatus,
+  SandboxWorkspace,
+} from '@patchlane/shared'
 import {
   Bot,
   CheckCircle2,
@@ -6,6 +12,7 @@ import {
   CircleAlert,
   CircleDot,
   CirclePause,
+  CircleSlash2,
   CircleX,
   ClipboardList,
   Flag,
@@ -14,6 +21,7 @@ import {
   ListChecks,
   Loader2,
   Play,
+  RotateCcw,
   type LucideIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -22,9 +30,14 @@ import { Markdown } from '@/components/ui/markdown'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Page, PageHeader } from '@/components/layout/page-primitives'
 import { cn } from '@/lib/utils'
-import { EmptyState, IssueStatusBadge, PriorityBadge } from './common'
+import {
+  EmptyState,
+  IssueReferenceBadge,
+  IssueStatusBadge,
+  PriorityBadge,
+} from './common'
 import { IssueTaskProgress } from './issue-task-progress'
-import { formatDateTime } from './utils'
+import { formatDateTime, formatIssueReference } from './utils'
 
 type IssueComment = Issue['comments'][number]
 type IssueTask = Issue['subtasks'][number]
@@ -34,18 +47,29 @@ export const IssueDetail = ({
   onOpenRun,
   onPlan,
   onStart,
+  onStartTask,
+  onUpdateTaskStatus,
   planning,
+  project,
   run,
   running,
+  updatingTaskId,
   workspace,
 }: {
   issue: Issue
   onOpenRun: (runId: string) => void
   onPlan: () => void
   onStart: () => void
+  onStartTask: (task: IssueTask) => Promise<void>
+  onUpdateTaskStatus: (
+    task: IssueTask,
+    status: IssueTaskStatus,
+  ) => Promise<void>
   planning: boolean
+  project: AgentProject
   run?: AgentRun
   running: boolean
+  updatingTaskId: string | null
   workspace?: SandboxWorkspace
 }) => {
   const workflowComplete = isIssueWorkflowComplete(issue)
@@ -54,7 +78,8 @@ export const IssueDetail = ({
       run.status === 'running' ||
       run.status === 'awaiting_user'
     : false
-  const actionBusy = planning || running || activeRun
+  const actionBusy = planning || running || activeRun || updatingTaskId !== null
+  const issueReference = formatIssueReference(issue, project)
 
   return (
     <Page>
@@ -62,11 +87,12 @@ export const IssueDetail = ({
         actions={<IssueStatusBadge status={issue.status} />}
         description={issue.description}
         icon={<PriorityBadge priority={issue.priority} />}
-        title={issue.title}
+        title={`${issueReference} ${issue.title}`}
       />
 
       <div className="border-b bg-muted/20 px-3 py-2">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <IssueFact label="Issue" value={issueReference} />
           <IssueFact label="Sandbox" value={workspace?.name || 'Not ready'} />
           <IssueFact label="Branch" value={issue.branchName || 'Not started'} />
           <IssueFact label="PR" value={issue.prUrl || 'Not created'} />
@@ -165,8 +191,12 @@ export const IssueDetail = ({
               {issue.subtasks.map((task) => (
                 <IssueTaskItem
                   key={task.id}
+                  actionDisabled={actionBusy}
+                  onStartTask={() => onStartTask(task)}
                   onOpenRun={onOpenRun}
+                  onUpdateStatus={(status) => onUpdateTaskStatus(task, status)}
                   task={task}
+                  updating={updatingTaskId === task.id}
                 />
               ))}
             </div>
@@ -182,7 +212,12 @@ export const IssueDetail = ({
             />
             <div className="space-y-2">
               {issue.comments.map((comment) => (
-                <IssueActivityItem comment={comment} key={comment.id} />
+                <IssueActivityItem
+                  comment={comment}
+                  issue={issue}
+                  key={comment.id}
+                  project={project}
+                />
               ))}
             </div>
           </section>
@@ -236,18 +271,37 @@ const IssueSectionHeader = ({
 )
 
 const IssueTaskItem = ({
+  actionDisabled,
   onOpenRun,
+  onStartTask,
+  onUpdateStatus,
   task,
+  updating,
 }: {
+  actionDisabled: boolean
   onOpenRun: (runId: string) => void
+  onStartTask: () => Promise<void>
+  onUpdateStatus: (status: IssueTaskStatus) => Promise<void>
   task: IssueTask
+  updating: boolean
 }) => {
   const meta = getTaskStatusMeta(task.status)
   const Icon = meta.icon
   const agentRunId = task.agentRunId
+  const canStart =
+    task.status === 'pending' ||
+    task.status === 'failed' ||
+    task.status === 'awaiting_user'
+  const canMarkDone = task.status !== 'completed'
+  const canSkip =
+    task.status === 'pending' ||
+    task.status === 'failed' ||
+    task.status === 'awaiting_user'
+  const canReopen = task.status === 'completed' || task.status === 'skipped'
+  const disabled = actionDisabled || updating
 
   return (
-    <article className="grid min-w-0 grid-cols-[16px_1fr_auto] gap-2 border-b px-2.5 py-2 last:border-b-0">
+    <article className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)] gap-2 border-b px-2.5 py-2 last:border-b-0 sm:grid-cols-[16px_minmax(0,1fr)_auto]">
       <Icon className={cn('mt-0.5 h-3.5 w-3.5', meta.iconClassName)} />
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -271,23 +325,84 @@ const IssueTaskItem = ({
           </p>
         ) : null}
       </div>
-      {agentRunId ? (
-        <Button
-          className="self-start"
-          onClick={() => onOpenRun(agentRunId)}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          <Bot />
-          Run
-        </Button>
-      ) : null}
+      <div className="col-start-2 flex flex-wrap justify-end gap-1 self-start sm:col-start-auto">
+        {agentRunId ? (
+          <Button
+            onClick={() => onOpenRun(agentRunId)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <Bot />
+            Run
+          </Button>
+        ) : null}
+        {canStart ? (
+          <Button
+            disabled={disabled}
+            onClick={() => void onStartTask()}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {updating ? <Loader2 className="animate-spin" /> : <Play />}
+            {task.status === 'pending' ? 'Start' : 'Retry'}
+          </Button>
+        ) : null}
+        {canMarkDone ? (
+          <Button
+            disabled={disabled}
+            onClick={() => void onUpdateStatus('completed')}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {updating ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <CheckCircle2 />
+            )}
+            Done
+          </Button>
+        ) : null}
+        {canSkip ? (
+          <Button
+            disabled={disabled}
+            onClick={() => void onUpdateStatus('skipped')}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <CircleSlash2 />
+            Skip
+          </Button>
+        ) : null}
+        {canReopen ? (
+          <Button
+            disabled={disabled}
+            onClick={() => void onUpdateStatus('pending')}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <RotateCcw />
+            Reopen
+          </Button>
+        ) : null}
+      </div>
     </article>
   )
 }
 
-const IssueActivityItem = ({ comment }: { comment: IssueComment }) => {
+const IssueActivityItem = ({
+  comment,
+  issue,
+  project,
+}: {
+  comment: IssueComment
+  issue: Issue
+  project: AgentProject
+}) => {
   const meta = getCommentKindMeta(comment.kind)
   const Icon = meta.icon
 
@@ -296,6 +411,7 @@ const IssueActivityItem = ({ comment }: { comment: IssueComment }) => {
       <Icon className={cn('mt-0.5 h-3.5 w-3.5', meta.iconClassName)} />
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
+          <IssueReferenceBadge issue={issue} project={project} />
           <span className="font-semibold">{meta.label}</span>
           <span className="text-muted-foreground">by</span>
           <span className="font-medium">{formatCommentAuthor(comment)}</span>
