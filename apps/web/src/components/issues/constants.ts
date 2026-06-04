@@ -2,6 +2,7 @@ import type { IssueDraft, ProjectDraft } from './types'
 
 export const emptyProjectDraft: ProjectDraft = {
   targetId: null,
+  code: '',
   name: '',
   description: '',
   repositoryUrl: '',

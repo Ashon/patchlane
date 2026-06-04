@@ -6,7 +6,7 @@ import type {
   SandboxWorkspace,
 } from '@patchlane/shared'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Bot, Loader2, Plus, Trash2 } from 'lucide-react'
+import { Bot, Loader2, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -21,6 +21,11 @@ import {
   buildTaskWorkItems,
   type TaskWorkItem,
 } from '@/components/issues/task-work-items'
+import {
+  IssueReferenceBadge,
+  TaskListMeta,
+  TaskRunMetricBadge,
+} from '@/components/issues/task-list-meta'
 import { formatIssueReference } from '@/components/issues/utils'
 import {
   ErrorBanner,
@@ -105,11 +110,9 @@ export const AgentTasksPage = () => {
     <AgentTaskListPane
       agentRunning={agentRunning}
       issueById={issueById}
-      onDeleteAgentRun={onDeleteAgentRun}
       onSelectAgentRun={onSelectAgentRun}
       onStartNewAgentRun={onStartNewAgentRun}
       projectById={projectById}
-      runDeletingId={runDeletingId}
       items={taskItems}
       selectedRun={selectedRun}
       variant={resizableLayoutEnabled ? 'resizable' : 'stacked'}
@@ -122,13 +125,17 @@ export const AgentTasksPage = () => {
       agentTaskDraft={agentTaskDraft}
       endpoint={endpoint}
       error={error}
+      issueById={issueById}
+      projectById={projectById}
       onAgentReplyChange={onAgentReplyChange}
       onAgentTaskChange={onAgentTaskChange}
       onContinueAgentRun={onContinueAgentRun}
       onCreateAgentRun={onCreateAgentRun}
+      onDeleteAgentRun={onDeleteAgentRun}
       onRewindAgentRun={onRewindAgentRun}
       onSendAgentMessage={onSendAgentMessage}
       onStopAgentRun={onStopAgentRun}
+      runDeletingId={runDeletingId}
       selectedRun={selectedRun}
       selectedRunStreaming={selectedRunStreaming}
       selectedWorkspace={selectedWorkspace}
@@ -180,22 +187,18 @@ const AgentTaskListPane = ({
   agentRunning,
   items,
   issueById,
-  onDeleteAgentRun,
   onSelectAgentRun,
   onStartNewAgentRun,
   projectById,
-  runDeletingId,
   selectedRun,
   variant,
 }: {
   agentRunning: boolean
   items: TaskWorkItem[]
   issueById: Map<string, Issue>
-  onDeleteAgentRun: (run: AgentRun) => void
   onSelectAgentRun: (run: AgentRun) => void
   onStartNewAgentRun: () => void
   projectById: Map<string, AgentProject>
-  runDeletingId: string | null
   selectedRun: AgentRun | null
   variant: 'resizable' | 'stacked'
 }) => {
@@ -233,10 +236,8 @@ const AgentTaskListPane = ({
 
                 return (
                   <AgentIssueTaskCard
-                    deleting={run ? runDeletingId === run.id : false}
                     item={item}
                     key={item.id}
-                    onDelete={run ? () => onDeleteAgentRun(run) : undefined}
                     onSelect={run ? () => onSelectAgentRun(run) : undefined}
                     project={projectById.get(item.issue.projectId)}
                     selected={run ? selectedRun?.id === run.id : false}
@@ -246,9 +247,7 @@ const AgentTaskListPane = ({
 
               return (
                 <AgentRunCard
-                  deleting={runDeletingId === item.run.id}
                   key={item.id}
-                  onDelete={() => onDeleteAgentRun(item.run)}
                   onSelect={() => onSelectAgentRun(item.run)}
                   issue={
                     item.run.issueId
@@ -282,13 +281,17 @@ const AgentTaskContentPane = ({
   agentTaskDraft,
   endpoint,
   error,
+  issueById,
+  projectById,
   onAgentReplyChange,
   onAgentTaskChange,
   onContinueAgentRun,
   onCreateAgentRun,
+  onDeleteAgentRun,
   onRewindAgentRun,
   onSendAgentMessage,
   onStopAgentRun,
+  runDeletingId,
   selectedRun,
   selectedRunStreaming,
   selectedWorkspace,
@@ -298,17 +301,30 @@ const AgentTaskContentPane = ({
   agentTaskDraft: string
   endpoint: LlmEndpoint | null
   error: string | null
+  issueById: Map<string, Issue>
+  projectById: Map<string, AgentProject>
   onAgentReplyChange: (value: string) => void
   onAgentTaskChange: (value: string) => void
   onContinueAgentRun: (run: AgentRun) => void
   onCreateAgentRun: (event: FormEvent<HTMLFormElement>) => void
+  onDeleteAgentRun: (run: AgentRun) => void
   onRewindAgentRun: (run: AgentRun, messageId: string) => void
   onSendAgentMessage: () => void
   onStopAgentRun: () => void
+  runDeletingId: string | null
   selectedRun: AgentRun | null
   selectedRunStreaming: boolean
   selectedWorkspace: SandboxWorkspace | null
 }) => {
+  const selectedIssue = selectedRun?.issueId
+    ? issueById.get(selectedRun.issueId)
+    : undefined
+  const selectedProject = selectedIssue
+    ? projectById.get(selectedIssue.projectId)
+    : selectedRun?.projectId
+      ? projectById.get(selectedRun.projectId)
+      : undefined
+
   return (
     <PagePane className="h-full" minHeight="detail">
       <PageHeader
@@ -318,7 +334,14 @@ const AgentTaskContentPane = ({
               <StateBadge tone="warning">No workspace</StateBadge>
             ) : null}
             {selectedRun ? (
-              <AgentRunStatusBadge status={selectedRun.status} />
+              <>
+                <AgentRunStatusBadge status={selectedRun.status} />
+                <TaskRunMetricBadge run={selectedRun} />
+                <TaskActionsMenu
+                  deleting={runDeletingId === selectedRun.id}
+                  onDelete={() => onDeleteAgentRun(selectedRun)}
+                />
+              </>
             ) : null}
             {selectedRun?.context ? (
               <AgentRunContextBadge context={selectedRun.context} />
@@ -328,9 +351,15 @@ const AgentTaskContentPane = ({
         description={getAgentTaskHeaderDescription(
           selectedRun,
           selectedWorkspace,
+          selectedIssue,
+          selectedProject,
         )}
         icon={<Bot className="h-4 w-4" />}
-        title={selectedRun ? selectedRun.title : 'Agent task'}
+        title={
+          selectedRun
+            ? getAgentTaskHeaderTitle(selectedRun, selectedIssue)
+            : 'Agent task'
+        }
       />
       <div className="min-h-0 flex-1">
         {selectedRun ? (
@@ -378,29 +407,20 @@ const AgentTaskContentPane = ({
 }
 
 const AgentIssueTaskCard = ({
-  deleting,
   item,
-  onDelete,
   onSelect,
   project,
   selected,
 }: {
-  deleting: boolean
   item: Extract<TaskWorkItem, { type: 'issueTask' }>
-  onDelete?: () => void
   onSelect?: () => void
   project?: AgentProject
   selected: boolean
 }) => {
-  const metaItems = [project?.name, formatIssueReference(item.issue)].filter(
-    (value): value is string => Boolean(value),
-  )
   const mainContent = (
     <div className="min-w-0 overflow-hidden text-left">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0">
-          <IssueTaskKindBadge kind={item.task.kind} />
-        </span>
+        <IssueReferenceBadge issue={item.issue} project={project} />
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
           {item.task.title}
         </h3>
@@ -408,141 +428,117 @@ const AgentIssueTaskCard = ({
           <IssueTaskStatusBadge status={item.task.status} />
         </span>
       </div>
-      <TaskCardMeta items={metaItems} />
+      <div className="flex min-w-0 items-center gap-1.5">
+        <IssueTaskKindBadge kind={item.task.kind} />
+        <TaskListMeta run={item.run} />
+      </div>
     </div>
   )
-  const deleteButton =
-    item.run && onDelete ? (
-      <Button
-        disabled={deleting}
-        onClick={onDelete}
-        size="icon-sm"
-        type="button"
-        variant="ghost"
-      >
-        {deleting ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Trash2 className="h-4 w-4" />
-        )}
-      </Button>
-    ) : null
-
-  const content = (
-    <>
-      {mainContent}
-      {deleteButton}
-    </>
-  )
-
   if (!item.run || !onSelect) {
     return (
       <PageListItem interactive={false} selected={selected}>
-        <div className="grid min-w-0 grid-cols-1 gap-2 py-0">{content}</div>
+        {mainContent}
       </PageListItem>
     )
   }
 
   return (
     <PageListItem selected={selected}>
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
-        <button
-          className="min-w-0 overflow-hidden text-left"
-          onClick={onSelect}
-          type="button"
-        >
-          {mainContent}
-        </button>
-        {deleteButton}
-      </div>
+      <button
+        className="min-w-0 overflow-hidden text-left"
+        onClick={onSelect}
+        type="button"
+      >
+        {mainContent}
+      </button>
     </PageListItem>
   )
 }
 
 const AgentRunCard = ({
-  deleting,
   issue,
-  onDelete,
   onSelect,
   project,
   run,
   selected,
 }: {
-  deleting: boolean
   issue?: Issue
-  onDelete: () => void
   onSelect: () => void
   project?: AgentProject
   run: AgentRun
   selected: boolean
 }) => {
-  const description = getAgentRunCardDescription(run, issue)
-  const scopeLabel = getAgentRunCardScope(run, issue)
-  const metaItems = [
-    project?.name,
-    scopeLabel,
-    run.context ? formatAgentRunContext(run.context) : null,
-  ].filter((value): value is string => Boolean(value))
-
   return (
     <PageListItem selected={selected}>
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
-        <button
-          className="min-w-0 overflow-hidden text-left"
-          onClick={onSelect}
-          type="button"
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0">
-              <AgentRunKindBadge kind={run.kind} />
-            </span>
-            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
-              {run.title}
-            </h3>
-            <span className="shrink-0">
-              <AgentRunStatusBadge status={run.status} />
-            </span>
-          </div>
-          {description ? (
-            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-              {description}
-            </p>
-          ) : null}
-          <TaskCardMeta className="mt-1" items={metaItems} />
-        </button>
-        <Button
-          disabled={deleting}
-          onClick={onDelete}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          {deleting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Trash2 className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
+      <button
+        className="min-w-0 overflow-hidden text-left"
+        onClick={onSelect}
+        type="button"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <IssueReferenceBadge issue={issue} project={project} />
+          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
+            {run.title}
+          </h3>
+          <span className="shrink-0">
+            <AgentRunStatusBadge status={run.status} />
+          </span>
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <AgentRunKindBadge kind={run.kind} />
+          <TaskListMeta run={run} />
+        </div>
+      </button>
     </PageListItem>
   )
 }
 
-const TaskCardMeta = ({
-  className,
-  items,
+const TaskActionsMenu = ({
+  deleting,
+  onDelete,
 }: {
-  className?: string
-  items: string[]
+  deleting: boolean
+  onDelete: () => void
 }) => {
-  if (!items.length) {
-    return null
-  }
+  const [open, setOpen] = useState(false)
 
   return (
-    <p className={cn('mt-1 min-w-0 truncate text-xs text-muted-foreground', className)}>
-      {items.join(' · ')}
-    </p>
+    <div className="relative">
+      <Button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((value) => !value)}
+        size="icon-sm"
+        type="button"
+        variant="outline"
+      >
+        <MoreHorizontal />
+      </Button>
+      {open ? (
+        <div
+          className="absolute right-0 top-full z-50 mt-1 min-w-36 rounded-md border bg-popover p-1"
+          role="menu"
+        >
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+            disabled={deleting}
+            onClick={() => {
+              onDelete()
+              setOpen(false)
+            }}
+            role="menuitem"
+            type="button"
+          >
+            {deleting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+            Delete task
+          </button>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -573,13 +569,35 @@ const AgentRunKindBadge = ({ kind }: { kind: AgentRun['kind'] }) => {
 const getAgentTaskHeaderDescription = (
   run: AgentRun | null,
   workspace: SandboxWorkspace | null,
+  issue?: Issue,
+  project?: AgentProject,
 ) => {
+  if (run) {
+    const task = getRunIssueTask(run, issue)
+    const items = [
+      issue ? formatIssueReference(issue, project) : null,
+      task?.kind,
+      run.branchName,
+    ].filter(Boolean)
+
+    return items.length ? items.join(' · ') : 'Agent task chat'
+  }
+
   const items = [
-    run ? getAgentRunKindLabel(run.kind) : null,
     workspace?.name,
   ].filter(Boolean)
 
   return items.length ? items.join(' · ') : 'Select a task or start a new run'
+}
+
+const getAgentTaskHeaderTitle = (run: AgentRun, issue?: Issue) => {
+  return getRunIssueTask(run, issue)?.title ?? run.title
+}
+
+const getRunIssueTask = (run: AgentRun, issue?: Issue) => {
+  return issue?.subtasks.find(
+    (task) => task.id === run.subtaskId || task.agentRunId === run.id,
+  )
 }
 
 const getAgentRunKindLabel = (kind: AgentRun['kind']) => {
@@ -632,117 +650,6 @@ const AgentRunContextBadge = ({
         : ''}
     </Badge>
   )
-}
-
-const formatAgentRunContext = (context: NonNullable<AgentRun['context']>) => {
-  const usage = getAgentRunContextUsage(context)
-
-  if (context.strategy === 'compacted') {
-    return `context ${usage}% · compacted ${context.summarizedMessages}`
-  }
-
-  return `context ${usage}%`
-}
-
-const getAgentRunPromptPreview = (run: AgentRun) => {
-  const prompt = run.messages.find(
-    (message) => message.role === 'user',
-  )?.content
-
-  if (!prompt) {
-    return ''
-  }
-
-  return (
-    prompt
-      .split('\n')
-      .find((line) => line.trim())
-      ?.trim() ?? ''
-  )
-}
-
-const getAgentRunCardDescription = (run: AgentRun, issue?: Issue) => {
-  const prompt = getAgentRunPromptPreview(run)
-
-  if (!prompt || isGeneratedAgentRunPrompt(prompt)) {
-    return ''
-  }
-
-  const description = stripAgentRunPromptLabel(prompt)
-
-  if (isRedundantAgentRunText(description, [run.title, issue?.title])) {
-    return ''
-  }
-
-  return description
-}
-
-const getAgentRunCardScope = (run: AgentRun, issue?: Issue) => {
-  if (!issue) {
-    return ''
-  }
-
-  const task = issue.subtasks.find(
-    (item) => item.id === run.subtaskId || item.agentRunId === run.id,
-  )
-
-  if (task) {
-    return `Task: ${task.title}`
-  }
-
-  if (isRedundantAgentRunText(issue.title, [run.title])) {
-    return ''
-  }
-
-  return formatIssueReference(issue)
-}
-
-const isGeneratedAgentRunPrompt = (value: string) => {
-  const normalized = normalizeAgentRunText(value)
-
-  return [
-    'analyze requirements for this issue',
-    'create a concrete work plan for the coding agent',
-    'implement the requested change run verification commit to a branch push and open a pr',
-  ].some((prefix) => normalized.startsWith(prefix))
-}
-
-const stripAgentRunPromptLabel = (value: string) => {
-  return value
-    .replace(/^(issue|task|prompt)\s*:\s*/i, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-const isRedundantAgentRunText = (
-  value: string,
-  candidates: Array<string | undefined>,
-) => {
-  const normalized = normalizeAgentRunText(value)
-
-  if (!normalized) {
-    return true
-  }
-
-  return candidates.some((candidate) => {
-    const candidateText = normalizeAgentRunText(candidate ?? '')
-
-    if (!candidateText) {
-      return false
-    }
-
-    return (
-      candidateText.includes(normalized) || normalized.includes(candidateText)
-    )
-  })
-}
-
-const normalizeAgentRunText = (value: string) => {
-  return value
-    .toLowerCase()
-    .replace(/^(work plan|requirements|issue|task|prompt)\s*:\s*/i, '')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
 }
 
 const getAgentRunContextUsage = (context: NonNullable<AgentRun['context']>) => {

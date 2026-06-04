@@ -120,6 +120,7 @@ export class AppDatabase {
 
       CREATE TABLE IF NOT EXISTS agent_projects (
         id TEXT PRIMARY KEY,
+        code TEXT NOT NULL DEFAULT '',
         name TEXT NOT NULL,
         description TEXT NOT NULL,
         repository_url TEXT,
@@ -143,6 +144,7 @@ export class AppDatabase {
 
       CREATE TABLE IF NOT EXISTS issues (
         id TEXT PRIMARY KEY,
+        number INTEGER NOT NULL,
         title TEXT NOT NULL,
         description TEXT NOT NULL,
         project_id TEXT NOT NULL REFERENCES agent_projects (id),
@@ -224,6 +226,7 @@ export class AppDatabase {
     this.ensureColumn('agent_projects', 'repository_url', 'TEXT')
     this.ensureColumn('agent_projects', 'repository_ref', 'TEXT')
     this.ensureColumn('agent_projects', 'workspace_id', 'TEXT')
+    this.ensureColumn('agent_projects', 'code', "TEXT NOT NULL DEFAULT ''")
     this.ensureColumn(
       'sandbox_workspaces',
       'kind',
@@ -243,8 +246,11 @@ export class AppDatabase {
     this.ensureColumn('issues', 'requirement_run_id', 'TEXT')
     this.ensureColumn('issues', 'planning_run_id', 'TEXT')
     this.ensureColumn('issues', 'pr_url', 'TEXT')
+    this.ensureColumn('issues', 'number', 'INTEGER NOT NULL DEFAULT 0')
     this.rebuildAgentRunsIfNeeded()
     this.rebuildIssuesIfNeeded()
+    this.backfillProjectCodes()
+    this.backfillIssueNumbers()
     this.sqlite.exec(`
       CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at
         ON agent_runs (created_at DESC);
@@ -263,6 +269,9 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_issues_project_status
         ON issues (project_id, status);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_project_number
+        ON issues (project_id, number);
 
       CREATE INDEX IF NOT EXISTS idx_issues_updated_at
         ON issues (updated_at DESC);
@@ -403,6 +412,7 @@ export class AppDatabase {
       this.sqlite.exec(`
         CREATE TABLE issues_new (
           id TEXT PRIMARY KEY,
+          number INTEGER NOT NULL DEFAULT 0,
           title TEXT NOT NULL,
           description TEXT NOT NULL,
           project_id TEXT NOT NULL REFERENCES agent_projects (id),
@@ -421,11 +431,11 @@ export class AppDatabase {
         );
 
         INSERT INTO issues_new (
-          id, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id,
+          id, number, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id,
           agent_run_id, status, priority, analysis, branch_name, pr_url, created_at, updated_at
         )
         SELECT
-          id, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id,
+          id, number, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id,
           agent_run_id, status, priority, analysis, branch_name, pr_url, created_at, updated_at
         FROM issues;
 
@@ -436,6 +446,73 @@ export class AppDatabase {
       this.sqlite.exec('PRAGMA foreign_keys = ON')
     }
   }
+
+  private backfillIssueNumbers() {
+    const missingRows = this.sqlite
+      .prepare(
+        'SELECT id, project_id FROM issues WHERE number <= 0 ORDER BY project_id ASC, created_at ASC, id ASC',
+      )
+      .all() as Array<{ id: string; project_id: string }>
+
+    if (missingRows.length === 0) {
+      return
+    }
+
+    const nextByProjectId = new Map<string, number>()
+    const maxRows = this.sqlite
+      .prepare(
+        'SELECT project_id, MAX(number) AS max_number FROM issues GROUP BY project_id',
+      )
+      .all() as Array<{ max_number: number | null; project_id: string }>
+
+    for (const row of maxRows) {
+      nextByProjectId.set(row.project_id, row.max_number ?? 0)
+    }
+
+    const update = this.sqlite.prepare(
+      'UPDATE issues SET number = ? WHERE id = ?',
+    )
+
+    this.transaction(() => {
+      for (const row of missingRows) {
+        const next = (nextByProjectId.get(row.project_id) ?? 0) + 1
+        nextByProjectId.set(row.project_id, next)
+        update.run(next, row.id)
+      }
+    })
+  }
+
+  private backfillProjectCodes() {
+    const rows = this.sqlite
+      .prepare(
+        "SELECT id, name, code FROM agent_projects ORDER BY created_at ASC, id ASC",
+      )
+      .all() as Array<{ code: string | null; id: string; name: string }>
+    const usedCodes = new Set(
+      rows
+        .map((row) => normalizeProjectCode(row.code ?? ''))
+        .filter((code) => code.length > 0),
+    )
+    const missingRows = rows.filter(
+      (row) => normalizeProjectCode(row.code ?? '').length === 0,
+    )
+
+    if (missingRows.length === 0) {
+      return
+    }
+
+    const update = this.sqlite.prepare(
+      'UPDATE agent_projects SET code = ? WHERE id = ?',
+    )
+
+    this.transaction(() => {
+      for (const row of missingRows) {
+        const code = getUniqueProjectCode(row.name, usedCodes)
+        usedCodes.add(code)
+        update.run(code, row.id)
+      }
+    })
+  }
 }
 
 export const toSqlBoolean = (value: boolean) => (value ? 1 : 0)
@@ -444,3 +521,56 @@ export const fromSqlBoolean = (value: unknown) => Number(value) === 1
 
 export const optionalString = (value: unknown) =>
   typeof value === 'string' && value.length > 0 ? value : undefined
+
+const normalizeProjectCode = (value: string) =>
+  value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+
+const getUniqueProjectCode = (name: string, usedCodes: Set<string>) => {
+  const base = getProjectCodeBase(name)
+
+  if (!usedCodes.has(base)) {
+    return base
+  }
+
+  for (let index = 2; index < 1000; index += 1) {
+    const suffix = String(index)
+    const candidate = `${base.slice(0, Math.max(2, 8 - suffix.length))}${suffix}`
+
+    if (!usedCodes.has(candidate)) {
+      return candidate
+    }
+  }
+
+  return `${base.slice(0, 5)}${Date.now().toString(36).slice(-3).toUpperCase()}`
+}
+
+const getProjectCodeBase = (name: string) => {
+  const normalized = normalizeProjectCode(name)
+
+  if (/^[A-Z][A-Z0-9]{1,7}$/.test(normalized)) {
+    return normalized
+  }
+
+  if (normalized === 'PATCHLANE') {
+    return 'PLN'
+  }
+
+  const words = name
+    .trim()
+    .split(/[^A-Za-z0-9]+/)
+    .map((word) => normalizeProjectCode(word))
+    .filter(Boolean)
+
+  if (words.length >= 2) {
+    return words
+      .map((word) => word[0])
+      .join('')
+      .slice(0, 8)
+      .padEnd(3, 'X')
+  }
+
+  const consonants = normalized.replace(/[AEIOU]/g, '')
+  const candidate = (consonants || normalized).slice(0, 3).padEnd(3, 'X')
+
+  return candidate || 'PRJ'
+}

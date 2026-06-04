@@ -25,9 +25,26 @@ const optionalShortTextSchema = z.preprocess((value) => {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : undefined
 }, z.string().max(200).optional())
+const projectCodeSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const normalized = value.trim().toUpperCase()
+  return normalized.length > 0 ? normalized : undefined
+}, z.string().regex(/^[A-Z][A-Z0-9]{1,7}$/))
+const optionalProjectCodeSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const normalized = value.trim().toUpperCase()
+  return normalized.length > 0 ? normalized : undefined
+}, z.string().regex(/^[A-Z][A-Z0-9]{1,7}$/).optional())
 
 export const agentProjectSchema = z.object({
   id: z.string().min(1),
+  code: projectCodeSchema,
   name: z.string().trim().min(1).max(80),
   description: z.string().trim().min(1).max(1_000),
   repositoryUrl: optionalUrlSchema,
@@ -40,6 +57,7 @@ export const agentProjectSchema = z.object({
 })
 
 export const createAgentProjectSchema = z.object({
+  code: optionalProjectCodeSchema,
   name: z.string().trim().min(1).max(80),
   description: z.string().trim().min(1).max(1_000),
   repositoryUrl: optionalUrlSchema,
@@ -131,6 +149,7 @@ export const issueSubtaskSchema = z.object({
 
 export const issueSchema = z.object({
   id: z.string().min(1),
+  number: z.number().int().positive(),
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().min(1).max(20_000),
   projectId: z.string().min(1),

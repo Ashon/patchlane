@@ -4,6 +4,7 @@ import type {
 
 export type ProjectDraft = {
   targetId: string | null
+  code: string
   name: string
   description: string
   repositoryUrl: string

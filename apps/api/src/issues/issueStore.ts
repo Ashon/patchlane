@@ -54,6 +54,7 @@ type IssueRunStartOptions = {
 
 type AgentProjectRow = {
   id: string
+  code: string
   name: string
   description: string
   repository_url: string | null
@@ -67,6 +68,7 @@ type AgentProjectRow = {
 
 type IssueRow = {
   id: string
+  number: number
   title: string
   description: string
   project_id: string
@@ -144,6 +146,7 @@ export class IssueStore {
     const project = agentProjectSchema.parse({
       ...parsed,
       id: randomUUID(),
+      code: this.getAvailableProjectCode(parsed.code ?? parsed.name),
       createdAt: now,
       updatedAt: now,
     })
@@ -161,6 +164,9 @@ export class IssueStore {
     const updated = agentProjectSchema.parse({
       ...current,
       ...parsed,
+      code: parsed.code
+        ? this.getAvailableProjectCode(parsed.code, current.id)
+        : current.code,
       id: current.id,
       createdAt: current.createdAt,
       updatedAt: new Date().toISOString(),
@@ -171,12 +177,13 @@ export class IssueStore {
         .prepare(
           `
           UPDATE agent_projects
-          SET name = ?, description = ?, repository_url = ?, repository_ref = ?, workspace_id = ?,
+          SET code = ?, name = ?, description = ?, repository_url = ?, repository_ref = ?, workspace_id = ?,
             default_endpoint_id = ?, branch_prefix = ?, updated_at = ?
           WHERE id = ?
         `,
         )
         .run(
+          updated.code,
           updated.name,
           updated.description,
           updated.repositoryUrl ?? null,
@@ -225,27 +232,30 @@ export class IssueStore {
     await this.getProject(parsed.projectId)
 
     const now = new Date().toISOString()
-    const issue = issueSchema.parse({
-      ...parsed,
-      id: randomUUID(),
-      status: 'backlog',
-      createdAt: now,
-      updatedAt: now,
-      events: [],
-    })
-    const event = createEvent({
-      issueId: issue.id,
-      type: 'created',
-      message: 'Issue registered.',
-    })
-    const next = { ...issue, events: [event] }
+    let next: Issue | undefined
 
     this.database.transaction(() => {
-      this.insertIssue(next)
+      const issue = issueSchema.parse({
+        ...parsed,
+        id: randomUUID(),
+        number: this.getNextIssueNumber(parsed.projectId),
+        status: 'backlog',
+        createdAt: now,
+        updatedAt: now,
+        events: [],
+      })
+      const event = createEvent({
+        issueId: issue.id,
+        type: 'created',
+        message: 'Issue registered.',
+      })
+      const created = { ...issue, events: [event] }
+      next = created
+      this.insertIssue(created)
       this.insertEvents([event])
     })
 
-    return next
+    return issueSchema.parse(next)
   }
 
   async updateIssue(
@@ -756,13 +766,14 @@ export class IssueStore {
       .prepare(
         `
         INSERT INTO agent_projects (
-          id, name, description, repository_url, repository_ref, workspace_id,
+          id, code, name, description, repository_url, repository_ref, workspace_id,
           default_endpoint_id, branch_prefix, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
         project.id,
+        project.code,
         project.name,
         project.description,
         project.repositoryUrl ?? null,
@@ -778,6 +789,7 @@ export class IssueStore {
   private toProject(row: AgentProjectRow) {
     return agentProjectSchema.parse({
       id: row.id,
+      code: row.code,
       name: row.name,
       description: row.description,
       repositoryUrl: optionalString(row.repository_url),
@@ -816,6 +828,7 @@ export class IssueStore {
 
     return issueSchema.parse({
       id: row.id,
+      number: row.number,
       title: row.title,
       description: row.description,
       projectId: row.project_id,
@@ -842,13 +855,14 @@ export class IssueStore {
       .prepare(
         `
         INSERT INTO issues (
-          id, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id, agent_run_id,
+          id, number, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id, agent_run_id,
           status, priority, analysis, branch_name, pr_url, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
         issue.id,
+        issue.number,
         issue.title,
         issue.description,
         issue.projectId,
@@ -982,6 +996,41 @@ export class IssueStore {
         subtask.issueId,
       )
   }
+
+  private getNextIssueNumber(projectId: string) {
+    const row = this.database.sqlite
+      .prepare('SELECT MAX(number) AS max_number FROM issues WHERE project_id = ?')
+      .get(projectId) as { max_number: number | null } | undefined
+
+    return (row?.max_number ?? 0) + 1
+  }
+
+  private getAvailableProjectCode(value: string, currentProjectId?: string) {
+    const base = getProjectCodeBase(value)
+    const existingRows = this.database.sqlite
+      .prepare('SELECT id, code FROM agent_projects')
+      .all() as Array<{ code: string; id: string }>
+    const usedCodes = new Set(
+      existingRows
+        .filter((row) => row.id !== currentProjectId)
+        .map((row) => row.code.toUpperCase()),
+    )
+
+    if (!usedCodes.has(base)) {
+      return base
+    }
+
+    for (let index = 2; index < 1000; index += 1) {
+      const suffix = String(index)
+      const candidate = `${base.slice(0, Math.max(2, 8 - suffix.length))}${suffix}`
+
+      if (!usedCodes.has(candidate)) {
+        return candidate
+      }
+    }
+
+    return `${base.slice(0, 5)}${Date.now().toString(36).slice(-3).toUpperCase()}`
+  }
 }
 
 const toIssueEvent = (row: IssueEventRow) => {
@@ -1105,6 +1154,40 @@ const buildBranchName = (prefix: string, title: string, id: string) => {
 
   return `${prefix}/${slug || 'issue'}-${id.slice(0, 8)}`
 }
+
+const getProjectCodeBase = (value: string) => {
+  const normalized = normalizeProjectCode(value)
+
+  if (/^[A-Z][A-Z0-9]{1,7}$/.test(normalized)) {
+    return normalized
+  }
+
+  if (normalized === 'PATCHLANE') {
+    return 'PLN'
+  }
+
+  const words = value
+    .trim()
+    .split(/[^A-Za-z0-9]+/)
+    .map((word) => normalizeProjectCode(word))
+    .filter(Boolean)
+
+  if (words.length >= 2) {
+    return words
+      .map((word) => word[0])
+      .join('')
+      .slice(0, 8)
+      .padEnd(3, 'X')
+  }
+
+  const consonants = normalized.replace(/[AEIOU]/g, '')
+  const candidate = (consonants || normalized).slice(0, 3).padEnd(3, 'X')
+
+  return candidate || 'PRJ'
+}
+
+const normalizeProjectCode = (value: string) =>
+  value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
 
 const getIssueStatusFromRun = (
   run: Pick<AgentRun, 'prUrl' | 'status'>,

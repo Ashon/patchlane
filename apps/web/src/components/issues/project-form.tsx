@@ -36,13 +36,25 @@ export const ProjectForm = ({
 
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px_160px]">
         <Field label="Name">
           <Input
             onChange={(event) => onChange({ name: event.target.value })}
             placeholder="patchlane"
             required
             value={draft.name}
+          />
+        </Field>
+        <Field label="Code">
+          <Input
+            className="font-mono uppercase"
+            maxLength={8}
+            onChange={(event) =>
+              onChange({ code: event.target.value.toUpperCase() })
+            }
+            pattern="[A-Z][A-Z0-9]{1,7}"
+            placeholder="PLN"
+            value={draft.code}
           />
         </Field>
         <Field label="Branch prefix">

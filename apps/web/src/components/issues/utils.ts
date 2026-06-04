@@ -16,6 +16,7 @@ export const normalizeProjectDraft = (
   draft: ProjectDraft,
 ): CreateAgentProjectInput | UpdateAgentProjectInput => ({
   branchPrefix: draft.branchPrefix.trim() || 'agent',
+  code: draft.code.trim().toUpperCase() || undefined,
   defaultEndpointId: draft.defaultEndpointId || undefined,
   description: draft.description.trim(),
   name: draft.name.trim(),
@@ -32,6 +33,7 @@ export const toProjectDraft = (
     ? {
         targetId: project.id,
         branchPrefix: project.branchPrefix,
+        code: project.code,
         defaultEndpointId: project.defaultEndpointId ?? '',
         description: project.description,
         name: project.name,
@@ -137,8 +139,10 @@ export const upsertAgentRuns = (
 export const formatDateTime = (value: string) =>
   new Date(value).toLocaleString()
 
-export const formatIssueReference = (issue: Pick<Issue, 'id'>) =>
-  `#${issue.id.slice(0, 8)}`
+export const formatIssueReference = (
+  issue: Pick<Issue, 'number'>,
+  project?: Pick<AgentProject, 'code'>,
+) => `${project?.code ?? 'ISS'}-${issue.number}`
 
 export const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) {

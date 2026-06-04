@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { AgentRun, Issue, LlmEndpoint } from '@patchlane/shared'
+import type {
+  AgentProject,
+  AgentRun,
+  Issue,
+  LlmEndpoint,
+} from '@patchlane/shared'
 import { Bot, ListChecks } from 'lucide-react'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -30,6 +35,11 @@ import {
   isTaskWorkItemRunning,
   type TaskWorkItem,
 } from './task-work-items'
+import {
+  IssueReferenceBadge,
+  TaskListMeta,
+  TaskRunMetricBadge,
+} from './task-list-meta'
 import { formatIssueReference } from './utils'
 
 const projectTaskPanelIds = ['project-task-list', 'project-task-chat']
@@ -47,6 +57,7 @@ export const ProjectTasksView = ({
   onSendMessage,
   onStopRun,
   runs,
+  project,
   selectedRun,
   selectedRunStreaming,
 }: {
@@ -61,6 +72,7 @@ export const ProjectTasksView = ({
   onSendMessage: () => void
   onStopRun: () => void
   runs: AgentRun[]
+  project: AgentProject
   selectedRun: AgentRun | null
   selectedRunStreaming: boolean
 }) => {
@@ -102,6 +114,7 @@ export const ProjectTasksView = ({
       issueById={issueById}
       items={taskItems}
       onSelectRun={onSelectRun}
+      project={project}
       selectedRun={selectedRun}
       variant={resizableLayoutEnabled ? 'resizable' : 'stacked'}
     />
@@ -117,6 +130,7 @@ export const ProjectTasksView = ({
       onRewindRun={onRewindRun}
       onSendMessage={onSendMessage}
       onStopRun={onStopRun}
+      project={project}
       selectedRun={selectedRun}
       selectedRunStreaming={selectedRunStreaming}
     />
@@ -190,12 +204,14 @@ const TaskListPane = ({
   issueById,
   items,
   onSelectRun,
+  project,
   selectedRun,
   variant,
 }: {
   issueById: Map<string, Issue>
   items: TaskWorkItem[]
   onSelectRun: (runId: string) => void
+  project: AgentProject
   selectedRun: AgentRun | null
   variant: 'resizable' | 'stacked'
 }) => {
@@ -215,6 +231,7 @@ const TaskListPane = ({
               issueById={issueById}
               key={item.id}
               onSelectRun={onSelectRun}
+              project={project}
               selectedRun={selectedRun}
             />
           ))}
@@ -232,11 +249,13 @@ const TaskListItem = ({
   issueById,
   item,
   onSelectRun,
+  project,
   selectedRun,
 }: {
   issueById: Map<string, Issue>
   item: TaskWorkItem
   onSelectRun: (runId: string) => void
+  project: AgentProject
   selectedRun: AgentRun | null
 }) => {
   if (item.type === 'issueTask') {
@@ -244,6 +263,7 @@ const TaskListItem = ({
       <IssueTaskListItem
         item={item}
         onSelectRun={onSelectRun}
+        project={project}
         selected={item.run ? selectedRun?.id === item.run.id : false}
       />
     )
@@ -251,11 +271,6 @@ const TaskListItem = ({
 
   const run = item.run
   const issue = run.issueId ? issueById.get(run.issueId) : undefined
-  const task = getRunIssueTask(run, issue)
-  const metaItems = [
-    issue ? formatIssueReference(issue) : null,
-    task ? `Task: ${task.title}` : null,
-  ].filter((value): value is string => Boolean(value))
 
   return (
     <PageListItem
@@ -266,13 +281,16 @@ const TaskListItem = ({
       <button onClick={() => onSelectRun(run.id)} type="button">
         <div className="grid min-w-0 gap-1">
           <div className="flex min-w-0 items-center gap-2">
-            <AgentRunKindBadge kind={run.kind} />
+            <IssueReferenceBadge issue={issue} project={project} />
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">
               {run.title}
             </span>
             <AgentRunStatusBadge status={run.status} />
           </div>
-          {metaItems.length ? <TaskItemMeta items={metaItems} /> : null}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <AgentRunKindBadge kind={run.kind} />
+            <TaskListMeta run={run} />
+          </div>
         </div>
       </button>
     </PageListItem>
@@ -282,23 +300,27 @@ const TaskListItem = ({
 const IssueTaskListItem = ({
   item,
   onSelectRun,
+  project,
   selected,
 }: {
   item: Extract<TaskWorkItem, { type: 'issueTask' }>
   onSelectRun: (runId: string) => void
+  project: AgentProject
   selected: boolean
 }) => {
-  const metaItems = [formatIssueReference(item.issue)]
   const content = (
     <div className="grid min-w-0 gap-1">
       <div className="flex min-w-0 items-center gap-2">
-        <IssueTaskKindBadge kind={item.task.kind} />
+        <IssueReferenceBadge issue={item.issue} project={project} />
         <span className="min-w-0 flex-1 truncate text-sm font-semibold">
           {item.task.title}
         </span>
         <IssueTaskStatusBadge status={item.task.status} />
       </div>
-      <TaskItemMeta items={metaItems} />
+      <div className="flex min-w-0 items-center gap-1.5">
+        <IssueTaskKindBadge kind={item.task.kind} />
+        <TaskListMeta run={item.run} />
+      </div>
     </div>
   )
 
@@ -321,12 +343,6 @@ const IssueTaskListItem = ({
   )
 }
 
-const TaskItemMeta = ({ items }: { items: string[] }) => (
-  <p className="min-w-0 truncate text-xs text-muted-foreground">
-    {items.join(' · ')}
-  </p>
-)
-
 const TaskChatPane = ({
   agentReplyDraft,
   endpoint,
@@ -337,6 +353,7 @@ const TaskChatPane = ({
   onRewindRun,
   onSendMessage,
   onStopRun,
+  project,
   selectedRun,
   selectedRunStreaming,
 }: {
@@ -349,9 +366,14 @@ const TaskChatPane = ({
   onRewindRun: (run: AgentRun, messageId: string) => void
   onSendMessage: () => void
   onStopRun: () => void
+  project: AgentProject
   selectedRun: AgentRun | null
   selectedRunStreaming: boolean
 }) => {
+  const selectedIssue = selectedRun?.issueId
+    ? issueById.get(selectedRun.issueId)
+    : undefined
+
   return (
     <section className="h-full min-h-[520px] min-w-0 bg-background lg:min-h-0">
       {selectedRun ? (
@@ -359,18 +381,17 @@ const TaskChatPane = ({
           <PageHeader
             actions={
               <>
-                <AgentRunKindBadge kind={selectedRun.kind} />
                 <AgentRunStatusBadge status={selectedRun.status} />
+                <TaskRunMetricBadge run={selectedRun} />
               </>
             }
             description={getTaskDetailDescription(
               selectedRun,
-              selectedRun.issueId
-                ? issueById.get(selectedRun.issueId)
-                : undefined,
+              selectedIssue,
+              project,
             )}
             icon={<Bot className="h-4 w-4" />}
-            title={selectedRun.title}
+            title={getTaskDetailTitle(selectedRun, selectedIssue)}
           />
           <div className="min-h-0 flex-1">
             <AgentTaskConversation
@@ -396,17 +417,26 @@ const TaskChatPane = ({
   )
 }
 
-const getTaskDetailDescription = (run: AgentRun, issue?: Issue) => {
+const getTaskDetailDescription = (
+  run: AgentRun,
+  issue: Issue | undefined,
+  project: AgentProject,
+) => {
   const task = getRunIssueTask(run, issue)
-  const items = [issue ? `Issue: ${issue.title}` : null, run.branchName].filter(
-    Boolean,
-  )
+  const items = [
+    issue ? formatIssueReference(issue, project) : null,
+    run.branchName,
+  ]
 
   if (task) {
-    items.splice(1, 0, `Task: ${task.title}`)
+    items.splice(1, 0, task.kind)
   }
 
-  return items.length ? items.join(' · ') : 'Agent task chat'
+  return items.filter(Boolean).join(' · ') || 'Agent task chat'
+}
+
+const getTaskDetailTitle = (run: AgentRun, issue?: Issue) => {
+  return getRunIssueTask(run, issue)?.title ?? run.title
 }
 
 const getRunIssueTask = (run: AgentRun, issue?: Issue) => {

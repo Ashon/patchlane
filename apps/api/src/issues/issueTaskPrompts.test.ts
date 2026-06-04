@@ -8,6 +8,7 @@ import {
 describe('Given issue task prompts', () => {
   const project: AgentProject = {
     branchPrefix: 'agent',
+    code: 'PLN',
     createdAt: '2026-06-03T00:00:00.000Z',
     description: 'Keep changes focused and verify with tests.',
     id: 'project-1',
@@ -23,6 +24,7 @@ describe('Given issue task prompts', () => {
     description: 'Refactor prompt construction out of the route.',
     events: [],
     id: 'issue-1',
+    number: 1,
     priority: 'high',
     projectId: project.id,
     status: 'ready',

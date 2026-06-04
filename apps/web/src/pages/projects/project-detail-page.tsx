@@ -496,6 +496,7 @@ export const ProjectDetailPage = () => {
             onSelectRun={(runId) => void setSelectedAgentRunId(runId)}
             onSendMessage={onSendAgentMessage}
             onStopRun={onStopAgentRun}
+            project={project}
             runs={projectRuns}
             selectedRun={selectedProjectRun}
             selectedRunStreaming={selectedProjectRunStreaming}

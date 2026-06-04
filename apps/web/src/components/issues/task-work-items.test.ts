@@ -69,6 +69,7 @@ const issue = (patch: Partial<Issue> = {}): Issue => ({
   description: 'Improve task tracking.',
   events: [],
   id: 'issue-1',
+  number: 1,
   priority: 'medium',
   projectId: 'project-1',
   status: 'running',

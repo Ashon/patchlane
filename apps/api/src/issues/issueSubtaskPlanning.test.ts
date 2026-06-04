@@ -8,6 +8,7 @@ import {
 describe('Given issue task planning', () => {
   const project: AgentProject = {
     branchPrefix: 'agent',
+    code: 'PLN',
     createdAt: '2026-06-03T00:00:00.000Z',
     description: 'Keep changes focused and verify with tests.',
     id: 'project-1',
@@ -25,6 +26,7 @@ describe('Given issue task planning', () => {
       'Allow complex agentic coding issues to be split into tasks and verified incrementally.',
     events: [],
     id: 'issue-1',
+    number: 1,
     priority: 'high',
     projectId: project.id,
     status: 'ready',

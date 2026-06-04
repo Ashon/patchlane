@@ -61,6 +61,47 @@ describe('Given issue comments', () => {
     expect(reloaded.events).toHaveLength(1)
   })
 
+  it('when issues are created, then they receive stable project-scoped numbers', async () => {
+    const firstProject = await store.createProject({
+      branchPrefix: 'agent',
+      description: 'Track project scoped issue numbers.',
+      name: 'Patchlane',
+    })
+    const secondProject = await store.createProject({
+      branchPrefix: 'agent',
+      description: 'Track separate project scoped issue numbers.',
+      name: 'Patchlane Labs',
+    })
+
+    const firstIssue = await store.createIssue({
+      description: 'First issue in the project.',
+      priority: 'medium',
+      projectId: firstProject.id,
+      title: 'Add issue numbers',
+    })
+    const secondIssue = await store.createIssue({
+      description: 'Second issue in the project.',
+      priority: 'medium',
+      projectId: firstProject.id,
+      title: 'Display issue numbers',
+    })
+    const otherProjectIssue = await store.createIssue({
+      description: 'First issue in another project.',
+      priority: 'medium',
+      projectId: secondProject.id,
+      title: 'Start numbering independently',
+    })
+
+    expect(firstIssue.number).toBe(1)
+    expect(secondIssue.number).toBe(2)
+    expect(otherProjectIssue.number).toBe(1)
+    expect(firstProject.code).toBe('PLN')
+    expect(secondProject.code).toBe('PLX')
+    await expect(store.getIssue(secondIssue.id)).resolves.toMatchObject({
+      number: 2,
+    })
+  })
+
   it('when an issue task plan is stored, then the issue exposes ordered tasks', async () => {
     const project = await store.createProject({
       branchPrefix: 'agent',
