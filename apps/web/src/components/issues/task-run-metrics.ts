@@ -69,7 +69,14 @@ export const getTaskRunMetrics = (run: AgentRun): TaskRunMetrics => {
   }
 }
 
-export const formatTaskRunMetricItems = (run?: AgentRun) => {
+export const formatTaskRunMetricItems = (
+  run?: AgentRun,
+  options: {
+    includeAwaitingUser?: boolean
+  } = {},
+) => {
+  const { includeAwaitingUser = true } = options
+
   if (!run) {
     return ['not started']
   }
@@ -94,7 +101,7 @@ export const formatTaskRunMetricItems = (run?: AgentRun) => {
     items.push(formatCount(metrics.retryCount, 'retry', 'retries'))
   }
 
-  if (metrics.awaitingUser > 0) {
+  if (includeAwaitingUser && metrics.awaitingUser > 0) {
     items.push('awaiting user')
   }
 

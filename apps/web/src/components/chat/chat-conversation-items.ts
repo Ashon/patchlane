@@ -27,6 +27,7 @@ export const createConversationRenderItems = (
   groups: ConversationMessageGroup[],
   showStreamingPlaceholder: boolean,
   preserveEmptyMessages: boolean,
+  compactAgentWork = false,
 ) => {
   return groups.flatMap<ConversationRenderItem>((group) => {
     if (group.role === 'user') {
@@ -44,12 +45,53 @@ export const createConversationRenderItems = (
         (message) => message.role === 'assistant' || message.role === 'system',
       ) ?? visibleMessages[0]
 
-    return visibleMessages.map((message, index) => ({
-      id: message.id,
-      role: 'assistant',
-      message,
-      metaMessage: index === 0 ? metaMessage : undefined,
-    }))
+    if (!compactAgentWork) {
+      return visibleMessages.map((message, index) => ({
+        id: message.id,
+        role: 'assistant',
+        message,
+        metaMessage: index === 0 ? metaMessage : undefined,
+      }))
+    }
+
+    const items: ConversationRenderItem[] = []
+    let workMessages: ConversationMessage[] = []
+    let hasAssignedMetaMessage = false
+
+    const flushWorkMessages = () => {
+      if (!workMessages.length) {
+        return
+      }
+
+      items.push({
+        id: `work-${workMessages[0]!.id}`,
+        role: 'agent-work',
+        messages: workMessages,
+        metaMessage: hasAssignedMetaMessage ? undefined : metaMessage,
+      })
+      hasAssignedMetaMessage = true
+      workMessages = []
+    }
+
+    for (const message of visibleMessages) {
+      if (isAgentWorkMessage(message, showStreamingPlaceholder)) {
+        workMessages.push(message)
+        continue
+      }
+
+      flushWorkMessages()
+      items.push({
+        id: message.id,
+        role: 'assistant',
+        message,
+        metaMessage: hasAssignedMetaMessage ? undefined : metaMessage,
+      })
+      hasAssignedMetaMessage = true
+    }
+
+    flushWorkMessages()
+
+    return items
   })
 }
 
@@ -60,6 +102,10 @@ export const getEstimatedRenderItemSize = (item?: ConversationRenderItem) => {
 
   if (item.role === 'user') {
     return item.message.content.length > 320 ? 120 : 72
+  }
+
+  if (item.role === 'agent-work') {
+    return 44
   }
 
   if (item.message.role === 'tool') {
@@ -75,6 +121,29 @@ export const getEstimatedRenderItemSize = (item?: ConversationRenderItem) => {
   }
 
   return item.message.content.length > 480 ? 140 : 80
+}
+
+const isAgentWorkMessage = (
+  message: ConversationMessage,
+  showStreamingPlaceholder: boolean,
+) => {
+  if (message.role === 'tool') {
+    return true
+  }
+
+  const isAssistant = message.role === 'assistant' || message.role === 'system'
+  const content = message.content.trim()
+  const reasoning = (message.reasoning ?? '').trim()
+  const showThinkingPlaceholder =
+    showStreamingPlaceholder &&
+    isAssistant &&
+    message.status === 'streaming' &&
+    !content &&
+    !reasoning
+
+  return (
+    (isAssistant && Boolean(reasoning) && !content) || showThinkingPlaceholder
+  )
 }
 
 const shouldRenderAssistantPart = (
@@ -100,4 +169,3 @@ const shouldRenderAssistantPart = (
     Boolean(content)
   )
 }
-

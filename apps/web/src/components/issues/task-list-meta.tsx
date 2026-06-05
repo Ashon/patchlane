@@ -24,8 +24,21 @@ export const TaskListMeta = ({
   )
 }
 
-export const TaskRunMetricBadge = ({ run }: { run: AgentRun }) => (
-  <Badge className="max-w-[260px] truncate" variant="outline">
-    {formatTaskRunMetricItems(run).join(' · ')}
+export const TaskRunMetricBadge = ({
+  className,
+  includeAwaitingUser = true,
+  run,
+}: {
+  className?: string
+  includeAwaitingUser?: boolean
+  run: AgentRun
+}) => (
+  <Badge
+    className={cn('max-w-[260px] min-w-0 truncate', className)}
+    variant="outline"
+  >
+    <span className="min-w-0 truncate">
+      {formatTaskRunMetricItems(run, { includeAwaitingUser }).join(' · ')}
+    </span>
   </Badge>
 )

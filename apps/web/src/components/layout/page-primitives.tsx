@@ -91,7 +91,7 @@ export const PageHeader = ({
   return (
     <header
       className={cn(
-        'flex min-h-12 flex-col gap-2 border-b px-3 py-1.5 md:flex-row md:items-center md:justify-between',
+        'flex min-h-12 flex-col gap-2 border-b bg-[var(--surface-page-header)] px-3 py-1.5 md:flex-row md:items-center md:justify-between',
         className,
       )}
     >
@@ -127,7 +127,12 @@ export const PageToolbar = ({
   className?: string
 }) => {
   return (
-    <div className={cn('border-b bg-muted/20 px-3 py-1.5', className)}>
+    <div
+      className={cn(
+        'border-b bg-[var(--surface-page-toolbar)] px-3 py-1.5',
+        className,
+      )}
+    >
       <div className="flex flex-wrap items-center gap-1">{children}</div>
     </div>
   )
@@ -145,7 +150,7 @@ export const PageActionBar = ({
   return (
     <div
       className={cn(
-        'flex min-h-10 flex-col gap-2 border-b bg-background px-3 py-2 md:flex-row md:items-center md:justify-between',
+        'flex min-h-10 flex-col gap-2 border-b bg-[var(--surface-page-toolbar)] px-3 py-2 md:flex-row md:items-center md:justify-between',
         className,
       )}
     >
@@ -243,7 +248,7 @@ export const PageListItem = ({
   return (
     <Comp
       className={cn(
-        'grid w-full min-w-0 gap-2 border-l-2 border-l-transparent px-3 py-2.5',
+        'grid w-full min-w-0 gap-2 border-l-2 border-l-transparent p-2',
         interactive && 'transition-colors hover:bg-muted/45',
         selected && 'border-l-primary bg-primary/5',
         className,

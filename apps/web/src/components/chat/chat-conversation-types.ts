@@ -35,8 +35,15 @@ export type ConversationRenderItem =
       message: ConversationMessage
       metaMessage?: ConversationMessage
     }
+  | {
+      id: string
+      role: 'agent-work'
+      messages: ConversationMessage[]
+      metaMessage?: ConversationMessage
+    }
 
 export type ChatConversationProps = {
+  compactAgentWork?: boolean
   contentClassName?: string
   emptyState: ReactNode
   error?: string | null
@@ -58,4 +65,3 @@ export type ChatConversationProps = {
   showStreamingPlaceholder?: boolean
   wideMessages?: boolean
 }
-

@@ -43,7 +43,7 @@ export const AgentWorkDisclosureTrigger = ({
     <button
       aria-expanded={open}
       className={cn(
-        'flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-left leading-none text-muted-foreground transition-colors hover:text-foreground',
+        'flex w-full min-w-0 cursor-pointer items-center gap-1.5 overflow-hidden rounded-sm text-left leading-none text-muted-foreground transition-colors hover:text-foreground',
         compact ? 'h-6 text-xs' : 'h-8 text-sm',
         className,
       )}
@@ -51,39 +51,41 @@ export const AgentWorkDisclosureTrigger = ({
       {...props}
     >
       {icon}
-      <AgentWorkInlineText
-        className={cn('shrink-0 text-foreground', labelClassName)}
-        shimmer={!hasPreview && streaming}
-      >
-        {label}
-      </AgentWorkInlineText>
-      {title ? (
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
         <AgentWorkInlineText
-          className={cn('shrink font-medium text-foreground', titleClassName)}
+          className={cn('max-w-[45%] shrink-0 text-foreground', labelClassName)}
+          shimmer={!hasPreview && streaming}
         >
-          {title}
+          {label}
         </AgentWorkInlineText>
-      ) : null}
-      {status ? (
-        <span
-          className={cn(
-            'shrink-0 rounded-full px-1.5 py-0 text-[11px] font-medium leading-4',
-            statusClassName,
-          )}
-        >
-          {status}
-        </span>
-      ) : null}
-      {hasPreview ? (
-        <AgentWorkInlineText
-          className="flex-1 text-left text-muted-foreground"
-          shimmer={streaming}
-        >
-          {preview}
-        </AgentWorkInlineText>
-      ) : (
-        <span className="min-w-0 flex-1" />
-      )}
+        {title ? (
+          <AgentWorkInlineText
+            className={cn('shrink font-medium text-foreground', titleClassName)}
+          >
+            {title}
+          </AgentWorkInlineText>
+        ) : null}
+        {status ? (
+          <span
+            className={cn(
+              'max-w-[42%] shrink-0 truncate rounded-full px-1.5 py-0 text-[11px] font-medium leading-4',
+              statusClassName,
+            )}
+          >
+            {status}
+          </span>
+        ) : null}
+        {hasPreview ? (
+          <AgentWorkInlineText
+            className="flex-1 text-left text-muted-foreground"
+            shimmer={streaming}
+          >
+            {preview}
+          </AgentWorkInlineText>
+        ) : (
+          <span className="min-w-0 flex-1" />
+        )}
+      </span>
       <span
         className={cn(
           'grid h-4 w-4 shrink-0 place-items-center transition-transform',
@@ -182,7 +184,7 @@ export const AgentWorkDisclosurePanel = ({
   return (
     <div
       className={cn(
-        'mt-1.5 min-w-0 rounded-md border bg-muted/20',
+        'mt-1.5 max-w-full min-w-0 overflow-hidden rounded-md border bg-muted/20',
         compact ? 'space-y-2 p-2 text-xs' : 'space-y-2.5 p-3 text-sm',
         className,
       )}

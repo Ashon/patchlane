@@ -1,12 +1,31 @@
 import type {
   AgentProject,
   AgentRun,
+  AgentRunStatus,
   Issue,
+  IssueTaskStatus,
   LlmEndpoint,
   SandboxWorkspace,
 } from '@patchlane/shared'
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Bot, Loader2, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+import {
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  Clock3,
+  Loader2,
+  MoreHorizontal,
+  PauseCircle,
+  Plus,
+  Trash2,
+  XCircle,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -16,7 +35,6 @@ import { AgentTaskConversation } from '@/components/agent/agent-task-conversatio
 import {
   IssueReferenceBadge,
   IssueTaskKindBadge,
-  IssueTaskStatusBadge,
 } from '@/components/issues/common'
 import {
   buildTaskWorkItems,
@@ -329,24 +347,30 @@ const AgentTaskContentPane = ({
     <PagePane className="h-full" minHeight="detail">
       <PageHeader
         actions={
-          <>
+          <AgentTaskHeaderActions>
             {!selectedWorkspace ? (
               <StateBadge tone="warning">No workspace</StateBadge>
             ) : null}
             {selectedRun ? (
               <>
                 <AgentRunStatusBadge status={selectedRun.status} />
-                <TaskRunMetricBadge run={selectedRun} />
-                <TaskActionsMenu
-                  deleting={runDeletingId === selectedRun.id}
-                  onDelete={() => onDeleteAgentRun(selectedRun)}
+                <TaskRunMetricBadge
+                  className="max-w-[220px] sm:max-w-[280px]"
+                  includeAwaitingUser={false}
+                  run={selectedRun}
                 />
               </>
             ) : null}
             {selectedRun?.context ? (
               <AgentRunContextBadge context={selectedRun.context} />
             ) : null}
-          </>
+            {selectedRun ? (
+              <TaskActionsMenu
+                deleting={runDeletingId === selectedRun.id}
+                onDelete={() => onDeleteAgentRun(selectedRun)}
+              />
+            ) : null}
+          </AgentTaskHeaderActions>
         }
         description={getAgentTaskHeaderDescription(
           selectedRun,
@@ -406,6 +430,14 @@ const AgentTaskContentPane = ({
   )
 }
 
+const AgentTaskHeaderActions = ({ children }: { children: ReactNode }) => {
+  return (
+    <div className="flex min-w-0 max-w-full items-center gap-1.5">
+      {children}
+    </div>
+  )
+}
+
 const AgentIssueTaskCard = ({
   item,
   onSelect,
@@ -425,7 +457,7 @@ const AgentIssueTaskCard = ({
           {item.task.title}
         </h3>
         <span className="shrink-0">
-          <IssueTaskStatusBadge status={item.task.status} />
+          <TaskStatusIconBadge status={item.task.status} />
         </span>
       </div>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -481,7 +513,7 @@ const AgentRunCard = ({
             {run.title}
           </h3>
           <span className="shrink-0">
-            <AgentRunStatusBadge status={run.status} />
+            <TaskStatusIconBadge status={run.status} />
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-1.5">
@@ -503,12 +535,13 @@ const TaskActionsMenu = ({
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <Button
         aria-expanded={open}
         aria-haspopup="menu"
+        className="h-6 w-6 shadow-xs"
         onClick={() => setOpen((value) => !value)}
-        size="icon-sm"
+        size="icon-xs"
         type="button"
         variant="outline"
       >
@@ -564,6 +597,83 @@ const AgentRunKindBadge = ({ kind }: { kind: AgentRun['kind'] }) => {
   }
 
   return <Badge variant="outline">{getAgentRunKindLabel(kind)}</Badge>
+}
+
+const TaskStatusIconBadge = ({
+  status,
+}: {
+  status: AgentRunStatus | IssueTaskStatus
+}) => {
+  const config = getTaskStatusIconConfig(status)
+  const Icon = config.icon
+
+  return (
+    <Badge
+      aria-label={config.label}
+      className={cn(
+        'grid h-6 min-h-6 w-6 place-items-center rounded-md px-0 py-0 hover:bg-current/0',
+        config.className,
+      )}
+      title={config.label}
+      variant="outline"
+    >
+      <Icon className={cn('h-3.5 w-3.5', config.iconClassName)} />
+    </Badge>
+  )
+}
+
+const getTaskStatusIconConfig = (
+  status: AgentRunStatus | IssueTaskStatus,
+) => {
+  if (status === 'completed') {
+    return {
+      className:
+        'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      icon: CheckCircle2,
+      label: 'Completed',
+    }
+  }
+
+  if (status === 'running') {
+    return {
+      className: 'border-primary/40 bg-primary/10 text-primary',
+      icon: Loader2,
+      iconClassName: 'animate-spin',
+      label: 'Running',
+    }
+  }
+
+  if (status === 'failed') {
+    return {
+      className:
+        'border-destructive/50 bg-destructive/10 text-destructive',
+      icon: XCircle,
+      label: 'Failed',
+    }
+  }
+
+  if (status === 'awaiting_user') {
+    return {
+      className:
+        'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      icon: PauseCircle,
+      label: 'Awaiting user',
+    }
+  }
+
+  if (status === 'skipped') {
+    return {
+      className: 'border-muted-foreground/30 bg-muted text-muted-foreground',
+      icon: AlertCircle,
+      label: 'Skipped',
+    }
+  }
+
+  return {
+    className: 'border-muted-foreground/30 bg-background text-muted-foreground',
+    icon: Clock3,
+    label: status || 'Pending',
+  }
 }
 
 const getAgentTaskHeaderDescription = (

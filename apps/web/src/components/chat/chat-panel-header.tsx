@@ -38,7 +38,7 @@ export const ChatPanelHeader = ({
 }) => {
   if (isSidebar) {
     return (
-      <header className="flex min-h-12 items-center border-b bg-background px-2 py-1.5">
+      <header className="flex min-h-12 items-center border-b bg-[var(--surface-page-header)] px-2 py-1.5">
         <div className="grid min-h-7 w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
           <EndpointSelect
             endpoint={endpoint}
@@ -60,7 +60,7 @@ export const ChatPanelHeader = ({
   }
 
   return (
-    <header className="flex min-h-10 flex-col gap-2 border-b bg-card px-3 py-2 md:flex-row md:items-center md:justify-between">
+    <header className="flex min-h-10 flex-col gap-2 border-b bg-[var(--surface-page-header)] px-3 py-2 md:flex-row md:items-center md:justify-between">
       <div className="flex min-w-0 items-center gap-2">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <MessageSquare className="h-4 w-4" />
