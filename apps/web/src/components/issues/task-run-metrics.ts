@@ -75,7 +75,7 @@ export const formatTaskRunMetricItems = (
     includeAwaitingUser?: boolean
   } = {},
 ) => {
-  const { includeAwaitingUser = true } = options
+  const { includeAwaitingUser = false } = options
 
   if (!run) {
     return ['not started']

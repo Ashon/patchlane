@@ -66,7 +66,7 @@ export const buildIssueSubtaskPlanningPrompt = buildIssueTaskPlanningPrompt
 
 export const parseIssueTaskPlan = (content: string): ReplaceIssueTasksInput => {
   const jsonText = extractJsonObject(content)
-  const parsed = JSON.parse(jsonText) as unknown
+  const parsed = parsePlanningJson(jsonText)
   const taskPlan = replaceIssueTasksSchema.safeParse(parsed)
 
   if (taskPlan.success) {
@@ -106,4 +106,27 @@ const extractJsonObject = (content: string) => {
   }
 
   return trimmed
+}
+
+const parsePlanningJson = (jsonText: string): unknown => {
+  try {
+    return JSON.parse(jsonText) as unknown
+  } catch (error) {
+    const repaired = repairJsonLikePlan(jsonText)
+
+    if (repaired === jsonText) {
+      throw error
+    }
+
+    return JSON.parse(repaired) as unknown
+  }
+}
+
+const repairJsonLikePlan = (jsonText: string) => {
+  return jsonText
+    .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/gu, '$1"$2"$3')
+    .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/gu, (_match, value: string) =>
+      JSON.stringify(value.replace(/\\'/gu, "'")),
+    )
+    .replace(/,\s*([}\]])/gu, '$1')
 }

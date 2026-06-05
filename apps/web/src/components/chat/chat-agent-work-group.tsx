@@ -1,12 +1,6 @@
 import type { AgentRunMessageMetadata } from '@patchlane/shared'
-import { useState, type ReactNode } from 'react'
-import {
-  Brain,
-  CheckCircle2,
-  Wrench,
-  X,
-  XCircle,
-} from 'lucide-react'
+import { useState } from 'react'
+import { Brain, CheckCircle2, Wrench, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible,
@@ -20,6 +14,7 @@ import {
   AgentWorkDisclosureTrigger,
   AgentWorkPulseIndicator,
 } from '@/components/ui/agent-work-disclosure'
+import { ToolPayloadView } from '@/components/ui/tool-payload'
 import { cn } from '@/lib/utils'
 import { formatCompactNumber, formatDurationMs } from './chat-message-format'
 import type { ConversationMessage } from './chat-conversation-types'
@@ -111,7 +106,9 @@ export const AgentWorkDetailsPanel = ({
         <MetricTile label="Tokens" value={formatMetricToken(summary.tokens)} />
         <MetricTile
           label="Duration"
-          value={summary.durationMs ? formatDurationMs(summary.durationMs) : '-'}
+          value={
+            summary.durationMs ? formatDurationMs(summary.durationMs) : '-'
+          }
         />
         <MetricTile
           label="Failed"
@@ -172,7 +169,11 @@ const AgentWorkDetailAction = ({
         <AgentWorkDisclosureTrigger
           compact
           icon={
-            <AgentWorkItemIcon error={error} isTool={isTool} running={running} />
+            <AgentWorkItemIcon
+              error={error}
+              isTool={isTool}
+              running={running}
+            />
           }
           label={`${title}:`}
           open={open}
@@ -190,32 +191,7 @@ const AgentWorkDetailAction = ({
             Step {index + 1}
           </div>
           {isTool && toolPart ? (
-            <>
-              {toolPart.input && Object.keys(toolPart.input).length > 0 ? (
-                <DetailSection title="Input">
-                  <CodePreview>{formatValue(toolPart.input)}</CodePreview>
-                </DetailSection>
-              ) : null}
-              {toolPart.output !== undefined && toolPart.output !== null ? (
-                <DetailSection title="Output">
-                  <CodePreview>{formatValue(toolPart.output)}</CodePreview>
-                </DetailSection>
-              ) : null}
-              {toolPart.errorText ? (
-                <DetailSection title="Error">
-                  <div className="break-words rounded-md border border-destructive/25 bg-destructive/10 p-2 text-destructive [overflow-wrap:anywhere]">
-                    {toolPart.errorText}
-                  </div>
-                </DetailSection>
-              ) : null}
-              {!toolPart.input &&
-              toolPart.output === undefined &&
-              !toolPart.errorText ? (
-                <div className="text-muted-foreground">
-                  No tool payload recorded.
-                </div>
-              ) : null}
-            </>
+            <ToolPayloadView compact showCallId={false} toolPart={toolPart} />
           ) : (
             <Markdown className="prose prose-sm min-w-0 max-w-full overflow-hidden break-words dark:prose-invert [overflow-wrap:anywhere] prose-p:my-1 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 [&_*]:max-w-full">
               {message.reasoning || message.content || 'No reasoning recorded.'}
@@ -263,10 +239,10 @@ const AgentWorkItemIcon = ({
   }
 
   if (isTool) {
-    return <Wrench className="h-4 w-4 shrink-0 text-foreground" />
+    return <Wrench className="h-4 w-4 shrink-0 text-foreground/70" />
   }
 
-  return <Brain className="h-4 w-4 shrink-0 text-foreground" />
+  return <Brain className="h-4 w-4 shrink-0 text-foreground/70" />
 }
 
 const MetricTile = ({ label, value }: { label: string; value: string }) => {
@@ -330,31 +306,6 @@ const getAgentWorkItemPreview = (
   }
 
   return 'No payload recorded'
-}
-
-const DetailSection = ({
-  children,
-  title,
-}: {
-  children: ReactNode
-  title: string
-}) => {
-  return (
-    <section className="min-w-0 max-w-full space-y-1 overflow-hidden">
-      <div className="text-[11px] font-medium uppercase text-muted-foreground">
-        {title}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-const CodePreview = ({ children }: { children: string }) => {
-  return (
-    <pre className="max-h-72 w-full max-w-full min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/20 p-2 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
-      {children}
-    </pre>
-  )
 }
 
 const getAgentWorkGroupSummary = (
@@ -439,24 +390,4 @@ const formatMetricToken = (tokens: number) => {
 
 const normalizeInlinePreview = (value: string) => {
   return value.replace(/\s+/g, ' ').trim()
-}
-
-const formatValue = (value: unknown): string => {
-  if (value === null) {
-    return 'null'
-  }
-
-  if (value === undefined) {
-    return 'undefined'
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (typeof value === 'object') {
-    return JSON.stringify(value, null, 2)
-  }
-
-  return String(value)
 }

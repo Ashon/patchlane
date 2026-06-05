@@ -153,11 +153,12 @@ export class AppDatabase {
         requirement_run_id TEXT,
         planning_run_id TEXT,
         agent_run_id TEXT,
-        status TEXT NOT NULL CHECK (status IN ('backlog', 'planning', 'ready', 'running', 'awaiting_user', 'review', 'completed', 'blocked', 'failed')),
+        status TEXT NOT NULL CHECK (status IN ('backlog', 'planning', 'ready', 'running', 'awaiting_user', 'review', 'completed', 'finalized', 'blocked', 'failed')),
         priority TEXT NOT NULL CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
         analysis TEXT,
         branch_name TEXT,
         pr_url TEXT,
+        artifact_manifest_json TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -247,6 +248,7 @@ export class AppDatabase {
     this.ensureColumn('issues', 'planning_run_id', 'TEXT')
     this.ensureColumn('issues', 'pr_url', 'TEXT')
     this.ensureColumn('issues', 'number', 'INTEGER NOT NULL DEFAULT 0')
+    this.ensureColumn('issues', 'artifact_manifest_json', 'TEXT')
     this.rebuildAgentRunsIfNeeded()
     this.rebuildIssuesIfNeeded()
     this.backfillProjectCodes()
@@ -402,7 +404,9 @@ export class AppDatabase {
 
     if (
       row?.sql?.includes("'planning'") &&
-      row.sql.includes("'awaiting_user'")
+      row.sql.includes("'awaiting_user'") &&
+      row.sql.includes("'finalized'") &&
+      row.sql.includes('artifact_manifest_json')
     ) {
       return
     }
@@ -421,22 +425,23 @@ export class AppDatabase {
           requirement_run_id TEXT,
           planning_run_id TEXT,
           agent_run_id TEXT,
-          status TEXT NOT NULL CHECK (status IN ('backlog', 'planning', 'ready', 'running', 'awaiting_user', 'review', 'completed', 'blocked', 'failed')),
+          status TEXT NOT NULL CHECK (status IN ('backlog', 'planning', 'ready', 'running', 'awaiting_user', 'review', 'completed', 'finalized', 'blocked', 'failed')),
           priority TEXT NOT NULL CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
           analysis TEXT,
           branch_name TEXT,
           pr_url TEXT,
+          artifact_manifest_json TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
 
         INSERT INTO issues_new (
           id, number, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id,
-          agent_run_id, status, priority, analysis, branch_name, pr_url, created_at, updated_at
+          agent_run_id, status, priority, analysis, branch_name, pr_url, artifact_manifest_json, created_at, updated_at
         )
         SELECT
           id, number, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id,
-          agent_run_id, status, priority, analysis, branch_name, pr_url, created_at, updated_at
+          agent_run_id, status, priority, analysis, branch_name, pr_url, artifact_manifest_json, created_at, updated_at
         FROM issues;
 
         DROP TABLE issues;

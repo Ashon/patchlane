@@ -2,21 +2,31 @@ import type { ReactNode } from 'react'
 import type {
   AgentProject,
   AgentRun,
+  AgentRunStatus,
   Issue,
-  IssueTaskKind,
   IssueTaskStatus,
   IssuePriority,
   IssueStatus,
-  IssueSubtaskKind,
   IssueSubtaskStatus,
 } from '@patchlane/shared'
 import {
+  AlertCircle,
+  Archive,
   ArrowDown,
   ArrowUp,
+  CheckCircle2,
   ChevronsUp,
+  Circle,
+  CircleSlash2,
+  Clock3,
   CircleDot,
+  Eye,
   Github,
   Layers3,
+  ListChecks,
+  Loader2,
+  PauseCircle,
+  XCircle,
   type LucideIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -83,81 +93,33 @@ export const ProjectRepositoryBadge = ({
   )
 }
 
-export const AgentRunKindBadge = ({ kind }: { kind: AgentRun['kind'] }) => {
-  if (kind === 'requirements') {
-    return <Badge variant="outline">requirements</Badge>
-  }
-
-  if (kind === 'planning') {
-    return <Badge variant="secondary">plan</Badge>
-  }
-
-  if (kind === 'verification') {
-    return <Badge variant="secondary">verify</Badge>
-  }
-
-  if (kind === 'publish') {
-    return <Badge variant="secondary">publish</Badge>
-  }
-
-  if (kind === 'followup') {
-    return <Badge variant="outline">followup</Badge>
-  }
-
-  return <Badge variant="outline">coding</Badge>
-}
-
 export const AgentRunStatusBadge = ({
+  className,
   status,
 }: {
+  className?: string
   status: AgentRun['status']
-}) => {
-  if (status === 'completed') {
-    return <StateBadge tone="success">completed</StateBadge>
-  }
-
-  if (status === 'running') {
-    return <Badge variant="secondary">running</Badge>
-  }
-
-  if (status === 'failed') {
-    return <Badge variant="destructive">failed</Badge>
-  }
-
-  return <StateBadge tone="warning">{status}</StateBadge>
-}
-
-export const IssueTaskKindBadge = ({ kind }: { kind: IssueTaskKind }) => (
-  <Badge variant="outline">{kind}</Badge>
-)
-
-export const IssueSubtaskKindBadge = ({ kind }: { kind: IssueSubtaskKind }) => (
-  <IssueTaskKindBadge kind={kind} />
+}) => (
+  <StatusIconBadge
+    className={className}
+    labelPrefix="Agent run status"
+    status={status}
+  />
 )
 
 export const IssueTaskStatusBadge = ({
+  className,
   status,
 }: {
+  className?: string
   status: IssueTaskStatus
-}) => {
-  if (status === 'completed') {
-    return <StateBadge tone="success">completed</StateBadge>
-  }
-
-  if (status === 'running') {
-    return <Badge variant="secondary">running</Badge>
-  }
-
-  if (status === 'failed') {
-    return <Badge variant="destructive">failed</Badge>
-  }
-
-  if (status === 'pending' || status === 'skipped') {
-    return <Badge variant="outline">{status}</Badge>
-  }
-
-  return <StateBadge tone="warning">{status}</StateBadge>
-}
+}) => (
+  <StatusIconBadge
+    className={className}
+    labelPrefix="Task status"
+    status={status}
+  />
+)
 
 export const IssueSubtaskStatusBadge = ({
   status,
@@ -166,24 +128,35 @@ export const IssueSubtaskStatusBadge = ({
 }) => <IssueTaskStatusBadge status={status} />
 
 export const IssueStatusBadge = ({ status }: { status: IssueStatus }) => {
-  if (status === 'completed') {
-    return <StateBadge tone="success">completed</StateBadge>
-  }
+  return <StatusIconBadge labelPrefix="Issue status" status={status} />
+}
 
-  if (status === 'failed' || status === 'blocked') {
-    return <Badge variant="destructive">{status}</Badge>
-  }
+export const StatusIconBadge = ({
+  className,
+  labelPrefix,
+  status,
+}: {
+  className?: string
+  labelPrefix?: string
+  status: AgentRunStatus | IssueStatus | IssueTaskStatus
+}) => {
+  const config = getStatusIconConfig(status)
+  const Icon = config.icon
+  const label = labelPrefix ? `${labelPrefix}: ${config.label}` : config.label
 
   return (
-    <StateBadge
-      tone={
-        status === 'running' || status === 'ready' || status === 'review'
-          ? 'success'
-          : 'warning'
-      }
+    <Badge
+      aria-label={label}
+      className={cn(
+        'grid h-6 min-h-6 w-6 place-items-center rounded-md px-0 py-0 hover:bg-current/0',
+        config.className,
+        className,
+      )}
+      title={label}
+      variant="outline"
     >
-      {status}
-    </StateBadge>
+      <Icon className={cn('h-3.5 w-3.5', config.iconClassName)} />
+    </Badge>
   )
 }
 
@@ -229,6 +202,118 @@ export const PriorityBadge = ({
       <Icon />
     </Badge>
   )
+}
+
+const getStatusIconConfig = (
+  status: AgentRunStatus | IssueStatus | IssueTaskStatus,
+) => {
+  if (status === 'completed') {
+    return {
+      className:
+        'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      icon: CheckCircle2,
+      label: 'Completed',
+    }
+  }
+
+  if (status === 'finalized') {
+    return {
+      className:
+        'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      icon: Archive,
+      label: 'Finalized',
+    }
+  }
+
+  if (status === 'running') {
+    return {
+      className: 'border-primary/40 bg-primary/10 text-primary',
+      icon: Loader2,
+      iconClassName: 'animate-spin',
+      label: 'Running',
+    }
+  }
+
+  if (status === 'awaiting_user') {
+    return {
+      className:
+        'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      icon: PauseCircle,
+      label: 'Awaiting user',
+    }
+  }
+
+  if (status === 'failed') {
+    return {
+      className:
+        'border-destructive/50 bg-destructive/10 text-destructive',
+      icon: XCircle,
+      label: 'Failed',
+    }
+  }
+
+  if (status === 'blocked') {
+    return {
+      className:
+        'border-destructive/50 bg-destructive/10 text-destructive',
+      icon: AlertCircle,
+      label: 'Blocked',
+    }
+  }
+
+  if (status === 'planning') {
+    return {
+      className: 'border-primary/35 bg-primary/10 text-primary',
+      icon: ListChecks,
+      label: 'Planning',
+    }
+  }
+
+  if (status === 'ready') {
+    return {
+      className: 'border-primary/35 bg-primary/10 text-primary',
+      icon: CircleDot,
+      label: 'Ready',
+    }
+  }
+
+  if (status === 'review') {
+    return {
+      className: 'border-primary/35 bg-primary/10 text-primary',
+      icon: Eye,
+      label: 'Review',
+    }
+  }
+
+  if (status === 'skipped') {
+    return {
+      className: 'border-muted-foreground/30 bg-muted text-muted-foreground',
+      icon: CircleSlash2,
+      label: 'Skipped',
+    }
+  }
+
+  if (status === 'backlog') {
+    return {
+      className: 'border-muted-foreground/30 bg-background text-muted-foreground',
+      icon: Circle,
+      label: 'Backlog',
+    }
+  }
+
+  if (status === 'idle') {
+    return {
+      className: 'border-muted-foreground/30 bg-background text-muted-foreground',
+      icon: Clock3,
+      label: 'Idle',
+    }
+  }
+
+  return {
+    className: 'border-muted-foreground/30 bg-background text-muted-foreground',
+    icon: Clock3,
+    label: 'Pending',
+  }
 }
 
 const priorityMeta = {

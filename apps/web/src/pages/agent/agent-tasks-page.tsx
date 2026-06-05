@@ -1,9 +1,7 @@
 import type {
   AgentProject,
   AgentRun,
-  AgentRunStatus,
   Issue,
-  IssueTaskStatus,
   LlmEndpoint,
   SandboxWorkspace,
 } from '@patchlane/shared'
@@ -15,16 +13,11 @@ import {
   useState,
 } from 'react'
 import {
-  AlertCircle,
   Bot,
-  CheckCircle2,
-  Clock3,
   Loader2,
   MoreHorizontal,
-  PauseCircle,
   Plus,
   Trash2,
-  XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,15 +26,15 @@ import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import {
+  AgentRunStatusBadge,
   IssueReferenceBadge,
-  IssueTaskKindBadge,
+  IssueTaskStatusBadge,
 } from '@/components/issues/common'
 import {
   buildTaskWorkItems,
   type TaskWorkItem,
 } from '@/components/issues/task-work-items'
 import {
-  TaskListMeta,
   TaskRunMetricBadge,
 } from '@/components/issues/task-list-meta'
 import { formatIssueReference } from '@/components/issues/utils'
@@ -450,20 +443,10 @@ const AgentIssueTaskCard = ({
   selected: boolean
 }) => {
   const mainContent = (
-    <div className="min-w-0 overflow-hidden text-left">
-      <div className="flex min-w-0 items-center gap-2">
-        <IssueReferenceBadge issue={item.issue} project={project} />
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {item.task.title}
-        </h3>
-        <span className="shrink-0">
-          <TaskStatusIconBadge status={item.task.status} />
-        </span>
-      </div>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <IssueTaskKindBadge kind={item.task.kind} />
-        <TaskListMeta run={item.run} />
-      </div>
+    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left">
+      <IssueReferenceBadge issue={item.issue} project={project} />
+      <h3 className="min-w-0 truncate text-sm">{item.task.title}</h3>
+      <IssueTaskStatusBadge status={item.task.status} />
     </div>
   )
   if (!item.run || !onSelect) {
@@ -507,18 +490,17 @@ const AgentRunCard = ({
         onClick={onSelect}
         type="button"
       >
-        <div className="flex min-w-0 items-center gap-2">
-          <IssueReferenceBadge issue={issue} project={project} />
-          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {run.title}
-          </h3>
-          <span className="shrink-0">
-            <TaskStatusIconBadge status={run.status} />
-          </span>
-        </div>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <AgentRunKindBadge kind={run.kind} />
-          <TaskListMeta run={run} />
+        <div
+          className={cn(
+            'grid min-w-0 items-center gap-2',
+            issue
+              ? 'grid-cols-[auto_minmax(0,1fr)_auto]'
+              : 'grid-cols-[minmax(0,1fr)_auto]',
+          )}
+        >
+          {issue ? <IssueReferenceBadge issue={issue} project={project} /> : null}
+          <h3 className="min-w-0 truncate text-sm">{run.title}</h3>
+          <AgentRunStatusBadge status={run.status} />
         </div>
       </button>
     </PageListItem>
@@ -575,107 +557,6 @@ const TaskActionsMenu = ({
   )
 }
 
-const AgentRunKindBadge = ({ kind }: { kind: AgentRun['kind'] }) => {
-  if (kind === 'requirements') {
-    return <Badge variant="outline">{getAgentRunKindLabel(kind)}</Badge>
-  }
-
-  if (kind === 'planning') {
-    return <Badge variant="secondary">{getAgentRunKindLabel(kind)}</Badge>
-  }
-
-  if (kind === 'verification') {
-    return <Badge variant="secondary">{getAgentRunKindLabel(kind)}</Badge>
-  }
-
-  if (kind === 'publish') {
-    return <Badge variant="secondary">{getAgentRunKindLabel(kind)}</Badge>
-  }
-
-  if (kind === 'followup') {
-    return <Badge variant="outline">{getAgentRunKindLabel(kind)}</Badge>
-  }
-
-  return <Badge variant="outline">{getAgentRunKindLabel(kind)}</Badge>
-}
-
-const TaskStatusIconBadge = ({
-  status,
-}: {
-  status: AgentRunStatus | IssueTaskStatus
-}) => {
-  const config = getTaskStatusIconConfig(status)
-  const Icon = config.icon
-
-  return (
-    <Badge
-      aria-label={config.label}
-      className={cn(
-        'grid h-6 min-h-6 w-6 place-items-center rounded-md px-0 py-0 hover:bg-current/0',
-        config.className,
-      )}
-      title={config.label}
-      variant="outline"
-    >
-      <Icon className={cn('h-3.5 w-3.5', config.iconClassName)} />
-    </Badge>
-  )
-}
-
-const getTaskStatusIconConfig = (
-  status: AgentRunStatus | IssueTaskStatus,
-) => {
-  if (status === 'completed') {
-    return {
-      className:
-        'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-      icon: CheckCircle2,
-      label: 'Completed',
-    }
-  }
-
-  if (status === 'running') {
-    return {
-      className: 'border-primary/40 bg-primary/10 text-primary',
-      icon: Loader2,
-      iconClassName: 'animate-spin',
-      label: 'Running',
-    }
-  }
-
-  if (status === 'failed') {
-    return {
-      className:
-        'border-destructive/50 bg-destructive/10 text-destructive',
-      icon: XCircle,
-      label: 'Failed',
-    }
-  }
-
-  if (status === 'awaiting_user') {
-    return {
-      className:
-        'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-      icon: PauseCircle,
-      label: 'Awaiting user',
-    }
-  }
-
-  if (status === 'skipped') {
-    return {
-      className: 'border-muted-foreground/30 bg-muted text-muted-foreground',
-      icon: AlertCircle,
-      label: 'Skipped',
-    }
-  }
-
-  return {
-    className: 'border-muted-foreground/30 bg-background text-muted-foreground',
-    icon: Clock3,
-    label: status || 'Pending',
-  }
-}
-
 const getAgentTaskHeaderDescription = (
   run: AgentRun | null,
   workspace: SandboxWorkspace | null,
@@ -683,10 +564,8 @@ const getAgentTaskHeaderDescription = (
   project?: AgentProject,
 ) => {
   if (run) {
-    const task = getRunIssueTask(run, issue)
     const items = [
       issue ? formatIssueReference(issue, project) : null,
-      task?.kind,
       run.branchName,
     ].filter(Boolean)
 
@@ -708,34 +587,6 @@ const getRunIssueTask = (run: AgentRun, issue?: Issue) => {
   return issue?.subtasks.find(
     (task) => task.id === run.subtaskId || task.agentRunId === run.id,
   )
-}
-
-const getAgentRunKindLabel = (kind: AgentRun['kind']) => {
-  if (kind === 'planning') {
-    return 'plan'
-  }
-
-  if (kind === 'verification') {
-    return 'verify'
-  }
-
-  return kind
-}
-
-const AgentRunStatusBadge = ({ status }: { status: AgentRun['status'] }) => {
-  if (status === 'completed') {
-    return <StateBadge tone="success">completed</StateBadge>
-  }
-
-  if (status === 'running') {
-    return <Badge variant="secondary">running</Badge>
-  }
-
-  if (status === 'failed') {
-    return <Badge variant="destructive">failed</Badge>
-  }
-
-  return <StateBadge tone="warning">{status}</StateBadge>
 }
 
 const AgentRunContextBadge = ({

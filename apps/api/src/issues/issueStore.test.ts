@@ -226,6 +226,72 @@ describe('Given issue comments', () => {
     ).toBe(true)
   })
 
+  it('when a completed issue is finalized, then its artifact manifest is persisted', async () => {
+    const project = await store.createProject({
+      branchPrefix: 'agent',
+      description: 'Archive finished work.',
+      name: 'Patchlane',
+    })
+    const issue = await store.createIssue({
+      description: 'Collect changed files and run summaries.',
+      priority: 'medium',
+      projectId: project.id,
+      title: 'Finalize completed work',
+    })
+    const plannedIssue = await store.replaceIssueTasks(issue.id, {
+      tasks: [
+        {
+          kind: 'edit',
+          title: 'Implement finalize',
+        },
+      ],
+    })
+    const [task] = plannedIssue.subtasks
+
+    await store.markTaskRunStarted(issue.id, task!.id, 'run-1')
+    const completed = await store.markSubtaskRunFinished({
+      id: 'run-1',
+      issueId: issue.id,
+      resultSummary: 'Finalize flow implemented.',
+      status: 'completed',
+      subtaskId: task!.id,
+    })
+    const finalizedAt = new Date().toISOString()
+    const finalized = await store.finalizeIssue(completed!.issue.id, {
+      finalizedAt,
+      changedFiles: [{ path: 'README.md', status: 'M' }],
+      comments: 0,
+      runs: [
+        {
+          id: 'run-1',
+          kind: 'coding',
+          messages: 3,
+          providerTokens: 120,
+          reasoning: 1,
+          status: 'completed',
+          toolInputTokens: 5,
+          toolOutputTokens: 40,
+          tools: 1,
+          updatedAt: finalizedAt,
+        },
+      ],
+      summary: '1 changed files · 0 untracked files · 1 agent runs',
+      untrackedFiles: [],
+      warnings: [],
+    })
+
+    expect(finalized.status).toBe('finalized')
+    expect(finalized.artifactManifest?.changedFiles).toEqual([
+      { path: 'README.md', status: 'M' },
+    ])
+    expect(finalized.events.at(-1)?.message).toContain('finalized')
+
+    const reloaded = await store.getIssue(issue.id)
+
+    expect(reloaded.status).toBe('finalized')
+    expect(reloaded.artifactManifest?.runs[0]?.providerTokens).toBe(120)
+  })
+
   it('when a linked issue task run is deleted, then the task becomes pending again', async () => {
     const project = await store.createProject({
       branchPrefix: 'agent',

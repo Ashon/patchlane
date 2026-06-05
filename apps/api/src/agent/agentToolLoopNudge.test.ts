@@ -1,8 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import {
-  getBlockedToolNames,
-  getToolLoopNudgePrompt,
-} from './agentToolLoopNudge'
+import { getToolLoopNudgePrompt, isToolCallBlocked } from './agentToolLoopNudge'
 
 describe('Given agent tool loop nudge', () => {
   it('when file exploration repeats, then it asks the agent to choose a concrete next action', () => {
@@ -44,52 +41,58 @@ describe('Given agent tool loop nudge', () => {
     ).toBeUndefined()
   })
 
-  it('when tool loops are detected, then it blocks the repeated tool family for the next request', () => {
+  it('when the same read_file input repeats, then it blocks only that exact call', () => {
     expect(
-      Array.from(
-        getBlockedToolNames([
-          'list_files',
-          'read_file',
-          'list_files',
-          'read_file',
-          'read_file',
-          'list_files',
-        ]),
-      ).sort(),
-    ).toEqual(['list_files', 'read_file'])
+      isToolCallBlocked(
+        [
+          { name: 'read_file', input: { path: 'src/a.ts' } },
+          { name: 'read_file', input: { path: 'src/b.ts' } },
+          { name: 'read_file', input: { path: 'src/a.ts' } },
+        ],
+        { name: 'read_file', input: { path: 'src/a.ts' } },
+      ),
+    ).toBe(true)
 
     expect(
-      Array.from(
-        getBlockedToolNames([
-          'run_command',
-          'run_command',
-          'git_status',
-          'run_command',
-          'run_command',
-          'run_command',
-        ]),
+      isToolCallBlocked(
+        [
+          { name: 'read_file', input: { path: 'src/a.ts' } },
+          { name: 'read_file', input: { path: 'src/b.ts' } },
+          { name: 'read_file', input: { path: 'src/a.ts' } },
+        ],
+        { name: 'read_file', input: { path: 'src/a.ts', startLine: 241 } },
       ),
-    ).toEqual(['run_command'])
+    ).toBe(false)
   })
 
-  it('when broad exploration dominates the recent history, then it blocks all broad discovery tools', () => {
+  it('when commands repeat with different arguments, then it does not block the next command', () => {
     expect(
-      Array.from(
-        getBlockedToolNames([
-          'list_files',
-          'read_file',
-          'run_command',
-          'git_status',
-          'read_file',
-          'run_command',
-          'list_files',
-          'read_file',
-          'run_command',
-          'read_file',
-        ]),
-      ).sort(),
-    ).toEqual(['list_files', 'read_file', 'run_command'])
+      isToolCallBlocked(
+        [
+          { name: 'run_command', input: { command: 'rg', args: ['Badge'] } },
+          { name: 'run_command', input: { command: 'rg', args: ['Loader2'] } },
+          { name: 'run_command', input: { command: 'pnpm', args: ['lint'] } },
+        ],
+        {
+          name: 'run_command',
+          input: { command: 'pnpm', args: ['typecheck'] },
+        },
+      ),
+    ).toBe(false)
 
+    expect(
+      isToolCallBlocked(
+        [
+          { name: 'run_command', input: { command: 'pnpm', args: ['lint'] } },
+          { name: 'run_command', input: { command: 'pnpm', args: ['lint'] } },
+          { name: 'run_command', input: { command: 'pnpm', args: ['lint'] } },
+        ],
+        { name: 'run_command', input: { command: 'pnpm', args: ['lint'] } },
+      ),
+    ).toBe(true)
+  })
+
+  it('when broad exploration dominates the recent history, then it nudges toward a concrete next action', () => {
     const prompt = getToolLoopNudgePrompt([
       'write_file',
       'list_files',

@@ -5,9 +5,7 @@ import {
   ArrowLeft,
   ClipboardList,
   ListChecks,
-  Loader2,
   Pencil,
-  RefreshCw,
 } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -45,7 +43,6 @@ import {
   ErrorBanner,
   Page,
   PageHeader,
-  PageToolbar,
 } from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
 import { getQueryErrorMessage } from '@/lib/errors'
@@ -88,6 +85,9 @@ export const ProjectDetailPage = () => {
   const [savingIssue, setSavingIssue] = useState(false)
   const [planningIssueId, setPlanningIssueId] = useState<string | null>(null)
   const [runningIssueId, setRunningIssueId] = useState<string | null>(null)
+  const [finalizingIssueId, setFinalizingIssueId] = useState<string | null>(
+    null,
+  )
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
   const endpointsQuery = useQuery({
@@ -233,24 +233,6 @@ export const ProjectDetailPage = () => {
     )
   }
 
-  const refreshProject = async () => {
-    const [
-      projectResponse,
-      issueResponse,
-      workspaceResponse,
-      agentRunResponse,
-    ] = await Promise.all([
-      api.listProjects(),
-      api.listIssues(),
-      api.listSandboxWorkspaces(),
-      api.listAgentRuns(),
-    ])
-    queryClient.setQueryData(queryKeys.projects, projectResponse)
-    queryClient.setQueryData(queryKeys.issues, issueResponse)
-    queryClient.setQueryData(queryKeys.sandboxWorkspaces, workspaceResponse)
-    queryClient.setQueryData(queryKeys.agentRuns, agentRunResponse)
-  }
-
   const updateProjectDraft = (patch: Partial<ProjectDraft>) => {
     setProjectDraft((current) => ({
       ...(current?.targetId === activeProjectId ? current : activeProjectDraft),
@@ -390,6 +372,20 @@ export const ProjectDetailPage = () => {
     }
   }
 
+  const finalizeIssue = async (issue: Issue) => {
+    setFinalizingIssueId(issue.id)
+    setLocalError(null)
+
+    try {
+      const response = await api.finalizeIssue(issue.id)
+      upsertIssue(queryClient, response.issue)
+    } catch (actionError) {
+      setLocalError(getErrorMessage(actionError))
+    } finally {
+      setFinalizingIssueId(null)
+    }
+  }
+
   if (!project) {
     return (
       <Page className="items-center justify-center p-3">
@@ -399,6 +395,33 @@ export const ProjectDetailPage = () => {
       </Page>
     )
   }
+
+  const projectDetailNavigation = (
+    <>
+      <Button
+        onClick={() =>
+          navigate(buildRoute(`/projects/${activeProjectId}/issues`))
+        }
+        size="sm"
+        type="button"
+        variant={selectedTab === 'issues' ? 'default' : 'ghost'}
+      >
+        <ClipboardList className="h-4 w-4" />
+        Issues
+      </Button>
+      <Button
+        onClick={() =>
+          navigate(buildRoute(`/projects/${activeProjectId}/tasks`))
+        }
+        size="sm"
+        type="button"
+        variant={selectedTab === 'tasks' ? 'default' : 'ghost'}
+      >
+        <ListChecks className="h-4 w-4" />
+        Tasks
+      </Button>
+    </>
+  )
 
   return (
     <Page>
@@ -420,20 +443,6 @@ export const ProjectDetailPage = () => {
                 {workspace.name}
               </Badge>
             ) : null}
-            <Button
-              className="bg-background"
-              disabled={loading}
-              onClick={() => void refreshProject()}
-              size="icon-sm"
-              type="button"
-              variant="outline"
-            >
-              {loading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-            </Button>
             <Button
               className="bg-background"
               onClick={() => setEditProjectOpen(true)}
@@ -463,31 +472,6 @@ export const ProjectDetailPage = () => {
 
       <ErrorBanner message={visibleError} />
 
-      <PageToolbar>
-        <Button
-          onClick={() =>
-            navigate(buildRoute(`/projects/${activeProjectId}/issues`))
-          }
-          size="sm"
-          type="button"
-          variant={selectedTab === 'issues' ? 'default' : 'ghost'}
-        >
-          <ClipboardList className="h-4 w-4" />
-          Issues
-        </Button>
-        <Button
-          onClick={() =>
-            navigate(buildRoute(`/projects/${activeProjectId}/tasks`))
-          }
-          size="sm"
-          type="button"
-          variant={selectedTab === 'tasks' ? 'default' : 'ghost'}
-        >
-          <ListChecks className="h-4 w-4" />
-          Tasks
-        </Button>
-      </PageToolbar>
-
       <div className="min-h-0 flex-1 overflow-hidden">
         <Dialog onOpenChange={setEditProjectOpen} open={editProjectOpen}>
           <DialogContent className="max-w-2xl">
@@ -511,8 +495,10 @@ export const ProjectDetailPage = () => {
           <ProjectIssuesView
             createIssue={createIssue}
             endpoints={endpoints}
+            finalizingIssueId={finalizingIssueId}
             issueDraft={issueDraft}
             issues={projectIssues}
+            onFinalize={finalizeIssue}
             onIssueDraftChange={setIssueDraft}
             onOpenRun={openProjectTaskRun}
             onPlan={planIssue}
@@ -527,6 +513,7 @@ export const ProjectDetailPage = () => {
             savingIssue={savingIssue}
             selectedEndpoint={selectedEndpoint}
             selectedIssue={selectedIssue}
+            toolbarLeading={projectDetailNavigation}
             updatingTaskId={updatingTaskId}
             workspaces={workspaces}
           />
@@ -546,6 +533,7 @@ export const ProjectDetailPage = () => {
             runs={projectRuns}
             selectedRun={selectedProjectRun}
             selectedRunStreaming={selectedProjectRunStreaming}
+            toolbarLeading={projectDetailNavigation}
           />
         )}
       </div>

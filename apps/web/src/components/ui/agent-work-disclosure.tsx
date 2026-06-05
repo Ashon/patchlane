@@ -43,7 +43,7 @@ export const AgentWorkDisclosureTrigger = ({
     <button
       aria-expanded={open}
       className={cn(
-        'flex w-full min-w-0 cursor-pointer items-center gap-1.5 overflow-hidden rounded-sm text-left leading-none text-muted-foreground transition-colors hover:text-foreground',
+        'flex w-full min-w-0 cursor-pointer items-center gap-1.5 overflow-hidden rounded-sm text-left leading-none text-muted-foreground/80 transition-colors hover:text-foreground/80',
         compact ? 'h-6 text-xs' : 'h-8 text-sm',
         className,
       )}
@@ -53,14 +53,20 @@ export const AgentWorkDisclosureTrigger = ({
       {icon}
       <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
         <AgentWorkInlineText
-          className={cn('max-w-[45%] shrink-0 text-foreground', labelClassName)}
+          className={cn(
+            'max-w-[45%] shrink-0 text-foreground/80',
+            labelClassName,
+          )}
           shimmer={!hasPreview && streaming}
         >
           {label}
         </AgentWorkInlineText>
         {title ? (
           <AgentWorkInlineText
-            className={cn('shrink font-medium text-foreground', titleClassName)}
+            className={cn(
+              'shrink font-medium text-foreground/80',
+              titleClassName,
+            )}
           >
             {title}
           </AgentWorkInlineText>
@@ -77,7 +83,7 @@ export const AgentWorkDisclosureTrigger = ({
         ) : null}
         {hasPreview ? (
           <AgentWorkInlineText
-            className="flex-1 text-left text-muted-foreground"
+            className="flex-1 text-left text-muted-foreground/80"
             shimmer={streaming}
           >
             {preview}
@@ -135,7 +141,7 @@ export const AgentWorkPulseIndicator = ({
   return (
     <span
       className={cn(
-        'grid shrink-0 place-items-center text-foreground',
+        'grid shrink-0 place-items-center text-foreground/75',
         compact ? 'h-4 w-4' : 'h-5 w-5',
         className,
       )}

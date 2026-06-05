@@ -1,4 +1,10 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import type {
   AgentProject,
   AgentRun,
@@ -50,8 +56,10 @@ const projectIssueResizableMediaQuery = '(min-width: 640px)'
 export const ProjectIssuesView = ({
   createIssue,
   endpoints,
+  finalizingIssueId,
   issueDraft,
   issues,
+  onFinalize,
   onIssueDraftChange,
   onOpenRun,
   onPlan,
@@ -66,13 +74,16 @@ export const ProjectIssuesView = ({
   savingIssue,
   selectedEndpoint,
   selectedIssue,
+  toolbarLeading,
   updatingTaskId,
   workspaces,
 }: {
   createIssue: (event: FormEvent<HTMLFormElement>) => Promise<boolean>
   endpoints: LlmEndpoint[]
+  finalizingIssueId: string | null
   issueDraft: IssueDraft
   issues: Issue[]
+  onFinalize: (issue: Issue) => Promise<void>
   onIssueDraftChange: (updater: (current: IssueDraft) => IssueDraft) => void
   onOpenRun: (runId: string) => void
   onPlan: (issue: Issue) => Promise<void>
@@ -94,6 +105,7 @@ export const ProjectIssuesView = ({
   savingIssue: boolean
   selectedEndpoint: LlmEndpoint | null
   selectedIssue: Issue | null
+  toolbarLeading?: ReactNode
   updatingTaskId: string | null
   workspaces: SandboxWorkspace[]
 }) => {
@@ -158,6 +170,10 @@ export const ProjectIssuesView = ({
           </Button>
         }
       >
+        {toolbarLeading}
+        {toolbarLeading ? (
+          <div className="hidden h-5 w-px bg-border sm:block" />
+        ) : null}
         <MetricBadge label="Total" value={issues.length} />
         <MetricBadge label="Backlog" value={countStatus(issues, 'backlog')} />
         <MetricBadge label="Running" value={countStatus(issues, 'running')} />
@@ -166,7 +182,12 @@ export const ProjectIssuesView = ({
           value={countStatus(issues, 'awaiting_user')}
         />
         <MetricBadge label="Review" value={countStatus(issues, 'review')} />
-        <MetricBadge label="Done" value={countStatus(issues, 'completed')} />
+        <MetricBadge
+          label="Done"
+          value={
+            countStatus(issues, 'completed') + countStatus(issues, 'finalized')
+          }
+        />
       </PageActionBar>
 
       <Dialog onOpenChange={setIssueDialogOpen} open={issueDialogOpen}>
@@ -301,11 +322,13 @@ export const ProjectIssuesView = ({
           >
             <IssueDetailPane
               onOpenRun={onOpenRun}
+              onFinalize={onFinalize}
               onPlan={onPlan}
               onStart={onStart}
               onStartTask={onStartTask}
               onUpdateTaskStatus={onUpdateTaskStatus}
               planningIssueId={planningIssueId}
+              finalizingIssueId={finalizingIssueId}
               project={project}
               runById={runById}
               runningIssueId={runningIssueId}
@@ -326,11 +349,13 @@ export const ProjectIssuesView = ({
           />
           <IssueDetailPane
             onOpenRun={onOpenRun}
+            onFinalize={onFinalize}
             onPlan={onPlan}
             onStart={onStart}
             onStartTask={onStartTask}
             onUpdateTaskStatus={onUpdateTaskStatus}
             planningIssueId={planningIssueId}
+            finalizingIssueId={finalizingIssueId}
             project={project}
             runById={runById}
             runningIssueId={runningIssueId}
@@ -388,11 +413,13 @@ const IssueListPane = ({
 
 const IssueDetailPane = ({
   onOpenRun,
+  onFinalize,
   onPlan,
   onStart,
   onStartTask,
   onUpdateTaskStatus,
   planningIssueId,
+  finalizingIssueId,
   project,
   runById,
   runningIssueId,
@@ -401,6 +428,7 @@ const IssueDetailPane = ({
   workspace,
 }: {
   onOpenRun: (runId: string) => void
+  onFinalize: (issue: Issue) => Promise<void>
   onPlan: (issue: Issue) => Promise<void>
   onStart: (issue: Issue) => Promise<void>
   onStartTask: (
@@ -413,6 +441,7 @@ const IssueDetailPane = ({
     status: Issue['subtasks'][number]['status'],
   ) => Promise<void>
   planningIssueId: string | null
+  finalizingIssueId: string | null
   project: AgentProject
   runById: Map<string, AgentRun>
   runningIssueId: string | null
@@ -425,6 +454,8 @@ const IssueDetailPane = ({
       {selectedIssue ? (
         <IssueDetail
           issue={selectedIssue}
+          finalizing={finalizingIssueId === selectedIssue.id}
+          onFinalize={() => onFinalize(selectedIssue)}
           onOpenRun={onOpenRun}
           onPlan={() => void onPlan(selectedIssue)}
           onStart={() => void onStart(selectedIssue)}

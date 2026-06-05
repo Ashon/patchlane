@@ -81,6 +81,7 @@ export const issueStatusSchema = z.enum([
   'awaiting_user',
   'review',
   'completed',
+  'finalized',
   'blocked',
   'failed',
 ])
@@ -132,6 +133,39 @@ export const issueCommentSchema = z.object({
   createdAt: isoDateSchema,
 })
 
+export const issueArtifactFileSchema = z.object({
+  path: z.string().min(1).max(1_000),
+  status: z.string().min(1).max(40),
+  untracked: z.boolean().optional(),
+})
+
+export const issueArtifactRunSchema = z.object({
+  id: z.string().min(1),
+  status: z.string().min(1).max(40),
+  kind: z.string().min(1).max(40).optional(),
+  taskId: z.string().min(1).optional(),
+  messages: z.number().int().nonnegative(),
+  tools: z.number().int().nonnegative(),
+  reasoning: z.number().int().nonnegative(),
+  providerTokens: z.number().int().nonnegative(),
+  toolInputTokens: z.number().int().nonnegative(),
+  toolOutputTokens: z.number().int().nonnegative(),
+  updatedAt: isoDateSchema,
+})
+
+export const issueArtifactManifestSchema = z.object({
+  finalizedAt: isoDateSchema,
+  workspaceId: z.string().min(1).optional(),
+  workspacePath: z.string().min(1).optional(),
+  branchName: z.string().trim().min(1).max(200).optional(),
+  changedFiles: z.array(issueArtifactFileSchema).default([]),
+  untrackedFiles: z.array(issueArtifactFileSchema).default([]),
+  runs: z.array(issueArtifactRunSchema).default([]),
+  comments: z.number().int().nonnegative(),
+  summary: z.string().trim().min(1).max(2_000).optional(),
+  warnings: z.array(z.string().trim().min(1).max(500)).default([]),
+})
+
 export const issueSubtaskSchema = z.object({
   id: z.string().min(1),
   issueId: z.string().min(1),
@@ -168,6 +202,7 @@ export const issueSchema = z.object({
   events: z.array(issueEventSchema).default([]),
   comments: z.array(issueCommentSchema).default([]),
   subtasks: z.array(issueSubtaskSchema).default([]),
+  artifactManifest: issueArtifactManifestSchema.optional(),
 })
 
 export const createIssueSchema = z.object({
@@ -254,6 +289,9 @@ export type UpdateAgentProjectInput = z.infer<typeof updateAgentProjectSchema>
 export type Issue = z.infer<typeof issueSchema>
 export type IssueStatus = z.infer<typeof issueStatusSchema>
 export type IssuePriority = z.infer<typeof issuePrioritySchema>
+export type IssueArtifactManifest = z.infer<
+  typeof issueArtifactManifestSchema
+>
 export type IssueSubtask = z.infer<typeof issueSubtaskSchema>
 export type IssueSubtaskStatus = z.infer<typeof issueSubtaskStatusSchema>
 export type IssueSubtaskKind = z.infer<typeof issueSubtaskKindSchema>

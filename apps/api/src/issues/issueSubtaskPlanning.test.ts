@@ -97,6 +97,30 @@ describe('Given issue task planning', () => {
     expect(plan.tasks[0]?.title).toBe('Inspect current issue workflow')
   })
 
+  it('when parsing a JSON-like plan, then it repairs common model formatting drift', () => {
+    const plan = parseIssueTaskPlan(`
+      Here is the plan:
+      {
+        tasks: [
+          {
+            title: 'Inspect current issue workflow',
+            description: 'Find API and UI validation points.',
+            kind: 'inspect',
+          },
+          {
+            title: 'Verify title-only issue creation',
+            description: 'Run focused API and web checks.',
+            kind: 'verify',
+          },
+        ],
+      }
+    `)
+
+    expect(plan.tasks).toHaveLength(2)
+    expect(plan.tasks[0]?.kind).toBe('inspect')
+    expect(plan.tasks[1]?.title).toBe('Verify title-only issue creation')
+  })
+
   it('when parsing an invalid plan, then it rejects plans that are too broad to track', () => {
     expect(() =>
       parseIssueTaskPlan(

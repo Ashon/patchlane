@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import type {
   AgentProject,
   AgentRun,
   Issue,
   LlmEndpoint,
 } from '@patchlane/shared'
-import { Bot, ListChecks } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -16,16 +16,15 @@ import {
 } from '@/components/ui/resizable'
 import {
   Page,
+  PageActionBar,
   PageHeader,
   PageList,
   PageListItem,
 } from '@/components/layout/page-primitives'
 import {
-  AgentRunKindBadge,
   AgentRunStatusBadge,
   EmptyState,
   IssueReferenceBadge,
-  IssueTaskKindBadge,
   IssueTaskStatusBadge,
   MetricBadge,
 } from './common'
@@ -36,8 +35,9 @@ import {
   isTaskWorkItemRunning,
   type TaskWorkItem,
 } from './task-work-items'
-import { TaskListMeta, TaskRunMetricBadge } from './task-list-meta'
+import { TaskRunMetricBadge } from './task-list-meta'
 import { formatIssueReference } from './utils'
+import { cn } from '@/lib/utils'
 
 const projectTaskPanelIds = ['project-task-list', 'project-task-chat']
 const projectTaskResizableMediaQuery = '(min-width: 640px)'
@@ -57,6 +57,7 @@ export const ProjectTasksView = ({
   project,
   selectedRun,
   selectedRunStreaming,
+  toolbarLeading,
 }: {
   agentReplyDraft: string
   endpoint: LlmEndpoint | null
@@ -72,6 +73,7 @@ export const ProjectTasksView = ({
   project: AgentProject
   selectedRun: AgentRun | null
   selectedRunStreaming: boolean
+  toolbarLeading?: ReactNode
 }) => {
   const issueById = useMemo(
     () => new Map(issues.map((issue) => [issue.id, issue])),
@@ -135,31 +137,30 @@ export const ProjectTasksView = ({
 
   return (
     <Page className="min-h-[360px]">
-      <PageHeader
-        actions={
-          taskTotals.total > 0 ? (
-            <>
-              <MetricBadge label="Tasks" value={taskTotals.total} />
-              <MetricBadge label="Done" value={taskTotals.completed} />
-              <MetricBadge
-                label="Active"
-                value={taskTotals.active + taskTotals.awaitingUser}
-              />
-            </>
-          ) : (
-            <>
-              <MetricBadge label="Total" value={taskItems.length} />
-              <MetricBadge
-                label="Running"
-                value={taskItems.filter(isTaskWorkItemRunning).length}
-              />
-            </>
-          )
-        }
-        description="Project-scoped agent task history"
-        icon={<ListChecks className="h-4 w-4" />}
-        title="Tasks"
-      />
+      <PageActionBar>
+        {toolbarLeading}
+        {toolbarLeading ? (
+          <div className="hidden h-5 w-px bg-border sm:block" />
+        ) : null}
+        {taskTotals.total > 0 ? (
+          <>
+            <MetricBadge label="Tasks" value={taskTotals.total} />
+            <MetricBadge label="Done" value={taskTotals.completed} />
+            <MetricBadge
+              label="Active"
+              value={taskTotals.active + taskTotals.awaitingUser}
+            />
+          </>
+        ) : (
+          <>
+            <MetricBadge label="Total" value={taskItems.length} />
+            <MetricBadge
+              label="Running"
+              value={taskItems.filter(isTaskWorkItemRunning).length}
+            />
+          </>
+        )}
+      </PageActionBar>
       {resizableLayoutEnabled ? (
         <ResizablePanelGroup
           className="min-w-0 flex-1"
@@ -276,18 +277,17 @@ const TaskListItem = ({
       selected={selectedRun?.id === run.id}
     >
       <button onClick={() => onSelectRun(run.id)} type="button">
-        <div className="grid min-w-0 gap-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <IssueReferenceBadge issue={issue} project={project} />
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-              {run.title}
-            </span>
-            <AgentRunStatusBadge status={run.status} />
-          </div>
-          <div className="flex min-w-0 items-center gap-1.5">
-            <AgentRunKindBadge kind={run.kind} />
-            <TaskListMeta run={run} />
-          </div>
+        <div
+          className={cn(
+            'grid min-w-0 items-center gap-2',
+            issue
+              ? 'grid-cols-[auto_minmax(0,1fr)_auto]'
+              : 'grid-cols-[minmax(0,1fr)_auto]',
+          )}
+        >
+          {issue ? <IssueReferenceBadge issue={issue} project={project} /> : null}
+          <span className="min-w-0 truncate text-sm">{run.title}</span>
+          <AgentRunStatusBadge status={run.status} />
         </div>
       </button>
     </PageListItem>
@@ -306,18 +306,10 @@ const IssueTaskListItem = ({
   selected: boolean
 }) => {
   const content = (
-    <div className="grid min-w-0 gap-1">
-      <div className="flex min-w-0 items-center gap-2">
-        <IssueReferenceBadge issue={item.issue} project={project} />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {item.task.title}
-        </span>
-        <IssueTaskStatusBadge status={item.task.status} />
-      </div>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <IssueTaskKindBadge kind={item.task.kind} />
-        <TaskListMeta run={item.run} />
-      </div>
+    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+      <IssueReferenceBadge issue={item.issue} project={project} />
+      <span className="min-w-0 truncate text-sm">{item.task.title}</span>
+      <IssueTaskStatusBadge status={item.task.status} />
     </div>
   )
 
@@ -419,15 +411,10 @@ const getTaskDetailDescription = (
   issue: Issue | undefined,
   project: AgentProject,
 ) => {
-  const task = getRunIssueTask(run, issue)
   const items = [
     issue ? formatIssueReference(issue, project) : null,
     run.branchName,
   ]
-
-  if (task) {
-    items.splice(1, 0, task.kind)
-  }
 
   return items.filter(Boolean).join(' · ') || 'Agent task chat'
 }

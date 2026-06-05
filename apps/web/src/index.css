@@ -94,21 +94,14 @@
   --sidebar-accent-foreground: oklch(0.22 0.09 285);
   --sidebar-border: oklch(0.9 0.018 285);
   --sidebar-ring: rgba(95, 41, 255, 0.55);
-  --surface-app-header: color-mix(
-    in oklch,
-    var(--muted) 52%,
-    var(--background)
-  );
-  --surface-page-header: color-mix(
-    in oklch,
-    var(--muted) 36%,
-    var(--background)
-  );
-  --surface-page-toolbar: color-mix(
+  --surface-page-chrome: color-mix(
     in oklch,
     var(--muted) 44%,
     var(--background)
   );
+  --surface-app-header: var(--surface-page-chrome);
+  --surface-page-header: var(--surface-page-chrome);
+  --surface-page-toolbar: var(--surface-page-chrome);
 }
 
 .dark {

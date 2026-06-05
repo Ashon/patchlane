@@ -1,4 +1,17 @@
+import { execFile } from 'node:child_process'
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { promisify } from 'node:util'
+import {
+  agentRegressionCases,
+  type AgentRegressionCase,
+} from './agent-regression-cases'
+
+const execFileAsync = promisify(execFile)
+const defaultIssueNumbers = agentRegressionCases
+  .map((regressionCase) => regressionCase.number)
+  .join(',')
 
 const apiBaseUrl = (
   process.env.PATCHLANE_EXISTING_ISSUES_API_BASE_URL || 'http://localhost:8787'
@@ -8,7 +21,7 @@ const databaseFile =
   'apps/api/.data/patchlane.sqlite'
 const projectCode = process.env.PATCHLANE_EXISTING_ISSUES_PROJECT_CODE || 'PLN'
 const issueNumbers = (
-  process.env.PATCHLANE_EXISTING_ISSUE_NUMBERS || '1,2,3'
+  process.env.PATCHLANE_EXISTING_ISSUE_NUMBERS || defaultIssueNumbers
 )
   .split(',')
   .map((value) => Number.parseInt(value.trim(), 10))
@@ -26,6 +39,9 @@ const maxWorkflowSteps = Number.parseInt(
   10,
 )
 const model = process.env.PATCHLANE_EXISTING_ISSUES_MODEL
+const reportFile =
+  process.env.PATCHLANE_EXISTING_ISSUES_REPORT_FILE ||
+  'apps/api/.data/e2e/agent-existing-issues-report.json'
 
 type ProjectSnapshot = {
   code: string
@@ -47,6 +63,7 @@ type IssueSnapshot = {
   status: string
   subtasks: IssueTaskSnapshot[]
   title: string
+  workspaceId?: string
 }
 
 type IssueTaskSnapshot = {
@@ -60,27 +77,89 @@ type IssueTaskSnapshot = {
 }
 
 type AgentRunSnapshot = {
+  createdAt?: string
   id: string
   issueId?: string
   kind: string
+  messages?: AgentRunMessageSnapshot[]
   resultSummary?: string
   status: string
   subtaskId?: string
   title: string
+  updatedAt?: string
+  workspaceId?: string
 }
 
-type IssueSpec = {
-  description: string
-  number: number
+type AgentRunMessageSnapshot = {
+  content: string
+  metadata?: {
+    durationMs?: number
+    reasoning?: {
+      estimatedTokens?: number
+    }
+    request?: {
+      attempt?: number
+      iteration?: number
+      model?: string
+    }
+    tool?: {
+      input?: {
+        estimatedTokens?: number
+      }
+      output?: {
+        estimatedTokens?: number
+      }
+    }
+    usage?: {
+      inputTokens?: number
+      outputTokens?: number
+      totalTokens?: number
+    }
+  }
+  role: string
+  toolName?: string
+}
+
+type WorkspaceSnapshot = {
+  id: string
+  path: string
+}
+
+type WorkflowMetrics = {
+  assistantResponses: number
+  blockedToolResults: number
+  durationMs: number
+  messages: number
+  providerInputTokens: number
+  providerOutputTokens: number
+  providerRequests: number
+  providerTotalTokens: number
+  reasoningBlocks: number
+  reasoningTokens: number
+  toolInputTokens: number
+  toolOutputTokens: number
+  toolUses: number
+}
+
+type QualitySummary = {
+  changedPaths: string[]
+  ok: boolean
+  requiredChangedPathPatterns: string[]
+  violations: string[]
+  workspacePath?: string
 }
 
 type WorkflowSummary = {
   comments: number
+  description: string
   issueNumber: number
+  metrics: WorkflowMetrics
   ok: boolean
+  quality: QualitySummary
   runs: Array<{
     id: string
     kind: string
+    metrics: WorkflowMetrics
     status: string
     subtaskId?: string
     title: string
@@ -92,75 +171,18 @@ type WorkflowSummary = {
     title: string
   }>
   title: string
+  workflowOk: boolean
 }
 
-const issueSpecs: IssueSpec[] = [
-  {
-    number: 1,
-    description: [
-      'Improve the agent task chat UI so structured JSON tool input and output are easier to inspect.',
-      '',
-      'Current code areas to inspect:',
-      '- apps/web/src/components/ui/tool.tsx',
-      '- apps/web/src/components/chat/chat-tool-part.ts',
-      '- apps/web/src/components/ui/code-block.tsx',
-      '- apps/web/src/lib/agent-task-messages.ts',
-      '',
-      'Acceptance criteria:',
-      '1. Detect JSON objects, arrays, and stringified JSON for tool input/output display.',
-      '2. Keep collapsed tool rows compact and avoid dumping large one-line JSON in the preview.',
-      '3. Show expanded JSON with readable indentation, stable scrolling/wrapping, and copy-friendly text.',
-      '4. Preserve non-JSON output fallback behavior and the existing tool status affordances.',
-      '5. Add focused web tests when parser or formatter helpers are introduced.',
-      '6. Verify with pnpm --filter @patchlane/web typecheck and the relevant focused tests.',
-      '',
-      'Do not ask for clarification. Plan the work into issue tasks, execute the tasks, verify, add concise issue comments, and finish.',
-    ].join('\n'),
-  },
-  {
-    number: 2,
-    description: [
-      'Allow creating a project issue with only a title.',
-      '',
-      'Current code areas to inspect:',
-      '- packages/shared/src/issues.ts',
-      '- apps/api/src/issues/issueStore.ts',
-      '- apps/web/src/components/issues/project-issues-view.tsx',
-      '- apps/web/src/components/app/app-command-palette.tsx',
-      '',
-      'Acceptance criteria:',
-      '1. The API accepts POST /api/issues with title and projectId only.',
-      '2. Missing or blank description is normalized safely without breaking issue parsing or persistence.',
-      '3. The project issue dialog does not require the Description field.',
-      '4. The command palette quick issue flow does not require the Description field.',
-      '5. Existing issue creation with a description remains supported.',
-      '6. Add or update focused tests for title-only issue creation.',
-      '7. Verify with pnpm --filter @patchlane/api test, pnpm --filter @patchlane/web typecheck, and any focused web tests if UI helpers change.',
-      '',
-      'Do not ask for clarification. Plan the work into issue tasks, execute the tasks, verify, add concise issue comments, and finish.',
-    ].join('\n'),
-  },
-  {
-    number: 3,
-    description: [
-      'Make running task badges visually explicit by showing a loader icon.',
-      '',
-      'Current code areas to inspect:',
-      '- apps/web/src/components/issues/common.tsx',
-      '- apps/web/src/components/issues/project-tasks-view.tsx',
-      '- apps/web/src/pages/agent/agent-tasks-page.tsx',
-      '',
-      'Acceptance criteria:',
-      '1. Running issue task status badges show a small Loader2 icon with animate-spin.',
-      '2. Running agent run status badges keep a consistent icon/text layout where they are used in task lists.',
-      '3. Completed, failed, pending, skipped, and awaiting_user visual states keep their current semantic tone.',
-      '4. Icon size is stable so task rows do not shift when status changes.',
-      '5. Verify with pnpm --filter @patchlane/web typecheck and focused tests if badge behavior is covered.',
-      '',
-      'Do not ask for clarification. Plan the work into issue tasks, execute the tasks, verify, add concise issue comments, and finish.',
-    ].join('\n'),
-  },
-]
+type RegressionReport = {
+  apiBaseUrl: string
+  endpointId?: string
+  generatedAt: string
+  issueNumbers: number[]
+  model?: string
+  projectCode: string
+  summaries: WorkflowSummary[]
+}
 
 const main = async () => {
   if (issueNumbers.length === 0) {
@@ -182,6 +204,12 @@ const main = async () => {
     process.env.PATCHLANE_EXISTING_ISSUES_ENDPOINT_ID ||
     project.defaultEndpointId ||
     (await getFirstEnabledEndpointId())
+  const casesByNumber = new Map(
+    agentRegressionCases.map((regressionCase) => [
+      regressionCase.number,
+      regressionCase,
+    ]),
+  )
 
   const issues = await getProjectIssues(project.id)
   const targetIssues = issueNumbers.map((number) => {
@@ -191,11 +219,15 @@ const main = async () => {
       throw new Error(`${projectCode}-${number} was not found`)
     }
 
+    if (!casesByNumber.has(number)) {
+      throw new Error(`${projectCode}-${number} has no regression case`)
+    }
+
     return issue
   })
 
   await deleteLinkedRuns(targetIssues)
-  resetIssuesInDatabase(targetIssues, endpointId)
+  resetIssuesInDatabase(targetIssues, endpointId, casesByNumber)
 
   const resetIssues = await getProjectIssues(project.id)
   console.log('Reset issues')
@@ -208,7 +240,15 @@ const main = async () => {
 
   const summaries: WorkflowSummary[] = []
   for (const issue of targetIssues) {
-    summaries.push(await runIssueWorkflow(projectCode, issue, endpointId))
+    const regressionCase = casesByNumber.get(issue.number)
+
+    if (!regressionCase) {
+      throw new Error(`${projectCode}-${issue.number} has no regression case`)
+    }
+
+    summaries.push(
+      await runIssueWorkflow(projectCode, issue, endpointId, regressionCase),
+    )
   }
 
   console.log('\nExisting issue E2E summary')
@@ -216,9 +256,24 @@ const main = async () => {
     console.log(
       `- ${projectCode}-${summary.issueNumber}: ok=${summary.ok} status=${summary.status} tasks=${summary.tasks.map((task) => task.status).join(',')}`,
     )
+    for (const violation of summary.quality.violations) {
+      console.log(`  quality: ${violation}`)
+    }
   }
 
-  console.log(JSON.stringify({ summaries }, null, 2))
+  const report: RegressionReport = {
+    apiBaseUrl,
+    endpointId,
+    generatedAt: new Date().toISOString(),
+    issueNumbers,
+    model,
+    projectCode,
+    summaries,
+  }
+
+  await writeRegressionReport(report)
+  console.log(`\nRegression report written to ${reportFile}`)
+  console.log(JSON.stringify(report, null, 2))
 
   if (summaries.some((summary) => !summary.ok)) {
     process.exitCode = 1
@@ -256,8 +311,8 @@ const deleteLinkedRuns = async (issues: IssueSnapshot[]) => {
 const resetIssuesInDatabase = (
   issues: IssueSnapshot[],
   endpointId: string | undefined,
+  casesByNumber: Map<number, AgentRegressionCase>,
 ) => {
-  const specsByNumber = new Map(issueSpecs.map((spec) => [spec.number, spec]))
   const now = new Date().toISOString()
   const db = new DatabaseSync(databaseFile)
 
@@ -271,7 +326,9 @@ const resetIssuesInDatabase = (
     const deleteComments = db.prepare(
       'DELETE FROM issue_comments WHERE issue_id = ?',
     )
-    const deleteEvents = db.prepare('DELETE FROM issue_events WHERE issue_id = ?')
+    const deleteEvents = db.prepare(
+      'DELETE FROM issue_events WHERE issue_id = ?',
+    )
     const updateIssue = db.prepare(`
       UPDATE issues
       SET description = ?, workspace_id = NULL, endpoint_id = ?,
@@ -282,16 +339,23 @@ const resetIssuesInDatabase = (
     `)
 
     for (const issue of issues) {
-      const spec = specsByNumber.get(issue.number)
+      const regressionCase = casesByNumber.get(issue.number)
 
-      if (!spec) {
-        throw new Error(`Missing spec for issue number ${issue.number}`)
+      if (!regressionCase) {
+        throw new Error(
+          `Missing regression case for issue number ${issue.number}`,
+        )
       }
 
       deleteSubtasks.run(issue.id)
       deleteComments.run(issue.id)
       deleteEvents.run(issue.id)
-      updateIssue.run(spec.description, endpointId ?? null, now, issue.id)
+      updateIssue.run(
+        regressionCase.description,
+        endpointId ?? null,
+        now,
+        issue.id,
+      )
     }
 
     db.exec('COMMIT')
@@ -307,6 +371,7 @@ const runIssueWorkflow = async (
   projectCodeValue: string,
   initialIssue: IssueSnapshot,
   endpointId: string | undefined,
+  regressionCase: AgentRegressionCase,
 ): Promise<WorkflowSummary> => {
   const runs: WorkflowSummary['runs'] = []
   let issue = initialIssue
@@ -350,9 +415,13 @@ const runIssueWorkflow = async (
       console.log(`  completed request -> ${run.status}`)
     }
 
+    const persistedRun = await getAgentRun(run.id)
+    const runMetrics = collectRunMetrics([persistedRun])
+
     runs.push({
       id: run.id,
       kind: run.kind,
+      metrics: runMetrics,
       status: run.status,
       subtaskId: run.subtaskId,
       title: run.title,
@@ -369,17 +438,33 @@ const runIssueWorkflow = async (
   }
 
   issue = await getIssue(issue.id)
-  const ok =
+  const runSnapshots = await Promise.all(runs.map((run) => getAgentRun(run.id)))
+  const metrics = collectRunMetrics(runSnapshots)
+  const workspacePath = await getIssueWorkspacePath(issue, runSnapshots)
+  const changedPaths = workspacePath
+    ? await collectChangedPaths(workspacePath)
+    : []
+  const quality = evaluateQuality({
+    changedPaths,
+    metrics,
+    regressionCase,
+    workspacePath,
+  })
+  const workflowOk =
     issue.status === 'completed' &&
     issue.subtasks.length > 0 &&
     issue.subtasks.every(
       (task) => task.status === 'completed' || task.status === 'skipped',
     )
+  const ok = workflowOk && quality.ok
 
   return {
     comments: issue.comments.length,
+    description: regressionCase.description,
     issueNumber: issue.number,
+    metrics,
     ok,
+    quality,
     runs,
     status: issue.status,
     tasks: issue.subtasks.map((task) => ({
@@ -388,6 +473,7 @@ const runIssueWorkflow = async (
       title: task.title,
     })),
     title: issue.title,
+    workflowOk,
   }
 }
 
@@ -410,6 +496,223 @@ const getAgentRun = async (id: string) => {
   )
 
   return run
+}
+
+const getIssueWorkspacePath = async (
+  issue: IssueSnapshot,
+  runs: AgentRunSnapshot[],
+) => {
+  const workspaceId =
+    issue.workspaceId ??
+    [...runs]
+      .reverse()
+      .map((run) => run.workspaceId)
+      .find((value): value is string => Boolean(value))
+
+  if (!workspaceId) {
+    return undefined
+  }
+
+  const { workspaces } = await apiRequest<{ workspaces: WorkspaceSnapshot[] }>(
+    '/api/sandbox/workspaces',
+  )
+
+  return workspaces.find((workspace) => workspace.id === workspaceId)?.path
+}
+
+const collectChangedPaths = async (workspacePath: string) => {
+  const { stdout } = await execFileAsync(
+    'git',
+    ['-C', workspacePath, 'status', '--short', '--untracked-files=all'],
+    {
+      maxBuffer: 1024 * 1024 * 8,
+    },
+  )
+
+  return stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map((line) => normalizeGitStatusPath(line))
+    .sort((left, right) => left.localeCompare(right))
+}
+
+const normalizeGitStatusPath = (line: string) => {
+  const pathText = line.slice(3).trim()
+  const renamedPath = pathText.includes(' -> ')
+    ? (pathText.split(' -> ').at(-1) ?? pathText)
+    : pathText
+
+  return renamedPath.replace(/^"|"$/gu, '')
+}
+
+const collectRunMetrics = (runs: AgentRunSnapshot[]): WorkflowMetrics => {
+  const requestKeys = new Set<string>()
+  const metrics = createEmptyMetrics()
+
+  for (const run of runs) {
+    for (const message of run.messages ?? []) {
+      const metadata = message.metadata
+
+      metrics.messages += 1
+
+      if (message.role === 'assistant') {
+        metrics.assistantResponses += 1
+      }
+
+      if (metadata?.durationMs) {
+        metrics.durationMs += metadata.durationMs
+      }
+
+      if (metadata?.reasoning?.estimatedTokens) {
+        metrics.reasoningBlocks += 1
+        metrics.reasoningTokens += metadata.reasoning.estimatedTokens
+      }
+
+      if (metadata?.usage && metadata.request) {
+        const requestKey = [
+          run.id,
+          metadata.request.model ?? 'unknown',
+          metadata.request.attempt ?? 'unknown',
+          metadata.request.iteration ?? 'unknown',
+        ].join(':')
+
+        if (!requestKeys.has(requestKey)) {
+          requestKeys.add(requestKey)
+          metrics.providerRequests += 1
+          metrics.providerInputTokens += metadata.usage.inputTokens ?? 0
+          metrics.providerOutputTokens += metadata.usage.outputTokens ?? 0
+          metrics.providerTotalTokens += metadata.usage.totalTokens ?? 0
+        }
+      }
+
+      if (message.role === 'tool') {
+        metrics.toolUses += 1
+        metrics.toolInputTokens += metadata?.tool?.input?.estimatedTokens ?? 0
+        metrics.toolOutputTokens += metadata?.tool?.output?.estimatedTokens ?? 0
+
+        if (isBlockedToolResult(message)) {
+          metrics.blockedToolResults += 1
+        }
+      }
+    }
+  }
+
+  return metrics
+}
+
+const createEmptyMetrics = (): WorkflowMetrics => ({
+  assistantResponses: 0,
+  blockedToolResults: 0,
+  durationMs: 0,
+  messages: 0,
+  providerInputTokens: 0,
+  providerOutputTokens: 0,
+  providerRequests: 0,
+  providerTotalTokens: 0,
+  reasoningBlocks: 0,
+  reasoningTokens: 0,
+  toolInputTokens: 0,
+  toolOutputTokens: 0,
+  toolUses: 0,
+})
+
+const isBlockedToolResult = (message: AgentRunMessageSnapshot) => {
+  const content = message.content.trim()
+  const lowerContent = content.toLowerCase()
+
+  if (
+    lowerContent.includes('blocked') ||
+    lowerContent.includes('rejected') ||
+    lowerContent.includes('timed out')
+  ) {
+    return true
+  }
+
+  try {
+    const parsed = JSON.parse(content) as {
+      blocked?: unknown
+      error?: unknown
+      exitCode?: unknown
+      ok?: unknown
+      timedOut?: unknown
+    }
+
+    return (
+      parsed.ok === false ||
+      parsed.blocked === true ||
+      Boolean(parsed.error) ||
+      parsed.timedOut === true ||
+      (typeof parsed.exitCode === 'number' && parsed.exitCode !== 0)
+    )
+  } catch {
+    return false
+  }
+}
+
+const evaluateQuality = ({
+  changedPaths,
+  metrics,
+  regressionCase,
+  workspacePath,
+}: {
+  changedPaths: string[]
+  metrics: WorkflowMetrics
+  regressionCase: AgentRegressionCase
+  workspacePath?: string
+}): QualitySummary => {
+  const violations: string[] = []
+  const requiredChangedPathPatterns =
+    regressionCase.quality.requiredChangedPathPatterns ?? []
+  const forbiddenChangedPathPatterns =
+    regressionCase.quality.forbiddenChangedPathPatterns ?? []
+
+  if (!workspacePath) {
+    violations.push('workspace path was not available for artifact checks')
+  }
+
+  for (const pattern of requiredChangedPathPatterns) {
+    const regex = new RegExp(pattern, 'u')
+
+    if (!changedPaths.some((changedPath) => regex.test(changedPath))) {
+      violations.push(`required changed path pattern was missing: ${pattern}`)
+    }
+  }
+
+  for (const pattern of forbiddenChangedPathPatterns) {
+    const regex = new RegExp(pattern, 'u')
+    const matchedPaths = changedPaths.filter((changedPath) =>
+      regex.test(changedPath),
+    )
+
+    if (matchedPaths.length > 0) {
+      violations.push(
+        `forbidden changed path pattern matched ${pattern}: ${matchedPaths.join(', ')}`,
+      )
+    }
+  }
+
+  if (
+    typeof regressionCase.quality.maxBlockedToolResults === 'number' &&
+    metrics.blockedToolResults > regressionCase.quality.maxBlockedToolResults
+  ) {
+    violations.push(
+      `blocked or failed tool results exceeded ${regressionCase.quality.maxBlockedToolResults}: ${metrics.blockedToolResults}`,
+    )
+  }
+
+  return {
+    changedPaths,
+    ok: violations.length === 0,
+    requiredChangedPathPatterns,
+    violations,
+    workspacePath,
+  }
+}
+
+const writeRegressionReport = async (report: RegressionReport) => {
+  await mkdir(path.dirname(reportFile), { recursive: true })
+  await writeFile(reportFile, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
 }
 
 const continueRunAndPoll = async (

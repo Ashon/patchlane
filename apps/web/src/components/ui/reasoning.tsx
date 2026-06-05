@@ -115,7 +115,7 @@ const ReasoningStateIcon = ({ streaming }: { streaming: boolean }) => {
   }
 
   return (
-    <span className="grid h-4 w-4 shrink-0 place-items-center text-foreground">
+    <span className="grid h-4 w-4 shrink-0 place-items-center text-foreground/75">
       <Brain className="h-3.5 w-3.5" />
     </span>
   )
@@ -192,7 +192,7 @@ function ReasoningContent({
       <div
         ref={innerRef}
         className={cn(
-          'text-muted-foreground prose prose-sm dark:prose-invert',
+          'text-muted-foreground/80 prose prose-sm dark:prose-invert',
           'min-w-0 max-w-full break-words',
           'prose-headings:text-current prose-p:text-current prose-strong:text-current prose-a:text-current prose-blockquote:text-current',
           'prose-ol:text-current prose-ul:text-current prose-li:text-current prose-code:text-current prose-th:text-current prose-td:text-current',

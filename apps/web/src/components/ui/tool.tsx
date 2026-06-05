@@ -8,23 +8,16 @@ import { CheckCircle, Settings, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import {
   AgentWorkDisclosurePanel,
-  AgentWorkDisclosureSection,
   AgentWorkDisclosureTrigger,
   AgentWorkPulseIndicator,
 } from './agent-work-disclosure'
+import {
+  getToolPayloadPreview,
+  ToolPayloadView,
+  type ToolPayloadPart,
+} from './tool-payload'
 
-export type ToolPart = {
-  type: string
-  state:
-    | 'input-streaming'
-    | 'input-available'
-    | 'output-available'
-    | 'output-error'
-  input?: Record<string, unknown>
-  output?: unknown
-  toolCallId?: string
-  errorText?: string
-}
+export type ToolPart = ToolPayloadPart
 
 export type ToolProps = {
   toolPart: ToolPart
@@ -79,58 +72,7 @@ const Tool = ({
 
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
           <AgentWorkDisclosurePanel compact={isCompact}>
-            {toolPart.input && Object.keys(toolPart.input).length > 0 ? (
-              <AgentWorkDisclosureSection title="Input">
-                <div className="grid gap-1">
-                  {Object.entries(toolPart.input).map(([key, value]) => (
-                    <div className="min-w-0 break-words" key={key}>
-                      <span className="text-muted-foreground">{key}:</span>{' '}
-                      <span className="font-mono">{formatValue(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </AgentWorkDisclosureSection>
-            ) : null}
-
-            {toolPart.output !== undefined && toolPart.output !== null ? (
-              <AgentWorkDisclosureSection title="Output">
-                <pre
-                  className={cn(
-                    'max-h-56 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background p-2 font-mono leading-5',
-                    isCompact && 'max-h-44 p-1.5 text-xs leading-4',
-                  )}
-                >
-                  {formatValue(toolPart.output)}
-                </pre>
-              </AgentWorkDisclosureSection>
-            ) : null}
-
-            {toolPart.state === 'output-error' && toolPart.errorText ? (
-              <AgentWorkDisclosureSection title="Error" tone="error">
-                <div
-                  className={cn(
-                    'min-w-0 break-words rounded-md border border-destructive/25 bg-destructive/10 p-2 text-destructive',
-                    isCompact && 'p-1.5 text-xs',
-                  )}
-                >
-                  {toolPart.errorText}
-                </div>
-              </AgentWorkDisclosureSection>
-            ) : null}
-
-            {toolPart.state === 'input-streaming' ? (
-              <div className="text-muted-foreground">
-                Processing tool call...
-              </div>
-            ) : null}
-
-            {toolPart.toolCallId ? (
-              <div className="text-[11px] text-muted-foreground">
-                <span className="font-mono">
-                  Call ID: {toolPart.toolCallId}
-                </span>
-              </div>
-            ) : null}
+            <ToolPayloadView compact={isCompact} toolPart={toolPart} />
           </AgentWorkDisclosurePanel>
         </CollapsibleContent>
       </Collapsible>
@@ -210,51 +152,7 @@ const getToolStateLabel = (state: ToolPart['state']) => {
 }
 
 const getToolPreview = (toolPart: ToolPart) => {
-  if (toolPart.errorText) {
-    return normalizePreview(toolPart.errorText)
-  }
-
-  if (toolPart.output !== undefined && toolPart.output !== null) {
-    return normalizePreview(formatValue(toolPart.output))
-  }
-
-  if (toolPart.input && Object.keys(toolPart.input).length > 0) {
-    return normalizePreview(formatInputPreview(toolPart.input))
-  }
-
-  if (toolPart.state === 'input-streaming') {
-    return 'Processing tool call...'
-  }
-
-  return ''
-}
-
-const formatInputPreview = (input: Record<string, unknown>) => {
-  return Object.entries(input)
-    .map(([key, value]) => `${key}: ${formatValue(value)}`)
-    .join(' · ')
-}
-
-const normalizePreview = (value: string) => value.replace(/\s+/g, ' ').trim()
-
-const formatValue = (value: unknown): string => {
-  if (value === null) {
-    return 'null'
-  }
-
-  if (value === undefined) {
-    return 'undefined'
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (typeof value === 'object') {
-    return JSON.stringify(value, null, 2)
-  }
-
-  return String(value)
+  return getToolPayloadPreview(toolPart)
 }
 
 export { Tool }

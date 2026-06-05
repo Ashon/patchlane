@@ -22,8 +22,9 @@ import {
 import { estimateTextTokens, prepareAgentContext } from './agentContext'
 import { getFinishRejection } from './agentFinishGuard'
 import {
-  getBlockedToolNames,
   getToolLoopNudgePrompt,
+  isToolCallBlocked,
+  type RecentToolCall,
 } from './agentToolLoopNudge'
 import type { AgentRunStore } from './agentRunStore'
 import { createPullRequest } from './githubPr'
@@ -490,29 +491,33 @@ export class AgentRuntime {
           }
 
           for (const toolCall of message.tool_calls) {
-            const toolStartedAt = Date.now()
-            const result = getBlockedToolNames(recentToolNames).has(
-              toolCall.function.name,
+            const toolName = toolCall.function.name
+            const toolInput = parseToolInputArguments(
+              toolCall.function.arguments,
             )
-              ? getBlockedToolResult(toolCall.function.name)
-              : await executeAgentTool(
-                  toolCall.function.name,
-                  toolCall.function.arguments,
-                  {
-                    settings: this.options.settings,
-                    workspace,
-                    run,
-                    githubToken,
-                    addIssueComment: this.options.addIssueComment,
-                  },
-                )
+            const toolStartedAt = Date.now()
+            const result = isToolCallBlocked(recentToolNames, {
+              name: toolName,
+              input: toolInput,
+            })
+              ? getBlockedToolResult(toolName, toolInput)
+              : await executeAgentTool(toolName, toolCall.function.arguments, {
+                  settings: this.options.settings,
+                  workspace,
+                  run,
+                  githubToken,
+                  addIssueComment: this.options.addIssueComment,
+                })
 
             messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               content: toToolPromptContent(result.content),
             })
-            recentToolNames.push(toolCall.function.name)
+            recentToolNames.push({
+              name: toolName,
+              input: toolInput,
+            })
             const toolLoopNudge = getToolLoopNudgePrompt(recentToolNames)
             if (toolLoopNudge) {
               messages.push({
@@ -520,16 +525,13 @@ export class AgentRuntime {
                 content: toolLoopNudge,
               })
             }
-            if (toolCall.function.name === 'write_file') {
+            if (toolName === 'write_file') {
               messages.push({
                 role: 'system',
                 content: postEditCompletionPrompt,
               })
             }
-            if (
-              toolCall.function.name === 'git_status' ||
-              toolCall.function.name === 'git_diff'
-            ) {
+            if (toolName === 'git_status' || toolName === 'git_diff') {
               messages.push({
                 role: 'system',
                 content: postDiffCompletionPrompt,
@@ -538,8 +540,8 @@ export class AgentRuntime {
 
             pendingMessages.push({
               role: 'tool',
-              toolName: toolCall.function.name,
-              toolInput: parseToolInputArguments(toolCall.function.arguments),
+              toolName,
+              toolInput,
               content: result.content,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
@@ -879,6 +881,9 @@ export class AgentRuntime {
 
           for (const toolCall of toolCalls) {
             const toolName = toolCall.function.name
+            const toolInput = parseToolInputArguments(
+              toolCall.function.arguments,
+            )
             emit({
               type: 'tool_start',
               toolName,
@@ -890,8 +895,11 @@ export class AgentRuntime {
             })
 
             const toolStartedAt = Date.now()
-            const result = getBlockedToolNames(recentToolNames).has(toolName)
-              ? getBlockedToolResult(toolName)
+            const result = isToolCallBlocked(recentToolNames, {
+              name: toolName,
+              input: toolInput,
+            })
+              ? getBlockedToolResult(toolName, toolInput)
               : await executeAgentTool(toolName, toolCall.function.arguments, {
                   settings: this.options.settings,
                   workspace,
@@ -905,7 +913,10 @@ export class AgentRuntime {
               tool_call_id: toolCall.id,
               content: toToolPromptContent(result.content),
             })
-            recentToolNames.push(toolName)
+            recentToolNames.push({
+              name: toolName,
+              input: toolInput,
+            })
             const toolLoopNudge = getToolLoopNudgePrompt(recentToolNames)
             if (toolLoopNudge) {
               messages.push({
@@ -929,7 +940,7 @@ export class AgentRuntime {
             run = await this.options.runStore.appendMessage(run.id, {
               role: 'tool',
               toolName,
-              toolInput: parseToolInputArguments(toolCall.function.arguments),
+              toolInput,
               content: result.content,
               metadata: createAgentMessageMetadata({
                 ...metadataBase,
@@ -1306,12 +1317,16 @@ const toolResult = (value: unknown): AgentToolResult => ({
   content: JSON.stringify(value, null, 2),
 })
 
-const getBlockedToolResult = (toolName: string): AgentToolResult => {
+const getBlockedToolResult = (
+  toolName: string,
+  input?: Record<string, unknown>,
+): AgentToolResult => {
   return toolResult({
-    error: `Tool '${toolName}' is temporarily disabled because it was repeated too many times in this run.`,
+    error: `Tool '${toolName}' with the same input is temporarily disabled because it was repeated too many times in this run.`,
     blocked: true,
+    input,
     requiredNextStep:
-      'Use the existing context to edit, verify with an allowed focused tool, call finish if complete, or ask one precise blocker question.',
+      'Use the existing context, call the same tool with a different focused input, edit, verify with a narrower command, call finish if complete, or ask one precise blocker question.',
   })
 }
 
@@ -1336,20 +1351,17 @@ const getGitStatusShort = async (context: ToolContext) => {
   return result.stdout
 }
 
-const getAvailableAgentTools = (recentToolNames: string[]) => {
-  const blockedToolNames = getBlockedToolNames(recentToolNames)
-
-  if (blockedToolNames.size === 0) {
-    return agentTools
-  }
-
-  return agentTools.filter((tool) => !blockedToolNames.has(tool.function.name))
+const getAvailableAgentTools = (_recentToolCalls: RecentToolCall[]) => {
+  return agentTools
 }
 
-const getRecentToolNames = (messages: AgentRunMessage[]) => {
+const getRecentToolNames = (messages: AgentRunMessage[]): RecentToolCall[] => {
   return messages
     .filter((message) => message.role === 'tool' && message.toolName)
-    .map((message) => message.toolName as string)
+    .map((message) => ({
+      name: message.toolName as string,
+      input: message.toolInput,
+    }))
     .slice(-12)
 }
 

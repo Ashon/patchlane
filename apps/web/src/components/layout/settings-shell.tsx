@@ -15,7 +15,7 @@ export const SettingsShell = ({ children }: { children: ReactNode }) => {
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background lg:grid-cols-[176px_minmax(0,1fr)] lg:grid-rows-1">
       <aside className="flex min-h-0 flex-col border-b bg-[var(--surface-page-header)] lg:border-b-0 lg:border-r">
         <PageHeader
-          className="min-h-12 px-2.5"
+          className="min-h-12 px-2"
           description="App configuration"
           icon={<Settings className="h-4 w-4" />}
           title="Settings"

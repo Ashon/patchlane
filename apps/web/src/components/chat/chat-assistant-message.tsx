@@ -24,7 +24,7 @@ import { getMetadataAccessory } from './chat-message-metadata'
 import { toToolPart } from './chat-tool-part'
 
 const assistantResponseContentClassName =
-  'max-w-full overflow-hidden bg-muted/65 px-2.5 py-1.5 text-sm leading-5 text-foreground prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 dark:bg-muted/60 [&_*]:max-w-full [&_pre]:overflow-x-auto'
+  'max-w-full overflow-hidden bg-muted/45 px-2.5 py-1.5 text-sm leading-5 text-foreground/90 prose-p:my-0 prose-pre:my-1.5 prose-ol:my-1 prose-ul:my-1 prose-li:my-0 prose-blockquote:my-1.5 prose-table:my-1.5 dark:bg-muted/45 [&_*]:max-w-full [&_pre]:overflow-x-auto'
 
 export const AssistantMessageRow = ({
   message,

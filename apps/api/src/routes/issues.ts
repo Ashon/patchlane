@@ -17,6 +17,7 @@ import {
 import type { AgentRunStore } from '../agent/agentRunStore'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
+import { buildIssueArtifactManifest } from '../issues/issueArtifacts'
 import { reconcileIssueTaskState } from '../issues/issueReconciliation'
 import type { IssueStore } from '../issues/issueStore'
 import {
@@ -122,6 +123,26 @@ export const createIssuesRouter = ({
         updateIssueSchema.parse(request.body),
       )
       response.json({ issue })
+    }),
+  )
+
+  router.post(
+    '/:id/finalize',
+    asyncHandler(async (request, response) => {
+      const id = getRouteParam(request.params.id, 'id')
+      const { issue } = await reconcileIssueTaskState({
+        issueId: id,
+        issueStore,
+        runStore,
+      })
+      const manifest = await buildIssueArtifactManifest({
+        issue,
+        runStore,
+        workspaceStore,
+      })
+      const finalizedIssue = await issueStore.finalizeIssue(issue.id, manifest)
+
+      response.json({ issue: finalizedIssue, manifest })
     }),
   )
 

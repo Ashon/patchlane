@@ -6,6 +6,7 @@ import {
   createAgentProjectSchema,
   createIssueCommentSchema,
   createIssueSchema,
+  issueArtifactManifestSchema,
   issueSubtaskSchema,
   issueCommentSchema,
   issueEventSchema,
@@ -24,6 +25,7 @@ import {
   type CreateIssueTaskInput,
   type CreateIssueSubtaskInput,
   type Issue,
+  type IssueArtifactManifest,
   type IssueComment,
   type IssueEvent,
   type IssueStatus,
@@ -36,7 +38,7 @@ import {
   type UpdateIssueSubtaskInput,
 } from '@patchlane/shared'
 import { AppDatabase, optionalString } from '../db/database'
-import { notFound } from '../http/errors'
+import { badRequest, notFound } from '../http/errors'
 
 type IssueAnalysisOptions = {
   endpointId?: string
@@ -82,6 +84,7 @@ type IssueRow = {
   analysis: string | null
   branch_name: string | null
   pr_url: string | null
+  artifact_manifest_json: string | null
   created_at: string
   updated_at: string
 }
@@ -567,6 +570,47 @@ export class IssueStore {
     return { issue: updated, comment }
   }
 
+  async finalizeIssue(id: string, manifest: IssueArtifactManifest) {
+    const issue = await this.getIssue(id)
+
+    if (issue.status !== 'completed' && issue.status !== 'finalized') {
+      throw badRequest(
+        `Issue '${id}' cannot be finalized from status ${issue.status}`,
+      )
+    }
+
+    const unfinishedTasks = issue.subtasks.filter(
+      (task) => task.status !== 'completed' && task.status !== 'skipped',
+    )
+
+    if (unfinishedTasks.length > 0) {
+      throw badRequest(
+        `Issue '${id}' still has ${unfinishedTasks.length} unfinished tasks`,
+      )
+    }
+
+    const parsedManifest = issueArtifactManifestSchema.parse(manifest)
+    const updated = issueSchema.parse({
+      ...issue,
+      artifactManifest: parsedManifest,
+      status: 'finalized',
+      updatedAt: parsedManifest.finalizedAt,
+    })
+    const event = createEvent({
+      issueId: issue.id,
+      type: 'status_changed',
+      message: 'Issue finalized with artifact manifest.',
+      createdAt: parsedManifest.finalizedAt,
+    })
+
+    this.database.transaction(() => {
+      this.updateIssueRow(updated)
+      this.insertEvents([event])
+    })
+
+    return { ...updated, events: [...updated.events, event] }
+  }
+
   async replaceIssueSubtasks(
     issueId: string,
     input: ReplaceIssueSubtasksInput,
@@ -847,6 +891,7 @@ export class IssueStore {
       events: events.map(toIssueEvent),
       comments: comments.map(toIssueComment),
       subtasks: subtasks.map(toIssueSubtask),
+      artifactManifest: parseArtifactManifest(row.artifact_manifest_json),
     })
   }
 
@@ -856,8 +901,8 @@ export class IssueStore {
         `
         INSERT INTO issues (
           id, number, title, description, project_id, workspace_id, endpoint_id, requirement_run_id, planning_run_id, agent_run_id,
-          status, priority, analysis, branch_name, pr_url, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          status, priority, analysis, branch_name, pr_url, artifact_manifest_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -876,6 +921,7 @@ export class IssueStore {
         issue.analysis ?? null,
         issue.branchName ?? null,
         issue.prUrl ?? null,
+        issue.artifactManifest ? JSON.stringify(issue.artifactManifest) : null,
         issue.createdAt,
         issue.updatedAt,
       )
@@ -887,7 +933,8 @@ export class IssueStore {
         `
         UPDATE issues
         SET title = ?, description = ?, project_id = ?, workspace_id = ?, endpoint_id = ?,
-          requirement_run_id = ?, planning_run_id = ?, agent_run_id = ?, status = ?, priority = ?, analysis = ?, branch_name = ?, pr_url = ?, updated_at = ?
+          requirement_run_id = ?, planning_run_id = ?, agent_run_id = ?, status = ?, priority = ?, analysis = ?, branch_name = ?,
+          pr_url = ?, artifact_manifest_json = ?, updated_at = ?
         WHERE id = ?
       `,
       )
@@ -905,6 +952,7 @@ export class IssueStore {
         issue.analysis ?? null,
         issue.branchName ?? null,
         issue.prUrl ?? null,
+        issue.artifactManifest ? JSON.stringify(issue.artifactManifest) : null,
         issue.updatedAt,
         issue.id,
       )
@@ -1237,7 +1285,15 @@ const getIssueStatusFromSubtasks = (
         subtask.status === 'completed' || subtask.status === 'skipped',
     )
   ) {
+    if (fallback === 'finalized') {
+      return 'finalized'
+    }
+
     return 'completed'
+  }
+
+  if (fallback === 'finalized') {
+    return 'ready'
   }
 
   if (fallback === 'backlog' || fallback === 'planning') {
@@ -1274,6 +1330,18 @@ const parseDependsOnSubtaskIds = (value: string) => {
       : []
   } catch {
     return []
+  }
+}
+
+const parseArtifactManifest = (value: string | null) => {
+  if (!value) {
+    return undefined
+  }
+
+  try {
+    return issueArtifactManifestSchema.parse(JSON.parse(value))
+  } catch {
+    return undefined
   }
 }
 

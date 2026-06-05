@@ -60,7 +60,7 @@ export const ChatPanelHeader = ({
   }
 
   return (
-    <header className="flex min-h-10 flex-col gap-2 border-b bg-[var(--surface-page-header)] px-3 py-2 md:flex-row md:items-center md:justify-between">
+    <header className="flex min-h-10 flex-col gap-2 border-b bg-[var(--surface-page-header)] px-2 py-2 md:flex-row md:items-center md:justify-between">
       <div className="flex min-w-0 items-center gap-2">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <MessageSquare className="h-4 w-4" />

@@ -9,6 +9,7 @@ import type {
   CreateAgentRunInput,
   CreateLlmEndpointInput,
   Issue,
+  IssueArtifactManifest,
   GitHubToolTestResult,
   LlmChatRequest,
   LlmEndpoint,
@@ -297,6 +298,14 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     })
+  },
+  async finalizeIssue(id: string) {
+    return request<{ issue: Issue; manifest: IssueArtifactManifest }>(
+      `/api/issues/${id}/finalize`,
+      {
+        method: 'POST',
+      },
+    )
   },
   async replaceIssueSubtasks(id: string, input: ReplaceIssueSubtasksInput) {
     return request<{ issue: Issue }>(`/api/issues/${id}/subtasks`, {

@@ -10,7 +10,7 @@ export const TaskListMeta = ({
   className?: string
   run?: AgentRun
 }) => {
-  const metrics = formatTaskRunMetricItems(run)
+  const metrics = formatTaskRunMetricItems(run, { includeAwaitingUser: false })
 
   return (
     <div
@@ -26,7 +26,7 @@ export const TaskListMeta = ({
 
 export const TaskRunMetricBadge = ({
   className,
-  includeAwaitingUser = true,
+  includeAwaitingUser = false,
   run,
 }: {
   className?: string
