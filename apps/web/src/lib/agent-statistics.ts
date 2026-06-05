@@ -88,6 +88,7 @@ export const buildAgentStatistics = ({
 
   for (const run of runs) {
     addRunMetrics(totals, run)
+    const runIssue = run.issueId ? issuesById.get(run.issueId) : undefined
 
     addRunMetrics(
       getOrCreateRow(sourceRows, getSourceSegmentId(run), () =>
@@ -119,7 +120,7 @@ export const buildAgentStatistics = ({
     }
 
     if (run.issueId) {
-      const issue = issuesById.get(run.issueId)
+      const issue = runIssue
       const project = issue ? projectsById.get(issue.projectId) : undefined
       addRunMetrics(
         getOrCreateRow(issueRows, run.issueId, () => ({
@@ -137,7 +138,7 @@ export const buildAgentStatistics = ({
     addRunMetrics(runMetrics, run)
     recentRunRows.push({
       id: run.id,
-      label: run.title,
+      label: getRecentRunLabel(run, runIssue),
       description: getRunScopeLabel(run, projectsById, issuesById),
       metadata: run.status,
       timestamp: run.updatedAt,
@@ -419,7 +420,7 @@ const getRunScopeLabel = (
   const project = run.projectId ? projectsById.get(run.projectId) : undefined
 
   if (project && issue) {
-    return `${project.name} / ${issue.title}`
+    return `${project.name} / ${project.code}-${issue.number}`
   }
 
   if (project) {
@@ -427,6 +428,28 @@ const getRunScopeLabel = (
   }
 
   return 'Ad-hoc agent task'
+}
+
+const getRecentRunLabel = (run: AgentRun, issue?: Issue) => {
+  const subtask = issue?.subtasks.find(
+    (task) => task.id === run.subtaskId || task.agentRunId === run.id,
+  )
+
+  if (subtask) {
+    return subtask.title
+  }
+
+  const issuePrefix = issue?.title ? `${issue.title}:` : ''
+
+  if (issuePrefix && run.title.startsWith(issuePrefix)) {
+    const taskTitle = run.title.slice(issuePrefix.length).trim()
+
+    if (taskTitle) {
+      return taskTitle
+    }
+  }
+
+  return run.title
 }
 
 const getAgentRunKindLabel = (kind: AgentRun['kind']) => {

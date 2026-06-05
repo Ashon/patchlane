@@ -403,6 +403,21 @@ const SegmentCell = ({
   )
 }
 
+const RecentRunCell = ({ row }: { row: AgentStatisticsRow }) => {
+  const title = [row.label, row.description].filter(Boolean).join('\n')
+
+  return (
+    <div className="min-w-0" title={title}>
+      <div className="truncate font-medium">{row.label}</div>
+      {row.description ? (
+        <div className="mt-0.5 truncate text-muted-foreground">
+          {row.description}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 const metricColumn = (
   id: string,
   header: string,
@@ -523,7 +538,7 @@ const recentRunColumns: StatsColumn[] = [
     className: 'w-[42%]',
     header: 'Run',
     id: 'run',
-    render: (row) => <SegmentCell row={row} showMetadata={false} />,
+    render: (row) => <RecentRunCell row={row} />,
   },
   {
     className: 'w-[13%]',
