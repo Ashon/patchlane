@@ -324,6 +324,14 @@
 }
 
 @layer utilities {
+  .desktop-window-titlebar {
+    -webkit-app-region: drag;
+  }
+
+  .desktop-window-titlebar :is(a, button, input, select, textarea, [role='button']) {
+    -webkit-app-region: no-drag;
+  }
+
   .border-overlay {
     outline: 1px solid rgb(0 0 0 / 10%);
     outline-offset: -1px;

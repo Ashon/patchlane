@@ -69,6 +69,10 @@ export const AppShell = ({
       ? true
       : window.matchMedia('(min-width: 1280px)').matches,
   )
+  const desktopPlatform =
+    typeof window === 'undefined' ? undefined : window.patchlaneDesktop?.platform
+  const isDesktop = Boolean(desktopPlatform)
+  const isDesktopMac = desktopPlatform === 'darwin'
   const showResizableSupervisor = supervisorChatOpen && resizableLayoutEnabled
 
   useEffect(() => {
@@ -85,8 +89,18 @@ export const AppShell = ({
   return (
     <main className="h-screen overflow-hidden bg-background">
       <div className="flex h-full min-h-0 flex-col">
-        <header className="shrink-0 border-b bg-[var(--surface-app-header)]">
-          <div className="grid min-h-9 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1">
+        <header
+          className={cn(
+            'shrink-0 border-b bg-[var(--surface-app-header)]',
+            isDesktop && 'desktop-window-titlebar',
+          )}
+        >
+          <div
+            className={cn(
+              'grid min-h-9 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1',
+              isDesktopMac && 'pl-21',
+            )}
+          >
             <div className="flex min-w-0 shrink-0 items-center gap-1.5">
               <div className="patchlane-logo-mark flex h-[22px] w-[22px] items-center justify-center rounded-md text-white">
                 <GitPullRequestArrow className="h-3.5 w-3.5" />

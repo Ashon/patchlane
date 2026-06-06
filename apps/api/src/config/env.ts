@@ -37,33 +37,40 @@ const readCsv = (name: string, fallback: string[]) => {
     .filter(Boolean)
 }
 
+const dataDir = path.resolve(
+  process.cwd(),
+  process.env.PATCHLANE_DATA_DIR || '.data',
+)
+
 export const env = {
+  host: process.env.HOST?.trim() || '0.0.0.0',
   port: readInt('PORT', 8787),
   webOrigin: process.env.WEB_ORIGIN?.trim() || 'http://localhost:8788',
   databaseFile: path.resolve(
     process.cwd(),
-    process.env.DATABASE_FILE || '.data/patchlane.sqlite',
+    process.env.DATABASE_FILE || path.join(dataDir, 'patchlane.sqlite'),
   ),
   llmEndpointsFile: path.resolve(
     process.cwd(),
-    process.env.LLM_ENDPOINTS_FILE || '.data/llm-endpoints.json',
+    process.env.LLM_ENDPOINTS_FILE || path.join(dataDir, 'llm-endpoints.json'),
   ),
   toolSettingsFile: path.resolve(
     process.cwd(),
-    process.env.TOOL_SETTINGS_FILE || '.data/tool-settings.json',
+    process.env.TOOL_SETTINGS_FILE || path.join(dataDir, 'tool-settings.json'),
   ),
   agentRunsFile: path.resolve(
     process.cwd(),
-    process.env.AGENT_RUNS_FILE || '.data/agent-runs.json',
+    process.env.AGENT_RUNS_FILE || path.join(dataDir, 'agent-runs.json'),
   ),
   sandboxWorkspacesFile: path.resolve(
     process.cwd(),
-    process.env.SANDBOX_WORKSPACES_FILE || '.data/sandbox-workspaces.json',
+    process.env.SANDBOX_WORKSPACES_FILE ||
+      path.join(dataDir, 'sandbox-workspaces.json'),
   ),
   sandbox: {
     rootDir: path.resolve(
       process.cwd(),
-      process.env.SANDBOX_ROOT_DIR || '.data/sandboxes',
+      process.env.SANDBOX_ROOT_DIR || path.join(dataDir, 'sandboxes'),
     ),
     defaultTimeoutMs: readInt('SANDBOX_DEFAULT_TIMEOUT_MS', 120_000),
     maxOutputBytes: readInt('SANDBOX_MAX_OUTPUT_BYTES', 131_072),

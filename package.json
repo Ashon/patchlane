@@ -7,8 +7,11 @@
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @patchlane/api dev\" \"pnpm --filter @patchlane/web dev\"",
     "dev:api": "pnpm --filter @patchlane/api dev",
+    "dev:desktop": "concurrently -n web,desktop -c magenta,green \"pnpm dev:web\" \"pnpm --filter @patchlane/desktop dev\"",
     "dev:web": "pnpm --filter @patchlane/web dev",
     "build": "pnpm -r build",
+    "build:desktop": "VITE_BASE=./ pnpm --filter @patchlane/web build && pnpm --filter @patchlane/desktop build",
+    "desktop": "pnpm --filter @patchlane/desktop start",
     "test:e2e": "tsx --tsconfig tsconfig.e2e.json --test \"e2e/**/*.test.ts\"",
     "perf:e2e": "tsx --tsconfig tsconfig.e2e.json e2e/agent-issue-performance.ts",
     "e2e:existing-issues": "tsx --tsconfig tsconfig.e2e.json e2e/agent-existing-issues-reset.ts",

@@ -33,8 +33,14 @@ import type {
 } from '@patchlane/shared'
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 
+const runtimeApiBaseUrl =
+  typeof window === 'undefined'
+    ? undefined
+    : window.patchlaneDesktop?.apiBaseUrl
+
 const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ||
+  runtimeApiBaseUrl ||
   (import.meta.env.DEV ? 'http://localhost:8787' : '')
 ).replace(/\/+$/, '')
 
