@@ -18,6 +18,9 @@ export const normalizeProjectDraft = (
   branchPrefix: draft.branchPrefix.trim() || 'agent',
   code: draft.code.trim().toUpperCase() || undefined,
   defaultEndpointId: draft.defaultEndpointId || undefined,
+  defaultAgentRuntime: draft.defaultAgentRuntime,
+  defaultAgentRuntimeConnectorId:
+    draft.defaultAgentRuntimeConnectorId || undefined,
   description: draft.description.trim(),
   name: draft.name.trim(),
   repositoryRef: draft.repositoryRef.trim() || undefined,
@@ -35,6 +38,9 @@ export const toProjectDraft = (
         branchPrefix: project.branchPrefix,
         code: project.code,
         defaultEndpointId: project.defaultEndpointId ?? '',
+        defaultAgentRuntime: project.defaultAgentRuntime,
+        defaultAgentRuntimeConnectorId:
+          project.defaultAgentRuntimeConnectorId ?? '',
         description: project.description,
         name: project.name,
         repositoryRef: project.repositoryRef ?? '',

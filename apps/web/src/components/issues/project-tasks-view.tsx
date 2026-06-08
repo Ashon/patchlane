@@ -189,7 +189,7 @@ export const ProjectTasksView = ({
           </ResizablePanel>
         </ResizablePanelGroup>
       ) : (
-        <div className="grid min-h-0 flex-1 overflow-hidden bg-background lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 content-start overflow-hidden bg-background @3xl:content-stretch @3xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
           {taskListPane}
           {taskChatPane}
         </div>
@@ -218,7 +218,7 @@ const TaskListPane = ({
       className={
         variant === 'resizable'
           ? 'h-full min-h-0 bg-background'
-          : 'min-h-0 border-b bg-background lg:border-b-0 lg:border-r'
+          : 'min-h-0 border-b bg-background @3xl:border-b-0 @3xl:border-r'
       }
     >
       {items.length ? (
@@ -364,7 +364,7 @@ const TaskChatPane = ({
     : undefined
 
   return (
-    <section className="h-full min-h-[520px] min-w-0 bg-background lg:min-h-0">
+    <section className="h-full min-h-[520px] min-w-0 bg-background @3xl:min-h-0">
       {selectedRun ? (
         <div className="flex h-full min-h-0 flex-col">
           <PageHeader

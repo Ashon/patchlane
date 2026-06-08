@@ -36,9 +36,9 @@ export const PageSplit = ({
       className={cn(
         'grid h-full min-h-0 overflow-y-auto bg-background',
         variant === 'inspector' &&
-          'lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden',
+          'content-start @3xl:content-stretch @3xl:grid-cols-[minmax(0,1fr)_360px] @3xl:overflow-hidden',
         variant === 'wide-list' &&
-          'xl:grid-cols-[minmax(340px,360px)_minmax(0,1fr)] xl:overflow-hidden',
+          'content-start @4xl:content-stretch @4xl:grid-cols-[minmax(340px,360px)_minmax(0,1fr)] @4xl:overflow-hidden',
         className,
       )}
     >
@@ -54,15 +54,16 @@ export const PagePane = ({
 }: {
   children: ReactNode
   className?: string
-  minHeight?: 'default' | 'compact' | 'detail'
+  minHeight?: 'default' | 'compact' | 'detail' | 'none'
 }) => {
   return (
     <div
       className={cn(
         'flex min-w-0 flex-col',
-        minHeight === 'default' && 'min-h-[320px] lg:min-h-0',
-        minHeight === 'compact' && 'min-h-[260px] xl:min-h-0',
-        minHeight === 'detail' && 'min-h-[560px] xl:min-h-0',
+        minHeight === 'default' && 'min-h-[320px] @3xl:min-h-0',
+        minHeight === 'none' && 'min-h-0',
+        minHeight === 'compact' && 'min-h-[260px] @4xl:min-h-0',
+        minHeight === 'detail' && 'min-h-[560px] @4xl:min-h-0',
         className,
       )}
     >
@@ -192,7 +193,7 @@ export const PageAside = ({
   return (
     <ScrollArea
       className={cn(
-        'min-h-0 border-t bg-muted/20 lg:border-l lg:border-t-0',
+        'min-h-0 border-t bg-muted/20 @3xl:border-l @3xl:border-t-0',
         className,
       )}
       viewportClassName={viewportClassName}

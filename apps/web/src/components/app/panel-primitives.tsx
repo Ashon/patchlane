@@ -39,7 +39,7 @@ export const ToolStatusRow = ({
         {icon}
         {label}
       </span>
-      <span className="min-w-0 break-words text-right text-muted-foreground">
+      <span className="min-w-0 text-right text-muted-foreground [overflow-wrap:anywhere]">
         {value}
       </span>
     </div>

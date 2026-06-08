@@ -23,6 +23,9 @@ import {
   ErrorBanner,
   PageAside,
   PageHeader,
+  PageList,
+  PageListItem,
+  PageListSkeleton,
   PagePane,
   PageScroll,
   PageSection,
@@ -31,7 +34,6 @@ import {
 import { api } from '@/lib/api'
 import { getErrorMessage, getQueryErrorMessage } from '@/lib/errors'
 import { queryKeys } from '@/lib/query-client'
-import { cn } from '@/lib/utils'
 
 export const WorkspaceManagementPage = () => {
   const queryClient = useQueryClient()
@@ -133,7 +135,7 @@ export const WorkspaceManagementPage = () => {
 
   return (
     <PageSplit>
-      <PagePane>
+      <PagePane minHeight="none">
         <PageHeader
           actions={
             <span className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
@@ -143,24 +145,28 @@ export const WorkspaceManagementPage = () => {
           icon={<Folder className="h-4 w-4" />}
           title="Workspaces"
         />
-        <PageScroll viewportClassName="p-2">
-          <div className="grid gap-1.5">
-            <ErrorBanner message={visibleError} variant="card" />
+        <PageScroll>
+          <ErrorBanner message={visibleError} />
 
-            {workspaces.length ? (
-              workspaces.map((workspace) => (
-                <SandboxWorkspaceCard
+          {sandboxWorkspacesQuery.isLoading ? (
+            <PageListSkeleton />
+          ) : workspaces.length ? (
+            <PageList>
+              {workspaces.map((workspace) => (
+                <SandboxWorkspaceRow
                   key={workspace.id}
                   onDelete={() => void deleteWorkspace(workspace)}
                   onSelect={() => selectWorkspace(workspace)}
                   selected={selectedWorkspace?.id === workspace.id}
                   workspace={workspace}
                 />
-              ))
-            ) : (
+              ))}
+            </PageList>
+          ) : (
+            <div className="p-2">
               <EmptyState>No workspaces</EmptyState>
-            )}
-          </div>
+            </div>
+          )}
         </PageScroll>
       </PagePane>
 
@@ -203,18 +209,16 @@ export const WorkspaceManagementPage = () => {
                 value={workspaceDraft.ref}
               />
             </Field>
-            <Button
-              className="w-full"
-              disabled={workspaceCreating}
-              type="submit"
-            >
-              {workspaceCreating ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <Plus />
-              )}
-              Create
-            </Button>
+            <div className="flex justify-end border-t pt-3">
+              <Button disabled={workspaceCreating} size="sm" type="submit">
+                {workspaceCreating ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Plus />
+                )}
+                Create
+              </Button>
+            </div>
           </form>
         </PageSection>
 
@@ -269,7 +273,7 @@ export const WorkspaceManagementPage = () => {
   )
 }
 
-const SandboxWorkspaceCard = ({
+const SandboxWorkspaceRow = ({
   onDelete,
   onSelect,
   selected,
@@ -281,12 +285,7 @@ const SandboxWorkspaceCard = ({
   workspace: SandboxWorkspace
 }) => {
   return (
-    <div
-      className={cn(
-        'rounded-md border bg-background p-2 transition-colors',
-        selected && 'border-primary ring-1 ring-primary',
-      )}
-    >
+    <PageListItem selected={selected}>
       <div className="flex items-start justify-between gap-2">
         <button
           className="min-w-0 flex-1 text-left"
@@ -318,7 +317,7 @@ const SandboxWorkspaceCard = ({
       {workspace.error ? (
         <p className="mt-2 text-sm text-destructive">{workspace.error}</p>
       ) : null}
-    </div>
+    </PageListItem>
   )
 }
 

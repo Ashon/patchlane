@@ -6,6 +6,7 @@ import {
   createStreamingChatCompletion,
   testEndpointConnection,
 } from '../llm/openaiClient'
+import { testOpenCodeRuntimeConnection } from '../agent/opencodeRuntime'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
 
@@ -54,7 +55,10 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
     '/endpoints/:id/test',
     asyncHandler(async (request, response) => {
       const endpoint = await store.get(getRouteParam(request.params.id, 'id'))
-      const result = await testEndpointConnection(endpoint)
+      const result =
+        endpoint.runtimeType === 'opencode_cli'
+          ? await testOpenCodeRuntimeConnection(endpoint)
+          : await testEndpointConnection(endpoint)
       response.json({ result })
     }),
   )
@@ -68,7 +72,13 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
         : await store.getDefault()
 
       if (!endpoint.enabled) {
-        throw badRequest(`LLM endpoint '${endpoint.id}' is disabled`)
+        throw badRequest(`Agent runtime '${endpoint.id}' is disabled`)
+      }
+
+      if (endpoint.runtimeType !== 'openai_compatible') {
+        throw badRequest(
+          `Agent runtime '${endpoint.id}' does not support chat completions`,
+        )
       }
 
       const completion = await createChatCompletion(endpoint, parsed)
@@ -95,7 +105,13 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
         : await store.getDefault()
 
       if (!endpoint.enabled) {
-        throw badRequest(`LLM endpoint '${endpoint.id}' is disabled`)
+        throw badRequest(`Agent runtime '${endpoint.id}' is disabled`)
+      }
+
+      if (endpoint.runtimeType !== 'openai_compatible') {
+        throw badRequest(
+          `Agent runtime '${endpoint.id}' does not support chat completions`,
+        )
       }
 
       response.setHeader('Content-Type', 'text/event-stream; charset=utf-8')

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { agentRuntimeSchema } from './agent'
 
 const isoDateSchema = z.string().datetime()
 const optionalTextSchema = z.preprocess((value) => {
@@ -51,6 +52,8 @@ export const agentProjectSchema = z.object({
   repositoryRef: optionalShortTextSchema,
   workspaceId: z.string().min(1).optional(),
   defaultEndpointId: z.string().min(1).optional(),
+  defaultAgentRuntime: agentRuntimeSchema.default('patchlane'),
+  defaultAgentRuntimeConnectorId: z.string().min(1).optional(),
   branchPrefix: z.string().trim().min(1).max(80).default('agent'),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
@@ -64,6 +67,8 @@ export const createAgentProjectSchema = z.object({
   repositoryRef: optionalShortTextSchema,
   workspaceId: z.string().min(1).optional(),
   defaultEndpointId: z.string().min(1).optional(),
+  defaultAgentRuntime: agentRuntimeSchema.default('patchlane'),
+  defaultAgentRuntimeConnectorId: z.string().min(1).optional(),
   branchPrefix: z.string().trim().min(1).max(80).default('agent'),
 })
 
@@ -235,6 +240,8 @@ export const updateIssueSchema = z
 
 export const startIssueSchema = z.object({
   endpointId: z.string().min(1).optional(),
+  agentRuntime: agentRuntimeSchema.optional(),
+  agentRuntimeConnectorId: z.string().min(1).optional(),
 })
 
 export const createIssueCommentSchema = z.object({

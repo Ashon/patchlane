@@ -9,6 +9,8 @@ export const emptyProjectDraft: ProjectDraft = {
   repositoryRef: '',
   workspaceId: '',
   defaultEndpointId: '',
+  defaultAgentRuntime: 'patchlane',
+  defaultAgentRuntimeConnectorId: '',
   branchPrefix: 'agent',
 }
 

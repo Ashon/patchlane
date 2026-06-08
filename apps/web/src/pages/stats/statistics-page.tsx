@@ -144,7 +144,7 @@ const OverviewGrid = ({ metrics }: { metrics: AgentStatisticsMetrics }) => {
   const toolIoTokens = metrics.toolInputTokens + metrics.toolOutputTokens
 
   return (
-    <section className="grid border-b bg-background sm:grid-cols-2 xl:grid-cols-6">
+    <section className="grid border-b bg-background @2xl:grid-cols-2 @5xl:grid-cols-6">
       <MetricTile
         detail={`${metrics.completedRuns} completed / ${metrics.awaitingRuns} awaiting / ${metrics.failedRuns} failed`}
         label="Runs"
@@ -189,7 +189,7 @@ const MetricTile = ({
   value: string
 }) => {
   return (
-    <div className="min-w-0 border-b border-r px-3 py-2 sm:[&:nth-child(2n)]:border-r-0 xl:border-b-0 xl:[&:nth-child(2n)]:border-r xl:[&:nth-child(6n)]:border-r-0">
+    <div className="min-w-0 border-b border-r px-3 py-2 @2xl:[&:nth-child(2n)]:border-r-0 @5xl:border-b-0 @5xl:[&:nth-child(2n)]:border-r @5xl:[&:nth-child(6n)]:border-r-0">
       <div className="truncate text-[11px] font-medium uppercase text-muted-foreground">
         {label}
       </div>

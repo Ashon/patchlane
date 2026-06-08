@@ -206,7 +206,9 @@ export const AppShell = ({
                 id="main"
                 minSize="520px"
               >
-                <div className="h-full min-w-0 overflow-hidden">{children}</div>
+                <div className="@container h-full min-w-0 overflow-hidden">
+                  {children}
+                </div>
               </ResizablePanel>
               <ResizableHandle />
               <ResizablePanel
@@ -222,7 +224,9 @@ export const AppShell = ({
               </ResizablePanel>
             </ResizablePanelGroup>
           ) : (
-            <div className="min-w-0 flex-1 overflow-hidden">{children}</div>
+            <div className="@container min-w-0 flex-1 overflow-hidden">
+              {children}
+            </div>
           )}
 
           {supervisorChatOpen && !resizableLayoutEnabled ? (

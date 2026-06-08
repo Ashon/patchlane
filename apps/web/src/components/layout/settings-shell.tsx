@@ -12,20 +12,20 @@ export const SettingsShell = ({ children }: { children: ReactNode }) => {
   }
 
   return (
-    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background lg:grid-cols-[176px_minmax(0,1fr)] lg:grid-rows-1">
-      <aside className="flex min-h-0 flex-col border-b bg-[var(--surface-page-header)] lg:border-b-0 lg:border-r">
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background @3xl:grid-cols-[176px_minmax(0,1fr)] @3xl:grid-rows-1">
+      <aside className="flex min-h-0 flex-col border-b bg-[var(--surface-page-header)] @3xl:border-b-0 @3xl:border-r">
         <PageHeader
           className="min-h-12 px-2"
           description="App configuration"
           icon={<Settings className="h-4 w-4" />}
           title="Settings"
         />
-        <PageScroll className="hidden lg:block" viewportClassName="p-2">
+        <PageScroll className="hidden @3xl:block" viewportClassName="p-2">
           <SettingsNavigation buildSettingsRoute={buildSettingsRoute} />
         </PageScroll>
         <nav
           aria-label="Settings"
-          className="flex gap-1 overflow-x-auto px-2 py-1.5 lg:hidden"
+          className="flex gap-1 overflow-x-auto px-2 py-1.5 @3xl:hidden"
         >
           <SettingsNavigation
             buildSettingsRoute={buildSettingsRoute}
@@ -34,7 +34,9 @@ export const SettingsShell = ({ children }: { children: ReactNode }) => {
         </nav>
       </aside>
 
-      <div className="min-h-0 overflow-hidden bg-background">{children}</div>
+      <div className="@container min-h-0 overflow-hidden bg-background">
+        {children}
+      </div>
     </section>
   )
 }

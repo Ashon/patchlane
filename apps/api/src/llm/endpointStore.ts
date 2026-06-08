@@ -4,6 +4,7 @@ import {
   llmEndpointListSchema,
   llmEndpointSchema,
   updateLlmEndpointSchema,
+  type AgentRuntimeConnectorType,
   type CreateLlmEndpointInput,
   type LlmEndpoint,
   type UpdateLlmEndpointInput,
@@ -19,10 +20,14 @@ import { notFound } from '../http/errors'
 
 type LlmEndpointRow = {
   id: string
+  runtime_type: AgentRuntimeConnectorType | null
   name: string
   base_url: string
   default_model: string
   api_key_env_var: string | null
+  opencode_command: string | null
+  opencode_command_args_json: string | null
+  opencode_dangerously_skip_permissions: number | null
   enabled: number
   created_at: string
   updated_at: string
@@ -58,12 +63,17 @@ export class LlmEndpointStore {
   async getDefault() {
     const row = this.database.sqlite
       .prepare(
-        'SELECT * FROM llm_endpoints WHERE enabled = 1 ORDER BY name ASC LIMIT 1',
+        `
+        SELECT * FROM llm_endpoints
+        WHERE enabled = 1 AND runtime_type = 'openai_compatible'
+        ORDER BY name ASC
+        LIMIT 1
+      `,
       )
       .get() as unknown as LlmEndpointRow | undefined
 
     if (!row) {
-      throw notFound('No enabled LLM endpoint is configured')
+      throw notFound('No enabled OpenAI-compatible agent runtime is configured')
     }
 
     return toEndpoint(row)
@@ -98,15 +108,21 @@ export class LlmEndpointStore {
       .prepare(
         `
         UPDATE llm_endpoints
-        SET name = ?, base_url = ?, default_model = ?, api_key_env_var = ?, enabled = ?, updated_at = ?
+        SET runtime_type = ?, name = ?, base_url = ?, default_model = ?, api_key_env_var = ?,
+          opencode_command = ?, opencode_command_args_json = ?, opencode_dangerously_skip_permissions = ?,
+          enabled = ?, updated_at = ?
         WHERE id = ?
       `,
       )
       .run(
+        updated.runtimeType,
         updated.name,
         updated.baseUrl,
         updated.defaultModel,
         updated.apiKeyEnvVar ?? null,
+        updated.opencodeCommand,
+        JSON.stringify(updated.opencodeCommandArgs),
+        toSqlBoolean(updated.opencodeDangerouslySkipPermissions),
         toSqlBoolean(updated.enabled),
         updated.updatedAt,
         updated.id,
@@ -174,16 +190,22 @@ export class LlmEndpointStore {
       .prepare(
         `
         INSERT INTO llm_endpoints (
-          id, name, base_url, default_model, api_key_env_var, enabled, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          id, runtime_type, name, base_url, default_model, api_key_env_var,
+          opencode_command, opencode_command_args_json, opencode_dangerously_skip_permissions,
+          enabled, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
         endpoint.id,
+        endpoint.runtimeType,
         endpoint.name,
         endpoint.baseUrl,
         endpoint.defaultModel,
         endpoint.apiKeyEnvVar ?? null,
+        endpoint.opencodeCommand,
+        JSON.stringify(endpoint.opencodeCommandArgs),
+        toSqlBoolean(endpoint.opencodeDangerouslySkipPermissions),
         toSqlBoolean(endpoint.enabled),
         endpoint.createdAt,
         endpoint.updatedAt,
@@ -194,12 +216,35 @@ export class LlmEndpointStore {
 const toEndpoint = (row: LlmEndpointRow) => {
   return llmEndpointSchema.parse({
     id: row.id,
+    runtimeType: row.runtime_type ?? 'openai_compatible',
     name: row.name,
     baseUrl: row.base_url,
     defaultModel: row.default_model,
     apiKeyEnvVar: optionalString(row.api_key_env_var),
+    opencodeCommand: row.opencode_command ?? 'opencode',
+    opencodeCommandArgs: parseJsonStringArray(row.opencode_command_args_json),
+    opencodeDangerouslySkipPermissions: fromSqlBoolean(
+      row.opencode_dangerously_skip_permissions,
+    ),
     enabled: fromSqlBoolean(row.enabled),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   })
+}
+
+const parseJsonStringArray = (value: string | null) => {
+  if (!value) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+
+    return Array.isArray(parsed) &&
+      parsed.every((item) => typeof item === 'string')
+      ? parsed
+      : []
+  } catch {
+    return []
+  }
 }

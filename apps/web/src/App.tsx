@@ -71,11 +71,20 @@ const AppContent = () => {
     () => endpointsQuery.data?.endpoints ?? [],
     [endpointsQuery.data?.endpoints],
   )
+  const chatEndpoints = useMemo(
+    () =>
+      endpoints.filter(
+        (endpoint) => endpoint.runtimeType === 'openai_compatible',
+      ),
+    [endpoints],
+  )
   const toolSettings = toolSettingsQuery.data?.settings ?? null
   const defaultEndpoint = useMemo(
     () =>
-      endpoints.find((endpoint) => endpoint.enabled) ?? endpoints[0] ?? null,
-    [endpoints],
+      chatEndpoints.find((endpoint) => endpoint.enabled) ??
+      chatEndpoints[0] ??
+      null,
+    [chatEndpoints],
   )
   const selectedChatEndpoint = useMemo(() => {
     if (!selectedChatEndpointId) {
@@ -83,10 +92,12 @@ const AppContent = () => {
     }
 
     return (
-      endpoints.find((endpoint) => endpoint.id === selectedChatEndpointId) ??
+      chatEndpoints.find(
+        (endpoint) => endpoint.id === selectedChatEndpointId,
+      ) ??
       defaultEndpoint
     )
-  }, [defaultEndpoint, endpoints, selectedChatEndpointId])
+  }, [chatEndpoints, defaultEndpoint, selectedChatEndpointId])
   const enabledCount = endpoints.filter((endpoint) => endpoint.enabled).length
   const githubReady = Boolean(
     toolSettings?.github.enabled && toolSettings.github.tokenConfigured,
@@ -184,11 +195,11 @@ const AppContent = () => {
   useEffect(() => {
     if (
       selectedChatEndpointId &&
-      !endpoints.some((endpoint) => endpoint.id === selectedChatEndpointId)
+      !chatEndpoints.some((endpoint) => endpoint.id === selectedChatEndpointId)
     ) {
       void setSelectedChatEndpointId(null)
     }
-  }, [endpoints, selectedChatEndpointId, setSelectedChatEndpointId])
+  }, [chatEndpoints, selectedChatEndpointId, setSelectedChatEndpointId])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -226,7 +237,7 @@ const AppContent = () => {
           <ChatPanel
             contextLabel={supervisorContextLabel}
             endpoint={selectedChatEndpoint}
-            endpoints={endpoints}
+            endpoints={chatEndpoints}
             loading={loading}
             onEndpointChange={(id) => void setSelectedChatEndpointId(id)}
             systemPrompt={supervisorChatSystemPrompt}
@@ -289,7 +300,7 @@ const AppContent = () => {
       {commandMenuOpen ? (
         <AppCommandPalette
           defaultEndpoint={defaultEndpoint}
-          endpoints={endpoints}
+          endpoints={chatEndpoints}
           issues={issues}
           onOpenChange={setCommandMenuOpen}
           open={commandMenuOpen}

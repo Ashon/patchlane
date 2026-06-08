@@ -8,6 +8,7 @@ import {
 } from '@patchlane/shared'
 import { AgentRuntime } from '../agent/agentRuntime'
 import type { AgentRunStore } from '../agent/agentRunStore'
+import { OpenCodeRuntime } from '../agent/opencodeRuntime'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
 import { reconcileIssueAfterAgentRun } from '../issues/issueReconciliation'
@@ -41,7 +42,7 @@ export const createAgentRouter = ({
   toolSettingsStore,
   workspaceStore,
 }: AgentRouterOptions) => {
-  const runtime = new AgentRuntime({
+  const patchlaneRuntime = new AgentRuntime({
     runStore,
     settings: sandboxSettings,
     contextTokenBudget,
@@ -54,6 +55,16 @@ export const createAgentRouter = ({
       const settings = await toolSettingsStore.get()
       return settings.github.enabled ? settings.github.token : undefined
     },
+    addIssueComment: (issueId, input) =>
+      issueStore.addIssueComment(issueId, input),
+    onRunFinished: async (run) => {
+      await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)
+    },
+  })
+  const opencodeRuntime = new OpenCodeRuntime({
+    runStore,
+    getConnector: (id) => endpointStore.get(id),
+    getWorkspace: (id) => workspaceStore.get(id),
     addIssueComment: (issueId, input) =>
       issueStore.addIssueComment(issueId, input),
     onRunFinished: async (run) => {
@@ -128,12 +139,14 @@ export const createAgentRouter = ({
 
       const title =
         input.title ??
-        (await generateAgentRunTitle({
-          endpointId: input.endpointId,
-          endpointStore,
-          model: input.model,
-          task: input.task,
-        }))
+        (input.agentRuntime === 'opencode'
+          ? undefined
+          : await generateAgentRunTitle({
+              endpointId: input.endpointId,
+              endpointStore,
+              model: input.model,
+              task: input.task,
+            }))
       const run = await runStore.create({ ...input, title })
 
       response.status(201).json({ run })
@@ -173,11 +186,9 @@ export const createAgentRouter = ({
     '/runs/:id/continue',
     asyncHandler(async (request, response) => {
       const input = continueAgentRunSchema.parse(request.body)
-      const run = await runtime.continue(
-        getRouteParam(request.params.id, 'id'),
-        input.endpointId,
-        input.model,
-      )
+      const id = getRouteParam(request.params.id, 'id')
+      const runtime = await getRuntimeForRun(id)
+      const run = await runtime.continue(id, input.endpointId, input.model)
 
       response.json({ run })
     }),
@@ -189,6 +200,7 @@ export const createAgentRouter = ({
     try {
       const input = continueAgentRunSchema.parse(request.body)
       const id = getRouteParam(request.params.id, 'id')
+      const runtime = await getRuntimeForRun(id)
 
       response.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
       response.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -224,6 +236,12 @@ export const createAgentRouter = ({
       next(error)
     }
   })
+
+  async function getRuntimeForRun(id: string) {
+    const run = await runStore.get(id)
+
+    return run.agentRuntime === 'opencode' ? opencodeRuntime : patchlaneRuntime
+  }
 
   return router
 }

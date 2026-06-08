@@ -14,6 +14,7 @@ import type {
   AgentProject,
   AgentRun,
   AgentRunMessageMetadata,
+  AgentRuntime,
   Issue,
   IssueStatus,
   LlmEndpoint,
@@ -42,6 +43,8 @@ type AppRoute = {
 type AgentRunControllerValue = {
   agentReplyDraft: string
   agentRunning: boolean
+  agentRuntimeConnector: LlmEndpoint | null
+  agentRuntimeDraft: AgentRuntime
   agentTaskDraft: string
   endpoint: LlmEndpoint | null
   endpoints: LlmEndpoint[]
@@ -50,6 +53,7 @@ type AgentRunControllerValue = {
   issuesError: string | null
   loading: boolean
   onAgentReplyChange: (value: string) => void
+  onAgentRuntimeChange: (value: AgentRuntime) => void
   onAgentTaskChange: (value: string) => void
   onContinueAgentRun: (run: AgentRun) => void
   onCreateAgentRun: (event: FormEvent<HTMLFormElement>) => void
@@ -59,7 +63,10 @@ type AgentRunControllerValue = {
   onRewindAgentRun: (run: AgentRun, messageId: string) => void
   onSelectAgentRun: (run: AgentRun) => void
   onSendAgentMessage: () => void
-  onStartIssueRun: (issue: Issue) => Promise<void>
+  onStartIssueRun: (
+    issue: Issue,
+    options?: { onRunStarted?: (run: AgentRun) => void },
+  ) => Promise<void>
   onStartNewAgentRun: () => void
   onStopAgentRun: () => void
   projects: AgentProject[]
@@ -96,6 +103,8 @@ export const AgentRunControllerProvider = ({
     parseAsString.withOptions({ history: 'replace', shallow: true }),
   )
   const [agentTaskDraft, setAgentTaskDraft] = useState('')
+  const [agentRuntimeDraft, setAgentRuntimeDraft] =
+    useState<AgentRuntime>('patchlane')
   const [agentReplyDraft, setAgentReplyDraft] = useState('')
   const [agentRunning, setAgentRunning] = useState(false)
   const [streamingAgentRunId, setStreamingAgentRunId] = useState<string | null>(
@@ -134,6 +143,21 @@ export const AgentRunControllerProvider = ({
     () => endpointsQuery.data?.endpoints ?? [],
     [endpointsQuery.data?.endpoints],
   )
+  const openAiEndpoints = useMemo(
+    () =>
+      endpoints.filter(
+        (candidate) => candidate.runtimeType === 'openai_compatible',
+      ),
+    [endpoints],
+  )
+  const opencodeEndpoint = useMemo(
+    () =>
+      endpoints.find(
+        (candidate) =>
+          candidate.runtimeType === 'opencode_cli' && candidate.enabled,
+      ) ?? null,
+    [endpoints],
+  )
   const workspaces = useMemo(
     () => sandboxWorkspacesQuery.data?.workspaces ?? [],
     [sandboxWorkspacesQuery.data?.workspaces],
@@ -152,9 +176,13 @@ export const AgentRunControllerProvider = ({
   )
   const endpoint = useMemo(
     () =>
-      endpoints.find((candidate) => candidate.enabled) ?? endpoints[0] ?? null,
-    [endpoints],
+      openAiEndpoints.find((candidate) => candidate.enabled) ??
+      openAiEndpoints[0] ??
+      null,
+    [openAiEndpoints],
   )
+  const agentRuntimeConnector =
+    agentRuntimeDraft === 'opencode' ? opencodeEndpoint : endpoint
   const selectedWorkspace = useMemo(
     () =>
       workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ??
@@ -216,6 +244,7 @@ export const AgentRunControllerProvider = ({
   const startNewAgentRun = useCallback(() => {
     setAgentReplyDraft('')
     setAgentTaskDraft('')
+    setAgentRuntimeDraft('patchlane')
     setError(null)
     navigate(buildRoute('/agent', { run: null }))
   }, [buildRoute, navigate])
@@ -699,7 +728,11 @@ export const AgentRunControllerProvider = ({
       try {
         const response = await api.createAgentRun({
           workspaceId: selectedWorkspace.id,
-          endpointId: endpoint?.id,
+          endpointId:
+            agentRuntimeDraft === 'patchlane'
+              ? endpoint?.id
+              : opencodeEndpoint?.id,
+          agentRuntime: agentRuntimeDraft,
           task: agentTaskDraft,
         })
 
@@ -714,7 +747,9 @@ export const AgentRunControllerProvider = ({
     },
     [
       agentTaskDraft,
+      agentRuntimeDraft,
       endpoint,
+      opencodeEndpoint,
       selectedWorkspace,
       streamAgentRun,
       upsertAgentRun,
@@ -805,13 +840,23 @@ export const AgentRunControllerProvider = ({
   )
 
   const startIssueRun = useCallback(
-    async (issue: Issue) => {
+    async (
+      issue: Issue,
+      options?: { onRunStarted?: (run: AgentRun) => void },
+    ) => {
       setError(null)
 
       const project = projects.find((item) => item.id === issue.projectId)
+      const runtime = project?.defaultAgentRuntime ?? 'patchlane'
       const response = await api.continueIssueWorkflow(issue.id, {
+        agentRuntime: runtime,
+        agentRuntimeConnectorId:
+          project?.defaultAgentRuntimeConnectorId ??
+          (runtime === 'opencode' ? opencodeEndpoint?.id : endpoint?.id),
         endpointId:
-          issue.endpointId ?? project?.defaultEndpointId ?? endpoint?.id,
+          issue.endpointId ??
+          project?.defaultEndpointId ??
+          (runtime === 'opencode' ? opencodeEndpoint?.id : endpoint?.id),
       })
       upsertIssue(response.issue)
       upsertAgentRunsInCache(response.runs)
@@ -821,10 +866,12 @@ export const AgentRunControllerProvider = ({
       }
 
       upsertAgentRun({ ...response.run, status: 'running' })
+      options?.onRunStarted?.(response.run)
       await streamAgentRun(response.run, response.issue.id)
     },
     [
       endpoint?.id,
+      opencodeEndpoint?.id,
       projects,
       streamAgentRun,
       upsertAgentRun,
@@ -882,6 +929,12 @@ export const AgentRunControllerProvider = ({
   }, [agentRunning, hasActiveAgentTasks, queryClient])
 
   useEffect(() => {
+    // Wait for the workspace list to load before reconciling the URL param,
+    // otherwise deep links get wiped by the initial empty state.
+    if (!sandboxWorkspacesQuery.isSuccess) {
+      return
+    }
+
     if (!workspaces.length) {
       if (selectedWorkspaceId) {
         void setSelectedWorkspaceId(null)
@@ -895,21 +948,38 @@ export const AgentRunControllerProvider = ({
     ) {
       void setSelectedWorkspaceId(workspaces[0]!.id)
     }
-  }, [selectedWorkspaceId, setSelectedWorkspaceId, workspaces])
+  }, [
+    sandboxWorkspacesQuery.isSuccess,
+    selectedWorkspaceId,
+    setSelectedWorkspaceId,
+    workspaces,
+  ])
 
   useEffect(() => {
+    // Same guard: only clear a stale run param once runs have actually loaded.
+    if (!agentRunsQuery.isSuccess) {
+      return
+    }
+
     if (
       selectedAgentRunId &&
       !runs.some((run) => run.id === selectedAgentRunId)
     ) {
       void setSelectedAgentRunId(null)
     }
-  }, [runs, selectedAgentRunId, setSelectedAgentRunId])
+  }, [
+    agentRunsQuery.isSuccess,
+    runs,
+    selectedAgentRunId,
+    setSelectedAgentRunId,
+  ])
 
   const value = useMemo<AgentRunControllerValue>(
     () => ({
       agentReplyDraft,
       agentRunning,
+      agentRuntimeConnector,
+      agentRuntimeDraft,
       agentTaskDraft,
       endpoint,
       endpoints,
@@ -918,6 +988,7 @@ export const AgentRunControllerProvider = ({
       issuesError,
       loading,
       onAgentReplyChange: setAgentReplyDraft,
+      onAgentRuntimeChange: setAgentRuntimeDraft,
       onAgentTaskChange: setAgentTaskDraft,
       onContinueAgentRun: continueAgentRun,
       onCreateAgentRun: createAgentRun,
@@ -942,6 +1013,8 @@ export const AgentRunControllerProvider = ({
       agentReplyDraft,
       agentRunDeletingId,
       agentRunning,
+      agentRuntimeConnector,
+      agentRuntimeDraft,
       agentTaskDraft,
       continueAgentRun,
       createAgentRun,

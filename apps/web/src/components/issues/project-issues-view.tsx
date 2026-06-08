@@ -124,6 +124,9 @@ export const ProjectIssuesView = ({
     project.defaultEndpointId ||
     selectedEndpoint?.id ||
     undefined
+  const planningEndpoints = endpoints.filter(
+    (endpoint) => endpoint.runtimeType === 'openai_compatible',
+  )
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(projectIssueResizableMediaQuery)
@@ -257,7 +260,7 @@ export const ProjectIssuesView = ({
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Endpoint">
+              <Field label="Planning runtime">
                 <Select
                   onValueChange={(value) =>
                     onIssueDraftChange((current) => ({
@@ -268,10 +271,10 @@ export const ProjectIssuesView = ({
                   value={selectedIssueEndpointId}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Endpoint" />
+                    <SelectValue placeholder="Planning runtime" />
                   </SelectTrigger>
                   <SelectContent>
-                    {endpoints.map((endpoint) => (
+                    {planningEndpoints.map((endpoint) => (
                       <SelectItem key={endpoint.id} value={endpoint.id}>
                         {endpoint.name}
                       </SelectItem>

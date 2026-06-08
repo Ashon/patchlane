@@ -110,7 +110,7 @@ export const ToolSettingsPage = () => {
 
   return (
     <PageSplit>
-      <PagePane>
+      <PagePane minHeight="none">
         <PageHeader
           actions={
             <>
@@ -192,19 +192,20 @@ export const ToolSettingsPage = () => {
               <p className="text-sm text-destructive">{testResult.error}</p>
             ) : null}
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button className="flex-1" disabled={saving} type="submit">
-                {saving ? <Loader2 className="animate-spin" /> : <Save />}
-                Save
-              </Button>
+            <div className="flex items-center justify-end gap-2 border-t pt-3">
               <Button
                 disabled={testing || !github?.tokenConfigured || !draft.enabled}
                 onClick={() => void testGitHubTool()}
+                size="sm"
                 type="button"
                 variant="outline"
               >
                 {testing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
                 Test
+              </Button>
+              <Button disabled={saving} size="sm" type="submit">
+                {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                Save
               </Button>
             </div>
           </form>

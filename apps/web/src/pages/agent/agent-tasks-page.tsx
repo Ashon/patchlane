@@ -1,6 +1,7 @@
 import type {
   AgentProject,
   AgentRun,
+  AgentRuntime,
   Issue,
   LlmEndpoint,
   SandboxWorkspace,
@@ -21,6 +22,13 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
@@ -63,11 +71,14 @@ export const AgentTasksPage = () => {
   const {
     agentReplyDraft,
     agentRunning,
+    agentRuntimeConnector,
+    agentRuntimeDraft,
     agentTaskDraft,
     endpoint,
     error,
     issues,
     onAgentReplyChange,
+    onAgentRuntimeChange,
     onAgentTaskChange,
     onContinueAgentRun,
     onCreateAgentRun,
@@ -133,12 +144,15 @@ export const AgentTasksPage = () => {
     <AgentTaskContentPane
       agentReplyDraft={agentReplyDraft}
       agentRunning={agentRunning}
+      agentRuntimeConnector={agentRuntimeConnector}
+      agentRuntimeDraft={agentRuntimeDraft}
       agentTaskDraft={agentTaskDraft}
       endpoint={endpoint}
       error={error}
       issueById={issueById}
       projectById={projectById}
       onAgentReplyChange={onAgentReplyChange}
+      onAgentRuntimeChange={onAgentRuntimeChange}
       onAgentTaskChange={onAgentTaskChange}
       onContinueAgentRun={onContinueAgentRun}
       onCreateAgentRun={onCreateAgentRun}
@@ -289,12 +303,15 @@ const AgentTaskListPane = ({
 const AgentTaskContentPane = ({
   agentReplyDraft,
   agentRunning,
+  agentRuntimeConnector,
+  agentRuntimeDraft,
   agentTaskDraft,
   endpoint,
   error,
   issueById,
   projectById,
   onAgentReplyChange,
+  onAgentRuntimeChange,
   onAgentTaskChange,
   onContinueAgentRun,
   onCreateAgentRun,
@@ -309,12 +326,15 @@ const AgentTaskContentPane = ({
 }: {
   agentReplyDraft: string
   agentRunning: boolean
+  agentRuntimeConnector: LlmEndpoint | null
+  agentRuntimeDraft: AgentRuntime
   agentTaskDraft: string
   endpoint: LlmEndpoint | null
   error: string | null
   issueById: Map<string, Issue>
   projectById: Map<string, AgentProject>
   onAgentReplyChange: (value: string) => void
+  onAgentRuntimeChange: (value: AgentRuntime) => void
   onAgentTaskChange: (value: string) => void
   onContinueAgentRun: (run: AgentRun) => void
   onCreateAgentRun: (event: FormEvent<HTMLFormElement>) => void
@@ -394,6 +414,33 @@ const AgentTaskContentPane = ({
           />
         ) : (
           <form className="space-y-2.5 p-3" onSubmit={onCreateAgentRun}>
+            <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_180px]">
+              <Field label="Workspace">
+                <div className="flex h-9 items-center rounded-md border bg-background px-3 text-sm text-muted-foreground">
+                  <span className="truncate">
+                    {selectedWorkspace?.name ?? 'No workspace'}
+                  </span>
+                </div>
+              </Field>
+              <Field label="Agent runtime">
+                <Select
+                  onValueChange={(value) =>
+                    onAgentRuntimeChange(
+                      value === 'opencode' ? 'opencode' : 'patchlane',
+                    )
+                  }
+                  value={agentRuntimeDraft}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="patchlane">Patchlane</SelectItem>
+                    <SelectItem value="opencode">OpenCode</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
             <Field label="New task">
               <Textarea
                 className="min-h-[160px] bg-background"
@@ -408,7 +455,7 @@ const AgentTaskContentPane = ({
               disabled={
                 agentRunning ||
                 !selectedWorkspace ||
-                !endpoint ||
+                !agentRuntimeConnector ||
                 selectedWorkspace.status !== 'ready'
               }
               type="submit"

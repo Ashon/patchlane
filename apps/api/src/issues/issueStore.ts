@@ -19,6 +19,7 @@ import {
   updateIssueTaskSchema,
   updateIssueSubtaskSchema,
   type AgentProject,
+  type AgentRuntime,
   type CreateAgentProjectInput,
   type CreateIssueCommentInput,
   type CreateIssueInput,
@@ -63,6 +64,8 @@ type AgentProjectRow = {
   repository_ref: string | null
   workspace_id: string | null
   default_endpoint_id: string | null
+  default_agent_runtime: AgentRuntime | null
+  default_agent_runtime_connector_id: string | null
   branch_prefix: string
   created_at: string
   updated_at: string
@@ -181,7 +184,8 @@ export class IssueStore {
           `
           UPDATE agent_projects
           SET code = ?, name = ?, description = ?, repository_url = ?, repository_ref = ?, workspace_id = ?,
-            default_endpoint_id = ?, branch_prefix = ?, updated_at = ?
+            default_endpoint_id = ?, default_agent_runtime = ?, default_agent_runtime_connector_id = ?,
+            branch_prefix = ?, updated_at = ?
           WHERE id = ?
         `,
         )
@@ -193,6 +197,8 @@ export class IssueStore {
           updated.repositoryRef ?? null,
           updated.workspaceId ?? null,
           updated.defaultEndpointId ?? null,
+          updated.defaultAgentRuntime,
+          updated.defaultAgentRuntimeConnectorId ?? null,
           updated.branchPrefix,
           updated.updatedAt,
           updated.id,
@@ -811,8 +817,9 @@ export class IssueStore {
         `
         INSERT INTO agent_projects (
           id, code, name, description, repository_url, repository_ref, workspace_id,
-          default_endpoint_id, branch_prefix, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          default_endpoint_id, default_agent_runtime, default_agent_runtime_connector_id,
+          branch_prefix, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -824,6 +831,8 @@ export class IssueStore {
         project.repositoryRef ?? null,
         project.workspaceId ?? null,
         project.defaultEndpointId ?? null,
+        project.defaultAgentRuntime,
+        project.defaultAgentRuntimeConnectorId ?? null,
         project.branchPrefix,
         project.createdAt,
         project.updatedAt,
@@ -840,6 +849,10 @@ export class IssueStore {
       repositoryRef: optionalString(row.repository_ref),
       workspaceId: optionalString(row.workspace_id),
       defaultEndpointId: optionalString(row.default_endpoint_id),
+      defaultAgentRuntime: row.default_agent_runtime ?? 'patchlane',
+      defaultAgentRuntimeConnectorId: optionalString(
+        row.default_agent_runtime_connector_id,
+      ),
       branchPrefix: row.branch_prefix,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

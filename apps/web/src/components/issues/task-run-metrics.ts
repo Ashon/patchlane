@@ -86,7 +86,7 @@ export const formatTaskRunMetricItems = (
     formatCount(metrics.turns, 'turn'),
     metrics.providerTotalTokens > 0
       ? `${formatCompactNumber(metrics.providerTotalTokens)} tok`
-      : 'no usage',
+      : 'usage not recorded',
   ]
 
   if (metrics.toolUses > 0) {

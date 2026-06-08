@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   ChartColumn,
   ClipboardList,
+  Folder,
   Server,
   Settings,
   Terminal,
@@ -17,6 +18,12 @@ export const navigationItems = [
     path: '/projects',
   },
   { value: 'sandbox', label: 'Agent Tasks', icon: Terminal, path: '/agent' },
+  {
+    value: 'workspaces',
+    label: 'Workspaces',
+    icon: Folder,
+    path: '/workspaces',
+  },
   {
     value: 'stats',
     label: 'Statistics',
@@ -39,7 +46,7 @@ export const navigationItems = [
 export const settingsPages = [
   {
     value: 'endpoints',
-    label: 'Endpoints',
+    label: 'Agent Runtime',
     icon: Server,
     path: '/settings/endpoints',
   },

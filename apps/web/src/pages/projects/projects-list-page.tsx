@@ -31,6 +31,7 @@ import {
   PageHeader,
   PageList,
   PageListItem,
+  PageListSkeleton,
   PageScroll,
 } from '@/components/layout/page-primitives'
 import { api } from '@/lib/api'
@@ -79,7 +80,12 @@ export const ProjectsListPage = () => {
   )
   const selectedEndpoint = useMemo(
     () =>
-      endpoints.find((endpoint) => endpoint.enabled) ?? endpoints[0] ?? null,
+      endpoints.find(
+        (endpoint) =>
+          endpoint.runtimeType === 'openai_compatible' && endpoint.enabled,
+      ) ??
+      endpoints.find((endpoint) => endpoint.runtimeType === 'openai_compatible') ??
+      null,
     [endpoints],
   )
   const loading =
@@ -171,7 +177,7 @@ export const ProjectsListPage = () => {
 
   return (
     <Page>
-      <main className="flex min-h-[520px] flex-col xl:min-h-0">
+      <main className="flex min-h-[520px] flex-col @4xl:min-h-0">
         <PageHeader
           actions={
             <div className="flex items-center gap-1">
@@ -207,7 +213,9 @@ export const ProjectsListPage = () => {
         <ErrorBanner message={visibleError} />
 
         <PageScroll>
-          {projects.length ? (
+          {projectsQuery.isLoading ? (
+            <PageListSkeleton />
+          ) : projects.length ? (
             <PageList>
               {projects.map((project) => {
                 const projectIssues = issues.filter(

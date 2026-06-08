@@ -31,10 +31,14 @@ export class AppDatabase {
     this.sqlite.exec(`
       CREATE TABLE IF NOT EXISTS llm_endpoints (
         id TEXT PRIMARY KEY,
+        runtime_type TEXT NOT NULL DEFAULT 'openai_compatible' CHECK (runtime_type IN ('openai_compatible', 'opencode_cli')),
         name TEXT NOT NULL,
         base_url TEXT NOT NULL,
         default_model TEXT NOT NULL,
         api_key_env_var TEXT,
+        opencode_command TEXT NOT NULL DEFAULT 'opencode',
+        opencode_command_args_json TEXT NOT NULL DEFAULT '[]',
+        opencode_dangerously_skip_permissions INTEGER NOT NULL DEFAULT 0 CHECK (opencode_dangerously_skip_permissions IN (0, 1)),
         enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -81,6 +85,7 @@ export class AppDatabase {
         workspace_id TEXT NOT NULL,
         endpoint_id TEXT,
         model TEXT,
+        agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (agent_runtime IN ('patchlane', 'opencode')),
         title TEXT NOT NULL,
         kind TEXT NOT NULL DEFAULT 'coding' CHECK (kind IN ('coding', 'requirements', 'planning', 'verification', 'publish', 'followup')),
         project_id TEXT,
@@ -127,6 +132,8 @@ export class AppDatabase {
         repository_ref TEXT,
         workspace_id TEXT,
         default_endpoint_id TEXT,
+        default_agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (default_agent_runtime IN ('patchlane', 'opencode')),
+        default_agent_runtime_connector_id TEXT,
         branch_prefix TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -214,7 +221,32 @@ export class AppDatabase {
       CREATE INDEX IF NOT EXISTS idx_issue_subtasks_agent_run_id
         ON issue_subtasks (agent_run_id);
     `)
+    this.ensureColumn(
+      'llm_endpoints',
+      'runtime_type',
+      "TEXT NOT NULL DEFAULT 'openai_compatible'",
+    )
+    this.ensureColumn(
+      'llm_endpoints',
+      'opencode_command',
+      "TEXT NOT NULL DEFAULT 'opencode'",
+    )
+    this.ensureColumn(
+      'llm_endpoints',
+      'opencode_command_args_json',
+      "TEXT NOT NULL DEFAULT '[]'",
+    )
+    this.ensureColumn(
+      'llm_endpoints',
+      'opencode_dangerously_skip_permissions',
+      'INTEGER NOT NULL DEFAULT 0',
+    )
     this.ensureColumn('agent_runs', 'kind', "TEXT NOT NULL DEFAULT 'coding'")
+    this.ensureColumn(
+      'agent_runs',
+      'agent_runtime',
+      "TEXT NOT NULL DEFAULT 'patchlane'",
+    )
     this.ensureColumn('agent_runs', 'project_id', 'TEXT')
     this.ensureColumn('agent_runs', 'issue_id', 'TEXT')
     this.ensureColumn('agent_runs', 'subtask_id', 'TEXT')
@@ -228,6 +260,16 @@ export class AppDatabase {
     this.ensureColumn('agent_projects', 'repository_ref', 'TEXT')
     this.ensureColumn('agent_projects', 'workspace_id', 'TEXT')
     this.ensureColumn('agent_projects', 'code', "TEXT NOT NULL DEFAULT ''")
+    this.ensureColumn(
+      'agent_projects',
+      'default_agent_runtime',
+      "TEXT NOT NULL DEFAULT 'patchlane'",
+    )
+    this.ensureColumn(
+      'agent_projects',
+      'default_agent_runtime_connector_id',
+      'TEXT',
+    )
     this.ensureColumn(
       'sandbox_workspaces',
       'kind',
@@ -363,6 +405,7 @@ export class AppDatabase {
           workspace_id TEXT NOT NULL,
           endpoint_id TEXT,
           model TEXT,
+          agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (agent_runtime IN ('patchlane', 'opencode')),
           title TEXT NOT NULL,
           kind TEXT NOT NULL DEFAULT 'coding' CHECK (kind IN ('coding', 'requirements', 'planning', 'verification', 'publish', 'followup')),
           project_id TEXT,
@@ -379,11 +422,11 @@ export class AppDatabase {
         );
 
         INSERT INTO agent_runs_new (
-          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, agent_runtime, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
         )
         SELECT
-          id, workspace_id, endpoint_id, model, title, kind, project_id, issue_id, NULL, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, COALESCE(agent_runtime, 'patchlane'), title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
         FROM agent_runs;
 

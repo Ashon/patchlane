@@ -229,6 +229,8 @@ export const createIssuesRouter = ({
       }
 
       const { issue: updatedIssue, run } = await startIssueTaskRun({
+        agentRuntime: input.agentRuntime,
+        agentRuntimeConnectorId: input.agentRuntimeConnectorId,
         endpointId: input.endpointId,
         issue,
         task,
@@ -258,6 +260,8 @@ export const createIssuesRouter = ({
       }
 
       const { issue: updatedIssue, run } = await startIssueTaskRun({
+        agentRuntime: input.agentRuntime,
+        agentRuntimeConnectorId: input.agentRuntimeConnectorId,
         endpointId: input.endpointId,
         issue,
         task: subtask,
@@ -297,6 +301,8 @@ export const createIssuesRouter = ({
       }
 
       const { issue: updatedIssue, run } = await startIssueTaskRun({
+        agentRuntime: input.agentRuntime,
+        agentRuntimeConnectorId: input.agentRuntimeConnectorId,
         endpointId: input.endpointId,
         issue,
         task,
@@ -330,9 +336,22 @@ export const createIssuesRouter = ({
         input.endpointId ??
         runnableIssue.endpointId ??
         project.defaultEndpointId
+      const agentRuntime = input.agentRuntime ?? project.defaultAgentRuntime
+      const runtimeConnectorId =
+        input.agentRuntimeConnectorId ??
+        project.defaultAgentRuntimeConnectorId ??
+        (agentRuntime === 'patchlane' ? endpointId : undefined)
 
-      if (endpointId) {
+      if (agentRuntime === 'patchlane' && endpointId) {
         await endpointStore.get(endpointId)
+      }
+
+      if (runtimeConnectorId) {
+        const connector = await endpointStore.get(runtimeConnectorId)
+
+        if (agentRuntime === 'opencode' && connector.runtimeType !== 'opencode_cli') {
+          throw badRequest('Select an OpenCode CLI runtime connector')
+        }
       }
 
       const branchName = buildTaskBranchName(
@@ -369,7 +388,8 @@ export const createIssuesRouter = ({
 
       const run = await runStore.create({
         workspaceId: taskWorkspace.id,
-        endpointId,
+        endpointId: runtimeConnectorId ?? endpointId,
+        agentRuntime,
         kind: 'coding',
         projectId: project.id,
         issueId: runnableIssue.id,
@@ -536,10 +556,14 @@ export const createIssuesRouter = ({
   }
 
   async function startIssueTaskRun({
+    agentRuntime,
+    agentRuntimeConnectorId,
     endpointId,
     issue,
     task,
   }: {
+    agentRuntime?: AgentRun['agentRuntime']
+    agentRuntimeConnectorId?: string
     endpointId?: string
     issue: Issue
     task: IssueTask
@@ -548,14 +572,32 @@ export const createIssuesRouter = ({
       await getOrCreateIssueTaskWorkspace(issue)
     const selectedEndpointId =
       endpointId ?? issue.endpointId ?? project.defaultEndpointId
+    const selectedAgentRuntime =
+      agentRuntime ?? project.defaultAgentRuntime
+    const selectedRuntimeConnectorId =
+      agentRuntimeConnectorId ??
+      project.defaultAgentRuntimeConnectorId ??
+      (selectedAgentRuntime === 'patchlane' ? selectedEndpointId : undefined)
 
-    if (selectedEndpointId) {
+    if (selectedAgentRuntime === 'patchlane' && selectedEndpointId) {
       await endpointStore.get(selectedEndpointId)
+    }
+
+    if (selectedRuntimeConnectorId) {
+      const connector = await endpointStore.get(selectedRuntimeConnectorId)
+
+      if (
+        selectedAgentRuntime === 'opencode' &&
+        connector.runtimeType !== 'opencode_cli'
+      ) {
+        throw badRequest('Select an OpenCode CLI runtime connector')
+      }
     }
 
     const run = await runStore.create({
       workspaceId: workspace.id,
-      endpointId: selectedEndpointId,
+      endpointId: selectedRuntimeConnectorId ?? selectedEndpointId,
+      agentRuntime: selectedAgentRuntime,
       kind: getIssueTaskRunKind(task.kind),
       projectId: project.id,
       issueId: issue.id,

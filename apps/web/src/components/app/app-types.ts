@@ -1,8 +1,14 @@
+import type { AgentRuntimeConnectorType } from '@patchlane/shared'
+
 export type EndpointDraft = {
+  runtimeType: AgentRuntimeConnectorType
   name: string
   baseUrl: string
   defaultModel: string
   apiKeyEnvVar: string
+  opencodeCommand: string
+  opencodeCommandArgs: string
+  opencodeDangerouslySkipPermissions: boolean
   enabled: boolean
 }
 
@@ -27,10 +33,14 @@ export type AppView =
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export const emptyEndpointDraft: EndpointDraft = {
+  runtimeType: 'openai_compatible',
   name: '',
   baseUrl: 'http://localhost:11434/v1',
   defaultModel: '',
   apiKeyEnvVar: '',
+  opencodeCommand: 'opencode',
+  opencodeCommandArgs: '',
+  opencodeDangerouslySkipPermissions: false,
   enabled: true,
 }
 

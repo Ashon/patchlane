@@ -1,5 +1,10 @@
 import { z } from 'zod'
 
+export const agentRuntimeConnectorTypeSchema = z.enum([
+  'openai_compatible',
+  'opencode_cli',
+])
+
 const optionalEnvVarSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'string') {
@@ -22,25 +27,112 @@ export const llmEndpointBaseUrlSchema = z
   .url()
   .transform((value) => value.replace(/\/+$/, ''))
 
-export const createLlmEndpointSchema = z.object({
+const optionalBaseUrlSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}, llmEndpointBaseUrlSchema.optional())
+
+const optionalDefaultModelSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}, z.string().max(120).optional())
+
+const opencodeCommandSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .default('opencode')
+
+const opencodeCommandArgsSchema = z
+  .array(z.string().min(1).max(300))
+  .max(20)
+  .default([])
+
+const commonRuntimeFields = {
   name: z.string().trim().min(1).max(80),
-  baseUrl: llmEndpointBaseUrlSchema,
-  defaultModel: z.string().trim().min(1).max(120),
   apiKeyEnvVar: optionalEnvVarSchema,
   enabled: z.boolean().default(true),
+  opencodeCommand: opencodeCommandSchema,
+  opencodeCommandArgs: opencodeCommandArgsSchema,
+  opencodeDangerouslySkipPermissions: z.boolean().default(false),
+}
+
+const openAiRuntimeSchema = z.object({
+  ...commonRuntimeFields,
+  runtimeType: z.literal('openai_compatible'),
+  baseUrl: llmEndpointBaseUrlSchema,
+  defaultModel: z.string().trim().min(1).max(120),
 })
 
-export const updateLlmEndpointSchema = createLlmEndpointSchema
-  .partial()
+const opencodeRuntimeSchema = z.object({
+  ...commonRuntimeFields,
+  runtimeType: z.literal('opencode_cli'),
+  baseUrl: optionalBaseUrlSchema.default('opencode://cli'),
+  defaultModel: optionalDefaultModelSchema.default(''),
+})
+
+const runtimeInputSchema = z.preprocess((value) => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return value
+  }
+
+  return {
+    runtimeType: 'openai_compatible',
+    ...value,
+  }
+}, z.discriminatedUnion('runtimeType', [openAiRuntimeSchema, opencodeRuntimeSchema]))
+
+export const createLlmEndpointSchema = runtimeInputSchema
+
+export const updateLlmEndpointSchema = z
+  .object({
+    runtimeType: agentRuntimeConnectorTypeSchema.optional(),
+    name: z.string().trim().min(1).max(80).optional(),
+    baseUrl: optionalBaseUrlSchema,
+    defaultModel: optionalDefaultModelSchema,
+    apiKeyEnvVar: optionalEnvVarSchema,
+    opencodeCommand: opencodeCommandSchema.optional(),
+    opencodeCommandArgs: opencodeCommandArgsSchema.optional(),
+    opencodeDangerouslySkipPermissions: z.boolean().optional(),
+    enabled: z.boolean().optional(),
+  })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'At least one field is required',
   })
 
-export const llmEndpointSchema = createLlmEndpointSchema.extend({
-  id: z.string().min(1),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-})
+export const llmEndpointSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return value
+    }
+
+    return {
+      runtimeType: 'openai_compatible',
+      ...value,
+    }
+  },
+  z.discriminatedUnion('runtimeType', [
+    openAiRuntimeSchema.extend({
+      id: z.string().min(1),
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
+    }),
+    opencodeRuntimeSchema.extend({
+      id: z.string().min(1),
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
+    }),
+  ]),
+)
 
 export const llmEndpointListSchema = z.array(llmEndpointSchema)
 
@@ -57,8 +149,21 @@ export const llmChatRequestSchema = z.object({
   maxTokens: z.number().int().positive().max(8192).optional(),
 })
 
-export type CreateLlmEndpointInput = z.infer<typeof createLlmEndpointSchema>
-export type UpdateLlmEndpointInput = z.infer<typeof updateLlmEndpointSchema>
+export type AgentRuntimeConnectorType = z.infer<
+  typeof agentRuntimeConnectorTypeSchema
+>
+export type CreateLlmEndpointInput = {
+  runtimeType?: AgentRuntimeConnectorType
+  name: string
+  baseUrl?: string
+  defaultModel?: string
+  apiKeyEnvVar?: string
+  opencodeCommand?: string
+  opencodeCommandArgs?: string[]
+  opencodeDangerouslySkipPermissions?: boolean
+  enabled?: boolean
+}
+export type UpdateLlmEndpointInput = Partial<CreateLlmEndpointInput>
 export type LlmEndpoint = z.infer<typeof llmEndpointSchema>
 export type LlmChatMessage = z.infer<typeof llmChatMessageSchema>
 export type LlmChatRequest = z.infer<typeof llmChatRequestSchema>

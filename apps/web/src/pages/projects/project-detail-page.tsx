@@ -125,7 +125,12 @@ export const ProjectDetailPage = () => {
   )
   const selectedEndpoint = useMemo(
     () =>
-      endpoints.find((endpoint) => endpoint.enabled) ?? endpoints[0] ?? null,
+      endpoints.find(
+        (endpoint) =>
+          endpoint.runtimeType === 'openai_compatible' && endpoint.enabled,
+      ) ??
+      endpoints.find((endpoint) => endpoint.runtimeType === 'openai_compatible') ??
+      null,
     [endpoints],
   )
   const loading =
@@ -309,7 +314,9 @@ export const ProjectDetailPage = () => {
 
     try {
       void setSelectedIssueId(issue.id)
-      await onStartIssueRun(issue)
+      await onStartIssueRun(issue, {
+        onRunStarted: (run) => openProjectTaskRun(run.id),
+      })
     } catch (actionError) {
       setLocalError(getErrorMessage(actionError))
     } finally {
@@ -340,6 +347,8 @@ export const ProjectDetailPage = () => {
 
     try {
       const response = await api.startIssueTask(issue.id, task.id, {
+        agentRuntime: project?.defaultAgentRuntime ?? 'patchlane',
+        agentRuntimeConnectorId: project?.defaultAgentRuntimeConnectorId,
         endpointId:
           issue.endpointId || project?.defaultEndpointId || selectedEndpoint?.id,
       })

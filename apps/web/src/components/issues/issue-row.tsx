@@ -21,18 +21,21 @@ export const IssueRow = ({
         onClick={onSelect}
         type="button"
       >
-        <div className="flex min-w-0 items-start gap-2">
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-1.5">
             <IssueReferenceBadge issue={issue} project={project} />
             <PriorityBadge className="shrink-0" priority={issue.priority} />
-            <span className="min-w-0 truncate text-sm font-medium">
-              {issue.title}
-            </span>
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
             <IssueStatusBadge status={issue.status} />
           </span>
         </div>
+        <p
+          className="mt-1.5 line-clamp-2 min-w-0 text-sm font-medium leading-snug"
+          title={issue.title}
+        >
+          {issue.title}
+        </p>
         <IssueTaskProgress className="mt-2" issue={issue} size="compact" />
       </button>
     </PageListItem>

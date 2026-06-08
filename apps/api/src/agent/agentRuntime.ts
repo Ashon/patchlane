@@ -74,7 +74,7 @@ type AgentToolResult = {
   resultSummary?: string
 }
 
-type AgentRuntimeStreamEvent =
+export type AgentRuntimeStreamEvent =
   | {
       type: 'run'
       run: AgentRun
@@ -109,7 +109,7 @@ type AgentRuntimeStreamEvent =
       run?: AgentRun
     }
 
-type AgentRuntimeStreamEmit = (event: AgentRuntimeStreamEvent) => void
+export type AgentRuntimeStreamEmit = (event: AgentRuntimeStreamEvent) => void
 
 const maxToolIterations = 16
 const retryToolIterations = 8

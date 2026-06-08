@@ -17,6 +17,7 @@ export const agentRunKindSchema = z.enum([
   'publish',
   'followup',
 ])
+export const agentRuntimeSchema = z.enum(['patchlane', 'opencode'])
 
 export const agentRunContextSchema = z.object({
   strategy: z.enum(['full', 'compacted']),
@@ -87,6 +88,7 @@ export const agentRunSchema = z.object({
   workspaceId: z.string().min(1),
   endpointId: z.string().min(1).optional(),
   model: z.string().trim().min(1).optional(),
+  agentRuntime: agentRuntimeSchema.default('patchlane'),
   title: z.string().trim().min(1).max(120),
   kind: agentRunKindSchema.default('coding'),
   projectId: z.string().min(1).optional(),
@@ -109,6 +111,7 @@ export const createAgentRunSchema = z.object({
   workspaceId: z.string().min(1),
   endpointId: z.string().min(1).optional(),
   model: z.string().trim().min(1).optional(),
+  agentRuntime: agentRuntimeSchema.optional(),
   title: z.string().trim().min(1).max(120).optional(),
   kind: agentRunKindSchema.optional(),
   projectId: z.string().min(1).optional(),
@@ -133,6 +136,7 @@ export const rewindAgentRunSchema = z.object({
 
 export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>
 export type AgentRunKind = z.infer<typeof agentRunKindSchema>
+export type AgentRuntime = z.infer<typeof agentRuntimeSchema>
 export type AgentRunMessage = z.infer<typeof agentRunMessageSchema>
 export type AgentRunMessageMetadata = z.infer<
   typeof agentRunMessageMetadataSchema

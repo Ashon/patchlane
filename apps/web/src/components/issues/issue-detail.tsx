@@ -18,6 +18,7 @@ import {
   CircleSlash2,
   CircleX,
   ClipboardList,
+  ExternalLink,
   Flag,
   FileText,
   GitBranch,
@@ -152,12 +153,15 @@ export const IssueDetail = ({
               <IssueRuntimeMeta
                 icon={GitBranch}
                 label="Branch"
+                muted={!issue.branchName}
                 value={issue.branchName || 'Not started'}
               />
               <IssueRuntimeMeta
+                href={issue.prUrl || undefined}
                 icon={GitPullRequest}
                 label="PR"
-                value={issue.prUrl ? 'Created' : 'Not created'}
+                muted={!issue.prUrl}
+                value={issue.prUrl ? 'Open PR' : 'Not created'}
               />
               <IssueWorkflowActions
                 actionBusy={actionBusy}
@@ -286,29 +290,67 @@ const IssueTabTrigger = ({
 )
 
 const IssueRuntimeMeta = ({
+  href,
   icon: Icon,
   label,
+  muted = false,
   value,
 }: {
+  href?: string
   icon: LucideIcon
   label: string
+  muted?: boolean
   value: string
-}) => (
-  <div
-    className="flex h-7 min-w-0 max-w-[220px] items-center gap-1.5 rounded-md border bg-background px-2 text-xs"
-    title={`${label}: ${value}`}
-  >
-    <span className="grid h-4 w-4 shrink-0 place-items-center">
-      <Icon className="h-3 w-3 text-muted-foreground" />
-    </span>
-    <span className="text-[10px] uppercase leading-none text-muted-foreground">
-      {label}
-    </span>
-    <span className="min-w-0 truncate leading-none text-foreground">
-      {value}
-    </span>
-  </div>
-)
+}) => {
+  const content = (
+    <>
+      <span className="grid h-4 w-4 shrink-0 place-items-center">
+        <Icon className="h-3 w-3 text-muted-foreground" />
+      </span>
+      <span className="text-[10px] uppercase leading-none text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className={cn(
+          'min-w-0 truncate leading-none',
+          muted ? 'text-muted-foreground' : 'text-foreground',
+        )}
+      >
+        {value}
+      </span>
+      {href ? (
+        <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
+      ) : null}
+    </>
+  )
+  const className = cn(
+    'flex h-7 min-w-0 max-w-[220px] items-center gap-1.5 rounded-md border bg-background px-2 text-xs',
+    muted && 'border-dashed bg-transparent',
+    href &&
+      'transition-colors hover:border-primary/40 hover:bg-accent hover:text-foreground',
+  )
+  const title = `${label}: ${value}`
+
+  if (href) {
+    return (
+      <a
+        className={className}
+        href={href}
+        rel="noreferrer"
+        target="_blank"
+        title={title}
+      >
+        {content}
+      </a>
+    )
+  }
+
+  return (
+    <div className={className} title={title}>
+      {content}
+    </div>
+  )
+}
 
 const IssueWorkflowActions = ({
   actionBusy,

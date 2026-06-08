@@ -47,14 +47,21 @@ export const AgentTaskConversation = ({
   onStop,
   run,
 }: AgentTaskConversationProps) => {
-  const canUseEndpoint = Boolean(endpoint?.enabled)
+  const usesEndpoint = run.agentRuntime === 'patchlane'
+  const canUseBackend = !usesEndpoint || Boolean(endpoint?.enabled)
   const canContinue =
-    canUseEndpoint && !isStreaming && run.status !== 'completed'
+    canUseBackend && !isStreaming && run.status !== 'completed'
   const canSend =
-    canUseEndpoint &&
+    canUseBackend &&
     !isStreaming &&
     Boolean(draft.trim()) &&
     run.status !== 'completed'
+  const inputFooter =
+    run.agentRuntime === 'opencode'
+      ? 'OpenCode CLI'
+      : endpoint
+        ? `${endpoint.baseUrl} · ${endpoint.defaultModel}`
+        : 'Select an enabled endpoint'
   const contextPanel =
     run.context?.strategy === 'compacted' ? (
       <AgentContextMemoryPanel context={run.context} />
@@ -121,17 +128,15 @@ export const AgentTaskConversation = ({
           )}
         </>
       }
-      inputDisabled={!canUseEndpoint || run.status === 'completed'}
-      inputFooter={
-        endpoint
-          ? `${endpoint.baseUrl} · ${endpoint.defaultModel}`
-          : 'Select an enabled endpoint'
-      }
+      inputDisabled={!canUseBackend || run.status === 'completed'}
+      inputFooter={inputFooter}
       inputLoading={isStreaming}
       inputPlaceholder={
-        canUseEndpoint
+        canUseBackend
           ? 'Reply to the coding agent or add constraints...'
-          : 'Select an enabled endpoint before continuing'
+          : usesEndpoint
+            ? 'Select an enabled endpoint before continuing'
+            : 'OpenCode is not available'
       }
       inputValue={draft}
       messages={messages}

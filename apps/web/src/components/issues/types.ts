@@ -1,4 +1,5 @@
 import type {
+  AgentRuntime,
   IssuePriority,
 } from '@patchlane/shared'
 
@@ -11,6 +12,8 @@ export type ProjectDraft = {
   repositoryRef: string
   workspaceId: string
   defaultEndpointId: string
+  defaultAgentRuntime: AgentRuntime
+  defaultAgentRuntimeConnectorId: string
   branchPrefix: string
 }
 

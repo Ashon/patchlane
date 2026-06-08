@@ -33,6 +33,14 @@ export const ProjectForm = ({
   workspaces: SandboxWorkspace[]
 }) => {
   const SubmitIcon = submitLabel === 'Create' ? Plus : Save
+  const planningEndpoints = endpoints.filter(
+    (endpoint) => endpoint.runtimeType === 'openai_compatible',
+  )
+  const runtimeConnectors = endpoints.filter((endpoint) =>
+    draft.defaultAgentRuntime === 'opencode'
+      ? endpoint.runtimeType === 'opencode_cli'
+      : endpoint.runtimeType === 'openai_compatible',
+  )
 
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
@@ -98,7 +106,7 @@ export const ProjectForm = ({
         </Field>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Sandbox workspace">
           <Select
             onValueChange={(value) =>
@@ -121,7 +129,7 @@ export const ProjectForm = ({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Default endpoint">
+        <Field label="Planning runtime">
           <Select
             onValueChange={(value) => onChange({ defaultEndpointId: value })}
             value={draft.defaultEndpointId || undefined}
@@ -130,7 +138,46 @@ export const ProjectForm = ({
               <SelectValue placeholder="Default" />
             </SelectTrigger>
             <SelectContent>
-              {endpoints.map((endpoint) => (
+              {planningEndpoints.map((endpoint) => (
+                <SelectItem key={endpoint.id} value={endpoint.id}>
+                  {endpoint.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Agent runtime">
+          <Select
+            onValueChange={(value) =>
+              onChange({
+                defaultAgentRuntime:
+                  value === 'opencode' ? 'opencode' : 'patchlane',
+                defaultAgentRuntimeConnectorId: '',
+              })
+            }
+            value={draft.defaultAgentRuntime}
+          >
+            <SelectTrigger className="bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="patchlane">Patchlane</SelectItem>
+              <SelectItem value="opencode">OpenCode</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Runtime connector">
+          <Select
+            onValueChange={(value) =>
+              onChange({ defaultAgentRuntimeConnectorId: value })
+            }
+            value={draft.defaultAgentRuntimeConnectorId || undefined}
+          >
+            <SelectTrigger className="bg-background">
+              <SelectValue placeholder="Default" />
+            </SelectTrigger>
+            <SelectContent>
+              {runtimeConnectors.map((endpoint) => (
                 <SelectItem key={endpoint.id} value={endpoint.id}>
                   {endpoint.name}
                 </SelectItem>

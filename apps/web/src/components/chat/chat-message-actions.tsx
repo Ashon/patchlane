@@ -6,7 +6,10 @@ import { Button } from '@/components/ui/button'
 import { MessageAction } from '@/components/ui/message'
 import type { ConversationMessage } from './chat-conversation-types'
 import { overlayActionButtonClass } from './chat-message-action-button'
-import { formatDateTime } from './chat-message-format'
+import {
+  formatDateTime,
+  formatRelativeDateTime,
+} from './chat-message-format'
 
 export const AssistantGroupMeta = ({
   message,
@@ -46,7 +49,11 @@ const MessageMetaDivider = ({
       <div className="flex shrink-0 items-center gap-1.5">
         {icon}
         <span>{label}</span>
-        {timestamp ? <span>{formatDateTime(timestamp)}</span> : null}
+        {timestamp ? (
+          <span title={formatDateTime(timestamp)}>
+            {formatRelativeDateTime(timestamp)}
+          </span>
+        ) : null}
       </div>
       <div className="h-px min-w-0 flex-1 bg-border/70" />
     </div>
