@@ -1,6 +1,6 @@
 import type { AgentRunMessageMetadata } from '@patchlane/shared'
-import { Button } from '@/components/ui/button'
-import { MessageAction } from '@/components/ui/message'
+import { Button } from '@patchlane/ui/button'
+import { MessageAction } from '@patchlane/ui/message'
 import { overlayActionButtonClass } from './chat-message-action-button'
 import { formatCompactNumber, formatDurationMs } from './chat-message-format'
 

@@ -1,5 +1,5 @@
 import type { AgentProject, SandboxWorkspace } from '@patchlane/shared'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@patchlane/ui/badge'
 import { ProjectRepositoryBadge, StateBadge } from './common'
 
 export const ProjectHeader = ({

@@ -1,5 +1,5 @@
-import { Loader } from '@/components/ui/loader'
-import { Message, MessageAvatar } from '@/components/ui/message'
+import { Loader } from '@patchlane/ui/loader'
+import { Message, MessageAvatar } from '@patchlane/ui/message'
 import { cn } from '@/lib/utils'
 
 export const AssistantActivityIndicator = ({

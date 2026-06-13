@@ -7,13 +7,13 @@ import type {
 } from '@patchlane/shared'
 import { Bot } from 'lucide-react'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea } from '@patchlane/ui/scroll-area'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
   useResizableDefaultLayout,
-} from '@/components/ui/resizable'
+} from '@patchlane/ui/resizable'
 import {
   Page,
   PageActionBar,

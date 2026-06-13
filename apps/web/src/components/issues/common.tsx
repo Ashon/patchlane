@@ -29,8 +29,8 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
+import { Badge } from '@patchlane/ui/badge'
+import { Label } from '@patchlane/ui/label'
 import { cn } from '@/lib/utils'
 import { formatIssueReference } from './utils'
 

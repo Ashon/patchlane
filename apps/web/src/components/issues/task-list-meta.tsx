@@ -1,5 +1,5 @@
 import type { AgentRun } from '@patchlane/shared'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@patchlane/ui/badge'
 import { cn } from '@/lib/utils'
 import { formatTaskRunMetricItems } from './task-run-metrics'
 

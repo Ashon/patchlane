@@ -1,5 +1,5 @@
 import { Sparkles } from 'lucide-react'
-import { PromptSuggestion } from '@/components/ui/prompt-suggestion'
+import { PromptSuggestion } from '@patchlane/ui/prompt-suggestion'
 import { cn } from '@/lib/utils'
 
 export const ChatPanelEmptyState = ({

@@ -1,4 +1,4 @@
-import type { ToolPart } from '@/components/ui/tool'
+import type { ToolPart } from '@patchlane/ui/tool'
 import type { ConversationMessage } from './chat-conversation-types'
 
 export const toToolPart = (message: ConversationMessage): ToolPart => {

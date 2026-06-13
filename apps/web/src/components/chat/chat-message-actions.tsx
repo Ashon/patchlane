@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Bot, Check, Copy, MessageSquare, RotateCcw } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { MessageAction } from '@/components/ui/message'
+import { Badge } from '@patchlane/ui/badge'
+import { Button } from '@patchlane/ui/button'
+import { MessageAction } from '@patchlane/ui/message'
 import type { ConversationMessage } from './chat-conversation-types'
 import { overlayActionButtonClass } from './chat-message-action-button'
 import {

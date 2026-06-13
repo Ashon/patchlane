@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Label } from '@/components/ui/label'
+import { Label } from '@patchlane/ui/label'
 
 export const Field = ({
   children,

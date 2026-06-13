@@ -5,23 +5,23 @@ import {
   ChatContainerContent,
   ChatContainerRoot,
   ChatContainerScrollAnchor,
-} from '@/components/ui/chat-container'
+  type StickToBottomContext,
+} from '@patchlane/ui/chat-container'
 import {
   PromptInput,
   PromptInputActions,
   PromptInputTextarea,
-} from '@/components/ui/prompt-input'
+} from '@patchlane/ui/prompt-input'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
   useResizableDefaultLayout,
-} from '@/components/ui/resizable'
-import { Loader } from '@/components/ui/loader'
-import { ScrollButton } from '@/components/ui/scroll-button'
-import { SystemMessage } from '@/components/ui/system-message'
+} from '@patchlane/ui/resizable'
+import { Loader } from '@patchlane/ui/loader'
+import { ScrollButton } from '@patchlane/ui/scroll-button'
+import { SystemMessage } from '@patchlane/ui/system-message'
 import { cn } from '@/lib/utils'
-import type { StickToBottomContext } from 'use-stick-to-bottom'
 import { AssistantActivityIndicator } from './chat-assistant-activity'
 import {
   AgentWorkDetailsPanel,
@@ -88,12 +88,7 @@ export const ChatConversation = ({
         preserveEmptyMessages,
         compactAgentWork,
       ),
-    [
-      compactAgentWork,
-      groups,
-      preserveEmptyMessages,
-      showStreamingPlaceholder,
-    ],
+    [compactAgentWork, groups, preserveEmptyMessages, showStreamingPlaceholder],
   )
   const selectedWorkGroup = useMemo(
     () =>
@@ -308,10 +303,7 @@ const ChatConversationViewport = ({
   setSelectedWorkGroupId: Dispatch<SetStateAction<string | null>>
   setStickToBottomContext: (context: StickToBottomContext | null) => void
   setToolVisibility: (message: ConversationMessage, open: boolean) => void
-  setReasoningVisibility: (
-    message: ConversationMessage,
-    open: boolean,
-  ) => void
+  setReasoningVisibility: (message: ConversationMessage, open: boolean) => void
   showAssistantAvatar: boolean
   showInlineActivity: boolean
   showMessageMeta: boolean
@@ -322,91 +314,91 @@ const ChatConversationViewport = ({
 }) => {
   return (
     <ChatContainerRoot
-          className="relative h-full min-w-0 flex-1"
-          contextRef={setStickToBottomContext}
-          viewportClassName="px-3 py-2"
-        >
-          <ChatContainerContent className={cn('w-full', contentClassName)}>
-            {hasMessages ? (
-              <div
-                className="relative w-full shrink-0"
-                style={{ height: virtualizer.getTotalSize() }}
-              >
-                {virtualizer.getVirtualItems().map((virtualItem) => {
-                  const item = renderItems[virtualItem.index]
+      className="relative h-full min-w-0 flex-1"
+      contextRef={setStickToBottomContext}
+      viewportClassName="px-3 py-2"
+    >
+      <ChatContainerContent className={cn('w-full', contentClassName)}>
+        {hasMessages ? (
+          <div
+            className="relative w-full shrink-0"
+            style={{ height: virtualizer.getTotalSize() }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const item = renderItems[virtualItem.index]
 
-                  if (!item) {
-                    return null
-                  }
+              if (!item) {
+                return null
+              }
 
-                  return (
-                    <div
-                      className="absolute left-0 top-0 w-full"
-                      data-index={virtualItem.index}
-                      key={virtualItem.key}
-                      ref={virtualizer.measureElement}
-                      style={{
-                        transform: `translateY(${virtualItem.start}px)`,
-                      }}
-                    >
-                      {item.role === 'user' ? (
-                        <UserMessageBubble
-                          message={item.message}
-                          onRewind={onRewindMessage}
-                          rewindDisabled={inputLoading}
-                          showMeta={showMessageMeta}
-                          wide={wideMessages}
-                        />
-                      ) : item.role === 'agent-work' ? (
-                        <div className="w-full min-w-0 space-y-1">
-                          {showMessageMeta && item.metaMessage ? (
-                            <AssistantGroupMeta message={item.metaMessage} />
-                          ) : null}
-                          <AgentWorkGroupRow
-                            messages={item.messages}
-                            onSelect={() =>
-                              setSelectedWorkGroupId((current) =>
-                                current === item.id ? null : item.id,
-                              )
-                            }
-                            selected={selectedWorkGroupId === item.id}
-                          />
-                        </div>
-                      ) : (
-                        <AssistantMessageRow
-                          message={item.message}
-                          metaMessage={item.metaMessage}
-                          onReasoningOpenChange={setReasoningVisibility}
-                          onRewind={onRewindMessage}
-                          onToolOpenChange={setToolVisibility}
-                          preserveEmpty={preserveEmptyMessages}
-                          reasoningOpen={reasoningOpen[item.message.id]}
-                          rewindDisabled={inputLoading}
-                          showAvatar={showAssistantAvatar}
-                          showMeta={showMessageMeta}
-                          showStreamingPlaceholder={showStreamingPlaceholder}
-                          toolOpen={toolOpen[item.message.id]}
-                          wide={wideMessages}
-                        />
-                      )}
+              return (
+                <div
+                  className="absolute left-0 top-0 w-full"
+                  data-index={virtualItem.index}
+                  key={virtualItem.key}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  {item.role === 'user' ? (
+                    <UserMessageBubble
+                      message={item.message}
+                      onRewind={onRewindMessage}
+                      rewindDisabled={inputLoading}
+                      showMeta={showMessageMeta}
+                      wide={wideMessages}
+                    />
+                  ) : item.role === 'agent-work' ? (
+                    <div className="w-full min-w-0 space-y-1">
+                      {showMessageMeta && item.metaMessage ? (
+                        <AssistantGroupMeta message={item.metaMessage} />
+                      ) : null}
+                      <AgentWorkGroupRow
+                        messages={item.messages}
+                        onSelect={() =>
+                          setSelectedWorkGroupId((current) =>
+                            current === item.id ? null : item.id,
+                          )
+                        }
+                        selected={selectedWorkGroupId === item.id}
+                      />
                     </div>
-                  )
-                })}
-              </div>
-            ) : (
-              emptyState
-            )}
-            {showInlineActivity && inputLoading && !hasInlineActivity ? (
-              <AssistantActivityIndicator
-                showAvatar={showAssistantAvatar}
-                wide={wideMessages}
-              />
-            ) : null}
-            <ChatContainerScrollAnchor />
-          </ChatContainerContent>
-          <div className="absolute bottom-4 right-4">
-            <ScrollButton className="shadow-md" />
+                  ) : (
+                    <AssistantMessageRow
+                      message={item.message}
+                      metaMessage={item.metaMessage}
+                      onReasoningOpenChange={setReasoningVisibility}
+                      onRewind={onRewindMessage}
+                      onToolOpenChange={setToolVisibility}
+                      preserveEmpty={preserveEmptyMessages}
+                      reasoningOpen={reasoningOpen[item.message.id]}
+                      rewindDisabled={inputLoading}
+                      showAvatar={showAssistantAvatar}
+                      showMeta={showMessageMeta}
+                      showStreamingPlaceholder={showStreamingPlaceholder}
+                      toolOpen={toolOpen[item.message.id]}
+                      wide={wideMessages}
+                    />
+                  )}
+                </div>
+              )
+            })}
           </div>
-        </ChatContainerRoot>
+        ) : (
+          emptyState
+        )}
+        {showInlineActivity && inputLoading && !hasInlineActivity ? (
+          <AssistantActivityIndicator
+            showAvatar={showAssistantAvatar}
+            wide={wideMessages}
+          />
+        ) : null}
+        <ChatContainerScrollAnchor />
+      </ChatContainerContent>
+      <div className="absolute bottom-4 right-4">
+        <ScrollButton className="shadow-md" />
+      </div>
+    </ChatContainerRoot>
   )
 }

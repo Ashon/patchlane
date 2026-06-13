@@ -1,0 +1,127 @@
+import { cn } from '../../lib/utils'
+import React, { useEffect, useState } from 'react'
+import { codeToHtml } from 'shiki'
+
+export type CodeBlockProps = {
+  children?: React.ReactNode
+  className?: string
+} & React.HTMLProps<HTMLDivElement>
+
+function CodeBlock({ children, className, ...props }: CodeBlockProps) {
+  return (
+    <div
+      className={cn(
+        'not-prose flex w-full flex-col overflow-clip border',
+        'rounded-xl border-border bg-muted/30 text-foreground',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+}
+
+export type CodeBlockCodeProps = {
+  code: string
+  language?: string
+  theme?: string
+  className?: string
+} & React.HTMLProps<HTMLDivElement>
+
+function CodeBlockCode({
+  code,
+  language = 'tsx',
+  theme,
+  className,
+  ...props
+}: CodeBlockCodeProps) {
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
+  const [isDarkMode, setIsDarkMode] = useState(
+    () => typeof document !== 'undefined' && isDocumentDarkMode(),
+  )
+  const activeTheme = theme ?? (isDarkMode ? 'github-dark' : 'github-light')
+
+  useEffect(() => {
+    if (theme) {
+      return
+    }
+
+    const syncTheme = () => setIsDarkMode(isDocumentDarkMode())
+    const observer = new MutationObserver(syncTheme)
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+
+    return () => observer.disconnect()
+  }, [theme])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function highlight() {
+      if (!code) {
+        if (!cancelled) {
+          setHighlightedHtml('<pre><code></code></pre>')
+        }
+        return
+      }
+
+      const html = await codeToHtml(code, { lang: language, theme: activeTheme })
+
+      if (!cancelled) {
+        setHighlightedHtml(html)
+      }
+    }
+
+    highlight()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTheme, code, language])
+
+  const classNames = cn(
+    'w-full overflow-x-auto text-[13px] [&>pre]:m-0 [&>pre]:px-4 [&>pre]:py-4',
+    className,
+  )
+
+  // SSR fallback: render plain code if not hydrated yet
+  return highlightedHtml ? (
+    <div
+      className={classNames}
+      dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+      {...props}
+    />
+  ) : (
+    <div className={classNames} {...props}>
+      <pre>
+        <code>{code}</code>
+      </pre>
+    </div>
+  )
+}
+
+const isDocumentDarkMode = () =>
+  document.documentElement.classList.contains('dark')
+
+export type CodeBlockGroupProps = React.HTMLAttributes<HTMLDivElement>
+
+function CodeBlockGroup({
+  children,
+  className,
+  ...props
+}: CodeBlockGroupProps) {
+  return (
+    <div
+      className={cn('flex items-center justify-between', className)}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+}
+
+export { CodeBlockGroup, CodeBlockCode, CodeBlock }

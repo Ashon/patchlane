@@ -13,14 +13,14 @@ import { navigationItems } from '@/components/app/app-navigation'
 import { getNextThemeMode } from '@/components/app/app-theme'
 import type { ThemeMode } from '@/components/app/app-types'
 import { StateBadge, StatusBadge } from '@/components/app/status-badges'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@patchlane/ui/badge'
+import { Button } from '@patchlane/ui/button'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
   useResizableDefaultLayout,
-} from '@/components/ui/resizable'
+} from '@patchlane/ui/resizable'
 import { cn } from '@/lib/utils'
 
 type AppRoute = {

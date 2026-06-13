@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { Message, MessageContent } from '@/components/ui/message'
+import { Message, MessageContent } from '@patchlane/ui/message'
 import { cn } from '@/lib/utils'
 import type { ConversationMessage } from './chat-conversation-types'
 import { MessageMeta, MessageStatusActions } from './chat-message-actions'

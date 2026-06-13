@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
-import { Message, MessageAvatar, MessageContent } from '@/components/ui/message'
+import { Message, MessageAvatar, MessageContent } from '@patchlane/ui/message'
 import {
   Reasoning,
   ReasoningContent,
   ReasoningTrigger,
-} from '@/components/ui/reasoning'
-import { Tool } from '@/components/ui/tool'
-import { AgentWorkPendingIndicator } from '@/components/ui/agent-work-disclosure'
+} from '@patchlane/ui/reasoning'
+import { Tool } from '@patchlane/ui/tool'
+import { AgentWorkPendingIndicator } from '@patchlane/ui/agent-work-disclosure'
 import { cn } from '@/lib/utils'
 import type { ConversationMessage } from './chat-conversation-types'
 import {

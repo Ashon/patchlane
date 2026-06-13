@@ -3,15 +3,15 @@ import type { CreateAgentProjectInput } from '@patchlane/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Layers3, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@patchlane/ui/badge'
+import { Button } from '@patchlane/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from '@patchlane/ui/dialog'
 import {
   EmptyState,
   MetricBadge,

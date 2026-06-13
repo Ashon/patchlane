@@ -4,7 +4,7 @@ import type {
 } from '@patchlane/shared'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@patchlane/ui/badge'
 import { cn } from '@/lib/utils'
 
 export const StateBadge = ({
