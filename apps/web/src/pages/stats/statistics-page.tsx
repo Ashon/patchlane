@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { ChartColumn, Clock, Cpu, Sigma, Workflow, Wrench } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@patchlane/ui/badge'
 import { StateBadge } from '@/components/app/status-badges'
 import {
   ErrorBanner,

@@ -1,14 +1,14 @@
 import type { LlmEndpoint } from '@patchlane/shared'
 import { Cpu, MessageSquare } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@patchlane/ui/badge'
+import { Button } from '@patchlane/ui/button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from '@patchlane/ui/select'
 import { cn } from '@/lib/utils'
 
 export const ChatPanelHeader = ({

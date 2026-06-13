@@ -31,10 +31,10 @@ import {
   RotateCcw,
   type LucideIcon,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Markdown } from '@/components/ui/markdown'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@patchlane/ui/button'
+import { Markdown } from '@patchlane/ui/markdown'
+import { ScrollArea } from '@patchlane/ui/scroll-area'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@patchlane/ui/tabs'
 import { Page, PageHeader } from '@/components/layout/page-primitives'
 import { cn } from '@/lib/utils'
 import {

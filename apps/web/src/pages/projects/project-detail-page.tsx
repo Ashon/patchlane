@@ -9,15 +9,15 @@ import {
 } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@patchlane/ui/badge'
+import { Button } from '@patchlane/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from '@patchlane/ui/dialog'
 import { EmptyState, ProjectRepositoryBadge } from '@/components/issues/common'
 import { emptyIssueDraft } from '@/components/issues/constants'
 import { ProjectForm } from '@/components/issues/project-form'

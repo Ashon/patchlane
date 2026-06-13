@@ -9,16 +9,16 @@ import {
   Square,
 } from 'lucide-react'
 import { ChatConversation } from '@/components/chat/chat-conversation'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@patchlane/ui/badge'
+import { Button } from '@patchlane/ui/button'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import { Markdown } from '@/components/ui/markdown'
-import { PromptInputAction } from '@/components/ui/prompt-input'
-import { ScrollArea } from '@/components/ui/scroll-area'
+} from '@patchlane/ui/collapsible'
+import { Markdown } from '@patchlane/ui/markdown'
+import { PromptInputAction } from '@patchlane/ui/prompt-input'
+import { ScrollArea } from '@patchlane/ui/scroll-area'
 import { getAgentTaskConversationMessages } from '@/lib/agent-task-messages'
 import { cn } from '@/lib/utils'
 

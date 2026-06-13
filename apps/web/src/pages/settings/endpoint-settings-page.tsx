@@ -27,16 +27,16 @@ import {
 } from '@/components/app/app-types'
 import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge, TestBadge } from '@/components/app/status-badges'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Badge } from '@patchlane/ui/badge'
+import { Button } from '@patchlane/ui/button'
+import { Input } from '@patchlane/ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from '@patchlane/ui/select'
 import {
   ErrorBanner,
   PageAside,

@@ -1,6 +1,6 @@
 import { Send, Square } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { PromptInputAction } from '@/components/ui/prompt-input'
+import { Button } from '@patchlane/ui/button'
+import { PromptInputAction } from '@patchlane/ui/prompt-input'
 
 export const ChatPanelInputActions = ({
   canChat,

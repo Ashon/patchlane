@@ -20,16 +20,16 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@patchlane/ui/badge'
+import { Button } from '@patchlane/ui/button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+} from '@patchlane/ui/select'
+import { Textarea } from '@patchlane/ui/textarea'
 import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
@@ -60,7 +60,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
   useResizableDefaultLayout,
-} from '@/components/ui/resizable'
+} from '@patchlane/ui/resizable'
 import { cn } from '@/lib/utils'
 import { useAgentRunController } from './agent-run-controller'
 

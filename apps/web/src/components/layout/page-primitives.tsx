@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react'
 import { Slot } from 'radix-ui'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea } from '@patchlane/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
 export const Page = ({

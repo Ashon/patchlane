@@ -17,8 +17,8 @@ import {
   emptyGitHubToolDraft,
   type GitHubToolDraft,
 } from '@/components/app/app-types'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@patchlane/ui/button'
+import { Input } from '@patchlane/ui/input'
 import {
   Field,
   ToolStatusRow,

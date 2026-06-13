@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { FileText, Folder, Loader2, Plus, Rows3 } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { navigationItems, settingsPages } from '@/components/app/app-navigation'
-import { Button } from '@/components/ui/button'
+import { Button } from '@patchlane/ui/button'
 import {
   Command,
   CommandDialog,
@@ -20,16 +20,16 @@ import {
   CommandList,
   CommandSeparator,
   CommandShortcut,
-} from '@/components/ui/command'
-import { Input } from '@/components/ui/input'
+} from '@patchlane/ui/command'
+import { Input } from '@patchlane/ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+} from '@patchlane/ui/select'
+import { Textarea } from '@patchlane/ui/textarea'
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/lib/errors'
 import { EmptyState, Field } from '@/components/issues/common'

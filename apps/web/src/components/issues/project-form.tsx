@@ -1,16 +1,16 @@
 import type { FormEvent } from 'react'
 import type { LlmEndpoint, SandboxWorkspace } from '@patchlane/shared'
 import { Loader2, Plus, Save } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@patchlane/ui/button'
+import { Input } from '@patchlane/ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+} from '@patchlane/ui/select'
+import { Textarea } from '@patchlane/ui/textarea'
 import { NO_WORKSPACE_VALUE } from './constants'
 import { Field } from './common'
 import type { ProjectDraft } from './types'

@@ -1,20 +1,20 @@
 import type { AgentRunMessageMetadata } from '@patchlane/shared'
 import { useState } from 'react'
 import { Brain, CheckCircle2, Wrench, X, XCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@patchlane/ui/button'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import { Markdown } from '@/components/ui/markdown'
-import { ScrollArea } from '@/components/ui/scroll-area'
+} from '@patchlane/ui/collapsible'
+import { Markdown } from '@patchlane/ui/markdown'
+import { ScrollArea } from '@patchlane/ui/scroll-area'
 import {
   AgentWorkDisclosurePanel,
   AgentWorkDisclosureTrigger,
   AgentWorkPulseIndicator,
-} from '@/components/ui/agent-work-disclosure'
-import { ToolPayloadView } from '@/components/ui/tool-payload'
+} from '@patchlane/ui/agent-work-disclosure'
+import { ToolPayloadView } from '@patchlane/ui/tool-payload'
 import { cn } from '@/lib/utils'
 import { formatCompactNumber, formatDurationMs } from './chat-message-format'
 import type { ConversationMessage } from './chat-conversation-types'

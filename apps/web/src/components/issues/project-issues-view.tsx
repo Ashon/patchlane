@@ -14,7 +14,7 @@ import type {
   SandboxWorkspace,
 } from '@patchlane/shared'
 import { Loader2, Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@patchlane/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -22,8 +22,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+} from '@patchlane/ui/dialog'
+import { Input } from '@patchlane/ui/input'
 import {
   Page,
   PageActionBar,
@@ -35,15 +35,15 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Textarea } from '@/components/ui/textarea'
+} from '@patchlane/ui/select'
+import { ScrollArea } from '@patchlane/ui/scroll-area'
+import { Textarea } from '@patchlane/ui/textarea'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
   useResizableDefaultLayout,
-} from '@/components/ui/resizable'
+} from '@patchlane/ui/resizable'
 import { EmptyState, Field, MetricBadge } from './common'
 import { IssueDetail } from './issue-detail'
 import { IssueRow } from './issue-row'

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { MessageActions } from '@/components/ui/message'
+import { MessageActions } from '@patchlane/ui/message'
 import { cn } from '@/lib/utils'
 
 export const getAssistantBlockWidthClass = (wide: boolean) =>
