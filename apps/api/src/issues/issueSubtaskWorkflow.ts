@@ -36,6 +36,10 @@ export const getNextIssueSubtask = getNextIssueTask
 export const getIssueTaskRunKind = (
   kind: Issue['subtasks'][number]['kind'],
 ): AgentRun['kind'] => {
+  if (kind === 'research') {
+    return 'research'
+  }
+
   if (kind === 'verify') {
     return 'verification'
   }

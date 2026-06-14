@@ -19,6 +19,7 @@ import {
   readWorkspaceFile,
   writeWorkspaceFile,
 } from '../sandbox/workspaceFiles'
+import { logger as rootLogger, type ApiLogger } from '../logging/logger'
 import { estimateTextTokens, prepareAgentContext } from './agentContext'
 import { getFinishRejection } from './agentFinishGuard'
 import {
@@ -39,6 +40,10 @@ import {
   toolIterationLimitMessage,
   toolIterationRetryPrompt,
 } from './prompts/codingPrompts'
+import {
+  isAgentRunCancelledError,
+  throwIfAgentRunCancelled,
+} from './runtimeCancellation'
 import { toToolPromptContent } from './prompts/toolResultPrompts'
 import { agentTools } from './tools/agentToolDefinitions'
 
@@ -55,6 +60,7 @@ type AgentRuntimeOptions = {
     issueId: string,
     input: CreateIssueCommentInput,
   ) => Promise<{ comment: IssueComment }>
+  logger?: ApiLogger
   onRunFinished?: (run: AgentRun) => Promise<void>
 }
 
@@ -320,7 +326,12 @@ const splitAgentThinking = (value: string) => {
 export class AgentRuntime {
   constructor(private readonly options: AgentRuntimeOptions) {}
 
-  async continue(runId: string, endpointId?: string, model?: string) {
+  async continue(
+    runId: string,
+    endpointId?: string,
+    model?: string,
+    signal?: AbortSignal,
+  ) {
     let run = await this.options.runStore.get(runId)
     const endpoint = await this.options.getEndpoint(
       endpointId || run.endpointId,
@@ -328,9 +339,23 @@ export class AgentRuntime {
     const workspace = await this.options.getWorkspace(run.workspaceId)
     const githubToken = await this.options.getGitHubToken()
 
+    throwIfAgentRunCancelled(signal)
     run = await this.options.runStore.setStatus(run.id, 'running')
+    const runLogger = this.getRunLogger(run, {
+      endpointId: endpoint.id,
+      model: model || run.model || endpoint.defaultModel,
+      streaming: false,
+    })
+    runLogger.info(
+      {
+        event: 'agent.run.started',
+        status: run.status,
+      },
+      'Agent run started',
+    )
 
     try {
+      throwIfAgentRunCancelled(signal)
       const client = createOpenAIClient(endpoint)
       const durabilityMaxRetries = getDurabilityMaxRetries(
         this.options.durabilityMaxRetries,
@@ -343,9 +368,11 @@ export class AgentRuntime {
         durabilityAttempt <= durabilityMaxRetries;
         durabilityAttempt += 1
       ) {
+        throwIfAgentRunCancelled(signal)
         const preparedContext = prepareAgentContext({
           messages: run.messages,
           systemPrompt: buildCodingSystemPrompt({
+            runKind: run.kind,
             settings: this.options.settings,
             workspace,
           }),
@@ -382,6 +409,7 @@ export class AgentRuntime {
           iteration < totalToolIterations;
           iteration += 1
         ) {
+          throwIfAgentRunCancelled(signal)
           if (iteration === maxToolIterations) {
             messages.push({
               role: 'system',
@@ -400,16 +428,30 @@ export class AgentRuntime {
             maxOutputTokens: this.options.outputTokenBudget,
           }
           const completionStartedAt = Date.now()
-          const completion = await client.chat.completions.create({
-            model: activeModel,
-            messages: messages as never,
-            tools: getAvailableAgentTools(recentToolNames) as never,
-            tool_choice: 'auto',
-            temperature: 0.2,
-            max_tokens: this.options.outputTokenBudget,
-          })
+          const completion = await client.chat.completions.create(
+            {
+              model: activeModel,
+              messages: messages as never,
+              tools: getAvailableAgentTools(recentToolNames) as never,
+              tool_choice: 'auto',
+              temperature: 0.2,
+              max_tokens: this.options.outputTokenBudget,
+            },
+            { signal },
+          )
           const completionDurationMs = Date.now() - completionStartedAt
           const completionUsage = getCompletionTokenUsage(completion)
+          runLogger.debug(
+            {
+              event: 'agent.llm.completion',
+              attempt: durabilityAttempt + 1,
+              iteration: iteration + 1,
+              durationMs: completionDurationMs,
+              model: activeModel,
+              usage: completionUsage,
+            },
+            'Agent LLM completion finished',
+          )
 
           const message = completion.choices[0]?.message as {
             content?: string | null
@@ -428,6 +470,7 @@ export class AgentRuntime {
           if (!message) {
             throw new Error('LLM returned an empty response')
           }
+          throwIfAgentRunCancelled(signal)
 
           const assistantContent = mergeThinkingContent(
             message.content || '',
@@ -491,11 +534,21 @@ export class AgentRuntime {
           }
 
           for (const toolCall of message.tool_calls) {
+            throwIfAgentRunCancelled(signal)
             const toolName = toolCall.function.name
             const toolInput = parseToolInputArguments(
               toolCall.function.arguments,
             )
             const toolStartedAt = Date.now()
+            runLogger.info(
+              {
+                event: 'agent.tool.started',
+                attempt: durabilityAttempt + 1,
+                iteration: iteration + 1,
+                toolName,
+              },
+              'Agent tool started',
+            )
             const result = isToolCallBlocked(recentToolNames, {
               name: toolName,
               input: toolInput,
@@ -508,6 +561,19 @@ export class AgentRuntime {
                   githubToken,
                   addIssueComment: this.options.addIssueComment,
                 })
+            throwIfAgentRunCancelled(signal)
+            runLogger.info(
+              {
+                event: 'agent.tool.completed',
+                attempt: durabilityAttempt + 1,
+                iteration: iteration + 1,
+                toolName,
+                durationMs: Date.now() - toolStartedAt,
+                completed: result.completed,
+                awaitingUser: result.awaitingUser,
+              },
+              'Agent tool completed',
+            )
 
             messages.push({
               role: 'tool',
@@ -581,6 +647,7 @@ export class AgentRuntime {
         }
 
         if (pendingMessages.length > 0) {
+          throwIfAgentRunCancelled(signal)
           run = await this.options.runStore.appendMessages(
             run.id,
             pendingMessages,
@@ -614,9 +681,39 @@ export class AgentRuntime {
         run.id,
         completed ? 'completed' : 'awaiting_user',
       )
+      runLogger.info(
+        {
+          event: 'agent.run.finished',
+          status: run.status,
+          completed,
+          awaitingUser,
+        },
+        'Agent run finished',
+      )
       await this.options.onRunFinished?.(run)
       return run
     } catch (error) {
+      if (isAgentRunCancelledError(error)) {
+        const currentRun = await this.options.runStore.find(run.id)
+        const alreadyCancelled = currentRun?.status === 'cancelled'
+        const cancelledRun = alreadyCancelled
+          ? currentRun
+          : await this.options.runStore.cancel(run.id)
+
+        if (!alreadyCancelled) {
+          await this.options.onRunFinished?.(cancelledRun)
+        }
+
+        runLogger.warn(
+          {
+            event: 'agent.run.cancelled',
+            status: cancelledRun.status,
+          },
+          'Agent run cancelled',
+        )
+        return cancelledRun
+      }
+
       const message = getErrorMessage(error)
       await this.options.runStore.appendMessage(run.id, {
         role: 'system',
@@ -626,6 +723,14 @@ export class AgentRuntime {
         run.id,
         'failed',
         message,
+      )
+      runLogger.error(
+        {
+          event: 'agent.run.failed',
+          err: error,
+          status: failedRun.status,
+        },
+        'Agent run failed',
       )
       await this.options.onRunFinished?.(failedRun)
       return failedRun
@@ -637,6 +742,7 @@ export class AgentRuntime {
     endpointId: string | undefined,
     model: string | undefined,
     emit: AgentRuntimeStreamEmit,
+    signal?: AbortSignal,
   ) {
     let run = await this.options.runStore.get(runId)
     const endpoint = await this.options.getEndpoint(
@@ -645,10 +751,24 @@ export class AgentRuntime {
     const workspace = await this.options.getWorkspace(run.workspaceId)
     const githubToken = await this.options.getGitHubToken()
 
+    throwIfAgentRunCancelled(signal)
     run = await this.options.runStore.setStatus(run.id, 'running')
     emit({ type: 'run', run })
+    const runLogger = this.getRunLogger(run, {
+      endpointId: endpoint.id,
+      model: model || run.model || endpoint.defaultModel,
+      streaming: true,
+    })
+    runLogger.info(
+      {
+        event: 'agent.run.started',
+        status: run.status,
+      },
+      'Agent run started',
+    )
 
     try {
+      throwIfAgentRunCancelled(signal)
       const client = createOpenAIClient(endpoint)
       const durabilityMaxRetries = getDurabilityMaxRetries(
         this.options.durabilityMaxRetries,
@@ -661,9 +781,11 @@ export class AgentRuntime {
         durabilityAttempt <= durabilityMaxRetries;
         durabilityAttempt += 1
       ) {
+        throwIfAgentRunCancelled(signal)
         const preparedContext = prepareAgentContext({
           messages: run.messages,
           systemPrompt: buildCodingSystemPrompt({
+            runKind: run.kind,
             settings: this.options.settings,
             workspace,
           }),
@@ -697,6 +819,7 @@ export class AgentRuntime {
           iteration < totalToolIterations;
           iteration += 1
         ) {
+          throwIfAgentRunCancelled(signal)
           if (iteration === maxToolIterations) {
             messages.push({
               role: 'system',
@@ -731,21 +854,25 @@ export class AgentRuntime {
             stream: true,
           } as const
           const stream = await client.chat.completions
-            .create({
-              ...streamRequest,
-              stream_options: {
-                include_usage: true,
+            .create(
+              {
+                ...streamRequest,
+                stream_options: {
+                  include_usage: true,
+                },
               },
-            })
+              { signal },
+            )
             .catch((error: unknown) => {
               if (!isUnsupportedStreamUsageError(error)) {
                 throw error
               }
 
-              return client.chat.completions.create(streamRequest)
+              return client.chat.completions.create(streamRequest, { signal })
             })
 
           for await (const chunk of stream) {
+            throwIfAgentRunCancelled(signal)
             completionUsage = getCompletionTokenUsage(chunk) ?? completionUsage
             const delta = chunk.choices[0]?.delta as StreamDelta | undefined
             const content =
@@ -790,6 +917,18 @@ export class AgentRuntime {
             }
           }
           const completionDurationMs = Date.now() - completionStartedAt
+          throwIfAgentRunCancelled(signal)
+          runLogger.debug(
+            {
+              event: 'agent.llm.completion',
+              attempt: durabilityAttempt + 1,
+              iteration: iteration + 1,
+              durationMs: completionDurationMs,
+              model: activeModel,
+              usage: completionUsage,
+            },
+            'Agent streaming LLM completion finished',
+          )
 
           const toolCalls = Array.from(toolCallsByIndex.entries())
             .sort(([left], [right]) => left - right)
@@ -880,6 +1019,7 @@ export class AgentRuntime {
           }
 
           for (const toolCall of toolCalls) {
+            throwIfAgentRunCancelled(signal)
             const toolName = toolCall.function.name
             const toolInput = parseToolInputArguments(
               toolCall.function.arguments,
@@ -893,6 +1033,15 @@ export class AgentRuntime {
                 toolInput: toolCall.function.arguments,
               }),
             })
+            runLogger.info(
+              {
+                event: 'agent.tool.started',
+                attempt: durabilityAttempt + 1,
+                iteration: iteration + 1,
+                toolName,
+              },
+              'Agent tool started',
+            )
 
             const toolStartedAt = Date.now()
             const result = isToolCallBlocked(recentToolNames, {
@@ -907,6 +1056,19 @@ export class AgentRuntime {
                   githubToken,
                   addIssueComment: this.options.addIssueComment,
                 })
+            throwIfAgentRunCancelled(signal)
+            runLogger.info(
+              {
+                event: 'agent.tool.completed',
+                attempt: durabilityAttempt + 1,
+                iteration: iteration + 1,
+                toolName,
+                durationMs: Date.now() - toolStartedAt,
+                completed: result.completed,
+                awaitingUser: result.awaitingUser,
+              },
+              'Agent tool completed',
+            )
 
             messages.push({
               role: 'tool',
@@ -1021,10 +1183,41 @@ export class AgentRuntime {
         run.id,
         completed ? 'completed' : 'awaiting_user',
       )
+      runLogger.info(
+        {
+          event: 'agent.run.finished',
+          status: run.status,
+          completed,
+          awaitingUser,
+        },
+        'Agent run finished',
+      )
       await this.options.onRunFinished?.(run)
       emit({ type: 'done', run })
       return run
     } catch (error) {
+      if (isAgentRunCancelledError(error)) {
+        const currentRun = await this.options.runStore.find(run.id)
+        const alreadyCancelled = currentRun?.status === 'cancelled'
+        const cancelledRun = alreadyCancelled
+          ? currentRun
+          : await this.options.runStore.cancel(run.id)
+
+        if (!alreadyCancelled) {
+          await this.options.onRunFinished?.(cancelledRun)
+        }
+
+        runLogger.warn(
+          {
+            event: 'agent.run.cancelled',
+            status: cancelledRun.status,
+          },
+          'Agent run cancelled',
+        )
+        emit({ type: 'done', run: cancelledRun })
+        return cancelledRun
+      }
+
       const message = getErrorMessage(error)
       await this.options.runStore.appendMessage(run.id, {
         role: 'system',
@@ -1035,10 +1228,36 @@ export class AgentRuntime {
         'failed',
         message,
       )
+      runLogger.error(
+        {
+          event: 'agent.run.failed',
+          err: error,
+          status: failedRun.status,
+        },
+        'Agent run failed',
+      )
       await this.options.onRunFinished?.(failedRun)
       emit({ type: 'error', error: message, run: failedRun })
       return failedRun
     }
+  }
+
+  private getRunLogger(
+    run: Pick<
+      AgentRun,
+      'agentRuntime' | 'id' | 'issueId' | 'kind' | 'subtaskId' | 'workspaceId'
+    >,
+    bindings: Record<string, unknown> = {},
+  ) {
+    return (this.options.logger ?? rootLogger).child({
+      runId: run.id,
+      agentRuntime: run.agentRuntime,
+      runKind: run.kind,
+      workspaceId: run.workspaceId,
+      issueId: run.issueId,
+      subtaskId: run.subtaskId,
+      ...bindings,
+    })
   }
 }
 

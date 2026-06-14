@@ -23,6 +23,13 @@ pnpm dev
 The web app runs on `http://localhost:8788`.
 The API runs on `http://localhost:8787`.
 
+API logs default to a local-friendly pretty format. Use structured JSON logs in deployments:
+
+```bash
+LOG_FORMAT=json
+LOG_LEVEL=info
+```
+
 Run each side independently when needed:
 
 ```bash

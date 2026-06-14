@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const agentRuntimeConnectorTypeSchema = z.enum([
   'openai_compatible',
   'opencode_cli',
+  'codex_cli',
 ])
 
 const optionalEnvVarSchema = z.preprocess(
@@ -45,12 +46,19 @@ const optionalDefaultModelSchema = z.preprocess((value) => {
   return trimmed.length > 0 ? trimmed : undefined
 }, z.string().max(120).optional())
 
-const opencodeCommandSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(120)
-  .default('opencode')
+const cliDefaultModelSchema = z.preprocess((value) => {
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+
+  return value == null ? '' : value
+}, z.string().max(120))
+
+const cliCommandSchema = z.string().trim().min(1).max(120)
+
+const opencodeCommandSchema = cliCommandSchema.default('opencode')
+
+const codexCommandSchema = cliCommandSchema.default('codex')
 
 const opencodeCommandArgsSchema = z
   .array(z.string().min(1).max(300))
@@ -77,19 +85,34 @@ const opencodeRuntimeSchema = z.object({
   ...commonRuntimeFields,
   runtimeType: z.literal('opencode_cli'),
   baseUrl: optionalBaseUrlSchema.default('opencode://cli'),
-  defaultModel: optionalDefaultModelSchema.default(''),
+  defaultModel: cliDefaultModelSchema,
 })
 
-const runtimeInputSchema = z.preprocess((value) => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return value
-  }
+const codexRuntimeSchema = z.object({
+  ...commonRuntimeFields,
+  opencodeCommand: codexCommandSchema,
+  runtimeType: z.literal('codex_cli'),
+  baseUrl: optionalBaseUrlSchema.default('codex://cli'),
+  defaultModel: cliDefaultModelSchema,
+})
 
-  return {
-    runtimeType: 'openai_compatible',
-    ...value,
-  }
-}, z.discriminatedUnion('runtimeType', [openAiRuntimeSchema, opencodeRuntimeSchema]))
+const runtimeInputSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return value
+    }
+
+    return {
+      runtimeType: 'openai_compatible',
+      ...value,
+    }
+  },
+  z.discriminatedUnion('runtimeType', [
+    openAiRuntimeSchema,
+    opencodeRuntimeSchema,
+    codexRuntimeSchema,
+  ]),
+)
 
 export const createLlmEndpointSchema = runtimeInputSchema
 
@@ -127,6 +150,11 @@ export const llmEndpointSchema = z.preprocess(
       updatedAt: z.string().datetime(),
     }),
     opencodeRuntimeSchema.extend({
+      id: z.string().min(1),
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
+    }),
+    codexRuntimeSchema.extend({
       id: z.string().min(1),
       createdAt: z.string().datetime(),
       updatedAt: z.string().datetime(),

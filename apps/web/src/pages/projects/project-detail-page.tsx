@@ -1,12 +1,7 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import type { Issue } from '@patchlane/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  ArrowLeft,
-  ClipboardList,
-  ListChecks,
-  Pencil,
-} from 'lucide-react'
+import { ArrowLeft, ClipboardList, ListChecks, Pencil } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@patchlane/ui/badge'
@@ -68,6 +63,7 @@ export const ProjectDetailPage = () => {
     endpoint,
     error: agentRunError,
     onAgentReplyChange,
+    onAgentRunRuntimeChange,
     onContinueAgentRun,
     onPlanIssue,
     onRewindAgentRun,
@@ -129,7 +125,9 @@ export const ProjectDetailPage = () => {
         (endpoint) =>
           endpoint.runtimeType === 'openai_compatible' && endpoint.enabled,
       ) ??
-      endpoints.find((endpoint) => endpoint.runtimeType === 'openai_compatible') ??
+      endpoints.find(
+        (endpoint) => endpoint.runtimeType === 'openai_compatible',
+      ) ??
       null,
     [endpoints],
   )
@@ -350,7 +348,9 @@ export const ProjectDetailPage = () => {
         agentRuntime: project?.defaultAgentRuntime ?? 'patchlane',
         agentRuntimeConnectorId: project?.defaultAgentRuntimeConnectorId,
         endpointId:
-          issue.endpointId || project?.defaultEndpointId || selectedEndpoint?.id,
+          issue.endpointId ||
+          project?.defaultEndpointId ||
+          selectedEndpoint?.id,
       })
 
       upsertIssue(queryClient, response.issue)
@@ -530,9 +530,11 @@ export const ProjectDetailPage = () => {
           <ProjectTasksView
             agentReplyDraft={agentReplyDraft}
             endpoint={endpoint}
+            endpoints={endpoints}
             error={agentRunError}
             issues={projectIssues}
             onAgentReplyChange={onAgentReplyChange}
+            onRunRuntimeChange={onAgentRunRuntimeChange}
             onContinueRun={onContinueAgentRun}
             onRewindRun={onRewindAgentRun}
             onSelectRun={(runId) => void setSelectedAgentRunId(runId)}

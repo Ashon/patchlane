@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { AgentRun, LlmEndpoint } from '@patchlane/shared'
+import type { AgentRun, AgentRuntime, LlmEndpoint } from '@patchlane/shared'
 import {
   ChevronDown,
   Network,
@@ -11,6 +11,13 @@ import {
 import { ChatConversation } from '@/components/chat/chat-conversation'
 import { Badge } from '@patchlane/ui/badge'
 import { Button } from '@patchlane/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@patchlane/ui/select'
 import {
   Collapsible,
   CollapsibleContent,
@@ -25,11 +32,13 @@ import { cn } from '@/lib/utils'
 type AgentTaskConversationProps = {
   draft: string
   endpoint: LlmEndpoint | null
+  endpoints: LlmEndpoint[]
   error: string | null
   isStreaming: boolean
   onChange: (value: string) => void
   onContinue: () => void
   onRewind: (messageId: string) => void
+  onRuntimeChange: (runtime: AgentRuntime) => void
   onSend: () => void
   onStop: () => void
   run: AgentRun
@@ -38,30 +47,35 @@ type AgentTaskConversationProps = {
 export const AgentTaskConversation = ({
   draft,
   endpoint,
+  endpoints,
   error,
   isStreaming,
   onChange,
   onContinue,
   onRewind,
+  onRuntimeChange,
   onSend,
   onStop,
   run,
 }: AgentTaskConversationProps) => {
   const usesEndpoint = run.agentRuntime === 'patchlane'
-  const canUseBackend = !usesEndpoint || Boolean(endpoint?.enabled)
-  const canContinue =
-    canUseBackend && !isStreaming && run.status !== 'completed'
+  const runEndpoint = run.endpointId
+    ? endpoints.find((item) => item.id === run.endpointId)
+    : undefined
+  const canUseBackend =
+    !usesEndpoint || Boolean(runEndpoint?.enabled ?? endpoint?.enabled)
+  const terminal = run.status === 'completed' || run.status === 'cancelled'
+  const canContinue = canUseBackend && !isStreaming && !terminal
   const canSend =
-    canUseBackend &&
-    !isStreaming &&
-    Boolean(draft.trim()) &&
-    run.status !== 'completed'
-  const inputFooter =
-    run.agentRuntime === 'opencode'
-      ? 'OpenCode CLI'
-      : endpoint
-        ? `${endpoint.baseUrl} · ${endpoint.defaultModel}`
-        : 'Select an enabled endpoint'
+    canUseBackend && !isStreaming && Boolean(draft.trim()) && !terminal
+  const inputFooter = (
+    <AgentRuntimeFooter
+      disabled={isStreaming || run.status === 'running' || terminal}
+      endpoints={endpoints}
+      onChange={onRuntimeChange}
+      run={run}
+    />
+  )
   const contextPanel =
     run.context?.strategy === 'compacted' ? (
       <AgentContextMemoryPanel context={run.context} />
@@ -128,7 +142,7 @@ export const AgentTaskConversation = ({
           )}
         </>
       }
-      inputDisabled={!canUseBackend || run.status === 'completed'}
+      inputDisabled={!canUseBackend || terminal}
       inputFooter={inputFooter}
       inputLoading={isStreaming}
       inputPlaceholder={
@@ -136,7 +150,7 @@ export const AgentTaskConversation = ({
           ? 'Reply to the coding agent or add constraints...'
           : usesEndpoint
             ? 'Select an enabled endpoint before continuing'
-            : 'OpenCode is not available'
+            : `${getAgentRuntimeLabel(run.agentRuntime)} is not available`
       }
       inputValue={draft}
       messages={messages}
@@ -155,6 +169,91 @@ export const AgentTaskConversation = ({
       wideMessages
     />
   )
+}
+
+const AgentRuntimeFooter = ({
+  disabled,
+  endpoints,
+  onChange,
+  run,
+}: {
+  disabled: boolean
+  endpoints: LlmEndpoint[]
+  onChange: (runtime: AgentRuntime) => void
+  run: AgentRun
+}) => {
+  const openAiAvailable = endpoints.some(
+    (item) => item.enabled && item.runtimeType === 'openai_compatible',
+  )
+  const openCodeAvailable = endpoints.some(
+    (item) => item.enabled && item.runtimeType === 'opencode_cli',
+  )
+  const codexAvailable = endpoints.some(
+    (item) => item.enabled && item.runtimeType === 'codex_cli',
+  )
+
+  return (
+    <div
+      className="flex min-w-0 items-center gap-1.5"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <Select
+        disabled={disabled}
+        onValueChange={(value) => {
+          const runtime = parseAgentRuntime(value)
+
+          if (runtime !== run.agentRuntime) {
+            onChange(runtime)
+          }
+        }}
+        value={run.agentRuntime}
+      >
+        <SelectTrigger className="h-6 min-w-36 max-w-44 border-input bg-background px-2 text-xs shadow-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem
+            disabled={!openAiAvailable && run.agentRuntime !== 'patchlane'}
+            value="patchlane"
+          >
+            Patchlane
+          </SelectItem>
+          <SelectItem
+            disabled={!openCodeAvailable && run.agentRuntime !== 'opencode'}
+            value="opencode"
+          >
+            OpenCode
+          </SelectItem>
+          <SelectItem
+            disabled={!codexAvailable && run.agentRuntime !== 'codex'}
+            value="codex"
+          >
+            Codex
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+const parseAgentRuntime = (value: string): AgentRuntime => {
+  if (value === 'opencode' || value === 'codex') {
+    return value
+  }
+
+  return 'patchlane'
+}
+
+const getAgentRuntimeLabel = (runtime: AgentRun['agentRuntime']) => {
+  if (runtime === 'opencode') {
+    return 'OpenCode'
+  }
+
+  if (runtime === 'codex') {
+    return 'Codex'
+  }
+
+  return 'Patchlane'
 }
 
 const AgentContextMemoryPanel = ({

@@ -457,6 +457,10 @@ const getAgentRunKindLabel = (kind: AgentRun['kind']) => {
     return 'plan'
   }
 
+  if (kind === 'research') {
+    return 'research'
+  }
+
   if (kind === 'verification') {
     return 'verify'
   }

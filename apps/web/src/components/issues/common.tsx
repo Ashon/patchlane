@@ -245,17 +245,23 @@ const getStatusIconConfig = (
 
   if (status === 'failed') {
     return {
-      className:
-        'border-destructive/50 bg-destructive/10 text-destructive',
+      className: 'border-destructive/50 bg-destructive/10 text-destructive',
       icon: XCircle,
       label: 'Failed',
     }
   }
 
+  if (status === 'cancelled') {
+    return {
+      className: 'border-muted-foreground/30 bg-muted text-muted-foreground',
+      icon: CircleSlash2,
+      label: 'Cancelled',
+    }
+  }
+
   if (status === 'blocked') {
     return {
-      className:
-        'border-destructive/50 bg-destructive/10 text-destructive',
+      className: 'border-destructive/50 bg-destructive/10 text-destructive',
       icon: AlertCircle,
       label: 'Blocked',
     }
@@ -295,7 +301,8 @@ const getStatusIconConfig = (
 
   if (status === 'backlog') {
     return {
-      className: 'border-muted-foreground/30 bg-background text-muted-foreground',
+      className:
+        'border-muted-foreground/30 bg-background text-muted-foreground',
       icon: Circle,
       label: 'Backlog',
     }
@@ -303,7 +310,8 @@ const getStatusIconConfig = (
 
   if (status === 'idle') {
     return {
-      className: 'border-muted-foreground/30 bg-background text-muted-foreground',
+      className:
+        'border-muted-foreground/30 bg-background text-muted-foreground',
       icon: Clock3,
       label: 'Idle',
     }

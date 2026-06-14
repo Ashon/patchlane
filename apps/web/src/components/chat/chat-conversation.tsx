@@ -257,7 +257,11 @@ export const ChatConversation = ({
                   variant="pulse-dot"
                 />
               ) : null}
-              <span className="truncate">{inputFooter}</span>
+              {typeof inputFooter === 'string' ? (
+                <span className="truncate">{inputFooter}</span>
+              ) : (
+                inputFooter
+              )}
             </div>
             <PromptInputActions>{inputActions}</PromptInputActions>
           </div>

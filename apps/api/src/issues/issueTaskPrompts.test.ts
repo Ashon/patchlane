@@ -141,4 +141,36 @@ describe('Given issue task prompts', () => {
     expect(prompt).toContain('For catalog-style inspect work')
     expect(prompt).toContain('call finish')
   })
+
+  it('when building a research issue task run task, then it asks for evidence before implementation', () => {
+    const task = {
+      createdAt: '2026-06-03T00:00:00.000Z',
+      description:
+        'Research how task prompts, runtime prompts, and workflow state should support a research-only mode.',
+      id: 'subtask-research',
+      issueId: issue.id,
+      kind: 'research' as const,
+      sequence: 0,
+      status: 'pending' as const,
+      title: 'Research prompt mode boundaries',
+      updatedAt: '2026-06-03T00:00:00.000Z',
+    }
+    const prompt = buildIssueTaskRunTaskPrompt({
+      branchName: 'agent/refactor-prompts',
+      issue: {
+        ...issue,
+        subtasks: [task],
+      },
+      project,
+      task,
+    })
+
+    expect(prompt).toContain('Task kind: research')
+    expect(prompt).toContain('Research task boundary')
+    expect(prompt).toContain('do not modify files')
+    expect(prompt).toContain('evidence-backed map')
+    expect(prompt).toContain('Cross-check important claims')
+    expect(prompt).toContain('recommended implementation plan')
+    expect(prompt).toContain('explicit no-file-changes note')
+  })
 })

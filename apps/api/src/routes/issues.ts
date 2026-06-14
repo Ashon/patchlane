@@ -2,6 +2,7 @@ import { Router } from 'express'
 import {
   type AgentProject,
   type AgentRun,
+  type AgentRuntimeConnectorType,
   type Issue,
   type IssueTask,
   createAgentProjectSchema,
@@ -20,6 +21,8 @@ import { badRequest } from '../http/errors'
 import { buildIssueArtifactManifest } from '../issues/issueArtifacts'
 import { reconcileIssueTaskState } from '../issues/issueReconciliation'
 import type { IssueStore } from '../issues/issueStore'
+import { getRequestLogger } from '../logging/accessLog'
+import { createChildLogger } from '../logging/logger'
 import {
   buildIssueRunTaskPrompt,
   buildIssueTaskRunTaskPrompt,
@@ -59,6 +62,7 @@ export const createIssuesRouter = ({
   workspaceStore,
 }: IssuesRouterOptions) => {
   const router = Router()
+  const workflowLogger = createChildLogger({ component: 'workflow' })
 
   router.get(
     '/projects',
@@ -204,6 +208,17 @@ export const createIssuesRouter = ({
       const issue = await planIssueTasks(await issueStore.getIssue(id), {
         endpointId: input.endpointId,
       })
+      getRequestLogger(response).info(
+        {
+          component: 'workflow',
+          event: 'workflow.issue.planned',
+          issueId: issue.id,
+          projectId: issue.projectId,
+          taskCount: issue.subtasks.length,
+          endpointId: input.endpointId,
+        },
+        'Issue workflow planned',
+      )
 
       response.status(201).json({ issue })
     }),
@@ -235,6 +250,19 @@ export const createIssuesRouter = ({
         issue,
         task,
       })
+      getRequestLogger(response).info(
+        {
+          component: 'workflow',
+          event: 'workflow.task.started',
+          issueId: updatedIssue.id,
+          taskId: task.id,
+          runId: run.id,
+          agentRuntime: run.agentRuntime,
+          runKind: run.kind,
+          workspaceId: run.workspaceId,
+        },
+        'Issue task run started',
+      )
 
       response.status(201).json({ run, issue: updatedIssue, runs: [run] })
     }),
@@ -266,6 +294,19 @@ export const createIssuesRouter = ({
         issue,
         task: subtask,
       })
+      getRequestLogger(response).info(
+        {
+          component: 'workflow',
+          event: 'workflow.task.started',
+          issueId: updatedIssue.id,
+          taskId: subtask.id,
+          runId: run.id,
+          agentRuntime: run.agentRuntime,
+          runKind: run.kind,
+          workspaceId: run.workspaceId,
+        },
+        'Issue subtask run started',
+      )
 
       response.status(201).json({ run, issue: updatedIssue, runs: [run] })
     }),
@@ -281,6 +322,17 @@ export const createIssuesRouter = ({
         issueStore,
         runStore,
       })
+      const requestLogger = getRequestLogger(response)
+      requestLogger.info(
+        {
+          component: 'workflow',
+          event: 'workflow.continue.requested',
+          issueId: issue.id,
+          status: issue.status,
+          taskCount: issue.subtasks.length,
+        },
+        'Issue workflow continuation requested',
+      )
 
       if (issue.subtasks.length === 0) {
         issue = await planIssueTasks(issue, { endpointId: input.endpointId })
@@ -289,6 +341,16 @@ export const createIssuesRouter = ({
       const activeRun = await findActiveIssueTaskRun(issue)
 
       if (activeRun) {
+        requestLogger.info(
+          {
+            component: 'workflow',
+            event: 'workflow.active_run_reused',
+            issueId: issue.id,
+            runId: activeRun.id,
+            status: activeRun.status,
+          },
+          'Issue workflow reused active run',
+        )
         response.json({ run: activeRun, issue, runs: [activeRun] })
         return
       }
@@ -296,6 +358,15 @@ export const createIssuesRouter = ({
       const task = getNextIssueTask(issue)
 
       if (!task) {
+        requestLogger.info(
+          {
+            component: 'workflow',
+            event: 'workflow.no_runnable_task',
+            issueId: issue.id,
+            status: issue.status,
+          },
+          'Issue workflow has no runnable task',
+        )
         response.json({ issue, runs: [] })
         return
       }
@@ -307,6 +378,19 @@ export const createIssuesRouter = ({
         issue,
         task,
       })
+      requestLogger.info(
+        {
+          component: 'workflow',
+          event: 'workflow.task.started',
+          issueId: updatedIssue.id,
+          taskId: task.id,
+          runId: run.id,
+          agentRuntime: run.agentRuntime,
+          runKind: run.kind,
+          workspaceId: run.workspaceId,
+        },
+        'Issue workflow started next task',
+      )
 
       response.status(201).json({ run, issue: updatedIssue, runs: [run] })
     }),
@@ -349,9 +433,7 @@ export const createIssuesRouter = ({
       if (runtimeConnectorId) {
         const connector = await endpointStore.get(runtimeConnectorId)
 
-        if (agentRuntime === 'opencode' && connector.runtimeType !== 'opencode_cli') {
-          throw badRequest('Select an OpenCode CLI runtime connector')
-        }
+        validateAgentRuntimeConnector(agentRuntime, connector.runtimeType)
       }
 
       const branchName = buildTaskBranchName(
@@ -407,6 +489,19 @@ export const createIssuesRouter = ({
         endpointId,
         workspaceId: taskWorkspace.id,
       })
+      getRequestLogger(response).info(
+        {
+          component: 'workflow',
+          event: 'workflow.issue_run.started',
+          issueId: issue.id,
+          runId: run.id,
+          agentRuntime: run.agentRuntime,
+          runKind: run.kind,
+          workspaceId: run.workspaceId,
+          branchName,
+        },
+        'Issue coding run started',
+      )
 
       response.status(201).json({ run, issue, runs: [run] })
     }),
@@ -494,6 +589,7 @@ export const createIssuesRouter = ({
     issue: Issue,
     options: { endpointId?: string } = {},
   ) {
+    const startedAt = Date.now()
     const project = await issueStore.getProject(issue.projectId)
     const endpoint = options.endpointId
       ? await endpointStore.get(options.endpointId)
@@ -502,6 +598,15 @@ export const createIssuesRouter = ({
         : project.defaultEndpointId
           ? await endpointStore.get(project.defaultEndpointId)
           : await endpointStore.getDefault()
+    workflowLogger.info(
+      {
+        event: 'workflow.plan.started',
+        issueId: issue.id,
+        projectId: project.id,
+        endpointId: endpoint.id,
+      },
+      'Issue workflow planning started',
+    )
     const completion = await createChatCompletion(endpoint, {
       maxTokens: 2048,
       messages: [
@@ -526,11 +631,35 @@ export const createIssuesRouter = ({
     }
 
     try {
-      return await issueStore.replaceIssueTasks(
+      const plannedIssue = await issueStore.replaceIssueTasks(
         issue.id,
         parseIssueTaskPlan(content),
       )
+      workflowLogger.info(
+        {
+          event: 'workflow.plan.completed',
+          issueId: plannedIssue.id,
+          projectId: project.id,
+          endpointId: endpoint.id,
+          taskCount: plannedIssue.subtasks.length,
+          durationMs: Date.now() - startedAt,
+        },
+        'Issue workflow planning completed',
+      )
+
+      return plannedIssue
     } catch (error) {
+      workflowLogger.warn(
+        {
+          event: 'workflow.plan.failed',
+          issueId: issue.id,
+          projectId: project.id,
+          endpointId: endpoint.id,
+          durationMs: Date.now() - startedAt,
+          err: error,
+        },
+        'Issue workflow planning failed',
+      )
       throw badRequest(`Failed to parse task plan: ${getErrorMessage(error)}`)
     }
   }
@@ -568,12 +697,12 @@ export const createIssuesRouter = ({
     issue: Issue
     task: IssueTask
   }) {
+    const startedAt = Date.now()
     const { branchName, project, workspace } =
       await getOrCreateIssueTaskWorkspace(issue)
     const selectedEndpointId =
       endpointId ?? issue.endpointId ?? project.defaultEndpointId
-    const selectedAgentRuntime =
-      agentRuntime ?? project.defaultAgentRuntime
+    const selectedAgentRuntime = agentRuntime ?? project.defaultAgentRuntime
     const selectedRuntimeConnectorId =
       agentRuntimeConnectorId ??
       project.defaultAgentRuntimeConnectorId ??
@@ -586,12 +715,7 @@ export const createIssuesRouter = ({
     if (selectedRuntimeConnectorId) {
       const connector = await endpointStore.get(selectedRuntimeConnectorId)
 
-      if (
-        selectedAgentRuntime === 'opencode' &&
-        connector.runtimeType !== 'opencode_cli'
-      ) {
-        throw badRequest('Select an OpenCode CLI runtime connector')
-      }
+      validateAgentRuntimeConnector(selectedAgentRuntime, connector.runtimeType)
     }
 
     const run = await runStore.create({
@@ -622,6 +746,23 @@ export const createIssuesRouter = ({
       task.id,
       run.id,
     )
+    workflowLogger.info(
+      {
+        event: 'workflow.task_run.created',
+        issueId: updatedIssue.id,
+        projectId: project.id,
+        taskId: task.id,
+        taskKind: task.kind,
+        runId: run.id,
+        runKind: run.kind,
+        agentRuntime: run.agentRuntime,
+        endpointId: run.endpointId,
+        workspaceId: workspace.id,
+        branchName,
+        durationMs: Date.now() - startedAt,
+      },
+      'Issue task agent run created',
+    )
 
     return { issue: updatedIssue, run }
   }
@@ -636,6 +777,16 @@ export const createIssuesRouter = ({
       : undefined
 
     if (existingWorkspace?.kind === 'task_worktree') {
+      workflowLogger.info(
+        {
+          event: 'workflow.workspace.reused',
+          issueId: issue.id,
+          projectId: project.id,
+          workspaceId: existingWorkspace.id,
+          branchName: existingWorkspace.branchName ?? issue.branchName,
+        },
+        'Issue task workspace reused',
+      )
       return {
         branchName:
           existingWorkspace.branchName ??
@@ -675,8 +826,29 @@ export const createIssuesRouter = ({
     } catch (error) {
       const message = getErrorMessage(error)
       await workspaceStore.markError(taskWorkspace.id, message)
+      workflowLogger.warn(
+        {
+          event: 'workflow.workspace.failed',
+          issueId: issue.id,
+          projectId: project.id,
+          workspaceId: taskWorkspace.id,
+          branchName,
+          err: error,
+        },
+        'Issue task workspace creation failed',
+      )
       throw badRequest(message)
     }
+    workflowLogger.info(
+      {
+        event: 'workflow.workspace.created',
+        issueId: issue.id,
+        projectId: project.id,
+        workspaceId: taskWorkspace.id,
+        branchName,
+      },
+      'Issue task workspace created',
+    )
 
     return { branchName, project, workspace: taskWorkspace }
   }
@@ -708,6 +880,23 @@ const getRouteParam = (value: string | string[] | undefined, name: string) => {
   }
 
   throw badRequest(`Route parameter '${name}' is required`)
+}
+
+const validateAgentRuntimeConnector = (
+  agentRuntime: AgentRun['agentRuntime'],
+  connectorType: AgentRuntimeConnectorType,
+) => {
+  if (agentRuntime === 'opencode' && connectorType !== 'opencode_cli') {
+    throw badRequest('Select an OpenCode CLI runtime connector')
+  }
+
+  if (agentRuntime === 'codex' && connectorType !== 'codex_cli') {
+    throw badRequest('Select a Codex CLI runtime connector')
+  }
+
+  if (agentRuntime === 'patchlane' && connectorType !== 'openai_compatible') {
+    throw badRequest('Select an OpenAI-compatible runtime connector')
+  }
 }
 
 const getErrorMessage = (error: unknown) => {

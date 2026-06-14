@@ -1,4 +1,5 @@
 import type {
+  AgentRuntimeConnectorType,
   CreateLlmEndpointInput,
   LlmEndpoint,
   LlmEndpointTestResult,
@@ -263,12 +264,21 @@ export const EndpointSettingsPage = () => {
             <Field label="Runtime type">
               <Select
                 onValueChange={(value) =>
-                  setDraft({
-                    ...draft,
-                    runtimeType:
-                      value === 'opencode_cli'
-                        ? 'opencode_cli'
-                        : 'openai_compatible',
+                  setDraft((current) => {
+                    const runtimeType = parseRuntimeType(value)
+                    const isRuntimeChanged = current.runtimeType !== runtimeType
+
+                    return {
+                      ...current,
+                      runtimeType,
+                      baseUrl: isCliRuntimeType(runtimeType)
+                        ? getCliBaseUrl(runtimeType)
+                        : current.baseUrl,
+                      opencodeCommand:
+                        isCliRuntimeType(runtimeType) && isRuntimeChanged
+                          ? getDefaultCliCommand(runtimeType)
+                          : current.opencodeCommand,
+                    }
                   })
                 }
                 value={draft.runtimeType}
@@ -281,6 +291,7 @@ export const EndpointSettingsPage = () => {
                     OpenAI Compatible API
                   </SelectItem>
                   <SelectItem value="opencode_cli">OpenCode CLI</SelectItem>
+                  <SelectItem value="codex_cli">Codex CLI</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
@@ -353,7 +364,7 @@ export const EndpointSettingsPage = () => {
                         opencodeCommand: event.target.value,
                       })
                     }
-                    placeholder="opencode"
+                    placeholder={getDefaultCliCommand(draft.runtimeType)}
                     required
                   />
                 </Field>
@@ -367,7 +378,7 @@ export const EndpointSettingsPage = () => {
                         opencodeCommandArgs: event.target.value,
                       })
                     }
-                    placeholder='["dlx","opencode-ai@1.16.2"]'
+                    placeholder={getCommandArgsPlaceholder(draft.runtimeType)}
                   />
                 </Field>
 
@@ -380,12 +391,16 @@ export const EndpointSettingsPage = () => {
                         defaultModel: event.target.value,
                       })
                     }
-                    placeholder="provider/model"
+                    placeholder={getModelPlaceholder(draft.runtimeType)}
                   />
                 </Field>
 
                 <label className="flex items-center justify-between rounded-md border bg-background px-3 py-2 text-sm">
-                  <span className="font-medium">Skip permissions</span>
+                  <span className="font-medium">
+                    {draft.runtimeType === 'codex_cli'
+                      ? 'Bypass sandbox'
+                      : 'Skip permissions'}
+                  </span>
                   <input
                     checked={draft.opencodeDangerouslySkipPermissions}
                     className="h-4 w-4 accent-primary"
@@ -458,7 +473,7 @@ const EndpointCard = ({
   onSelect: () => void
   onTest: () => void
 }) => {
-  const RuntimeIcon = endpoint.runtimeType === 'opencode_cli' ? Terminal : Server
+  const RuntimeIcon = isCliRuntimeType(endpoint.runtimeType) ? Terminal : Server
 
   return (
     <PageListItem selected={selected}>
@@ -476,10 +491,12 @@ const EndpointCard = ({
             <StateBadge tone={endpoint.enabled ? 'success' : 'warning'}>
               {endpoint.enabled ? 'Enabled' : 'Disabled'}
             </StateBadge>
-            <Badge variant="outline">{getRuntimeTypeLabel(endpoint)}</Badge>
+            <Badge variant="outline">
+              {getRuntimeTypeLabel(endpoint.runtimeType)}
+            </Badge>
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            {endpoint.runtimeType === 'opencode_cli' ? (
+            {isCliRuntimeType(endpoint.runtimeType) ? (
               <>
                 <span className="truncate">{endpoint.opencodeCommand}</span>
                 {endpoint.opencodeCommandArgs.length ? (
@@ -549,20 +566,54 @@ const normalizeEndpointDraft = (
 ): CreateLlmEndpointInput => ({
   ...draft,
   apiKeyEnvVar: draft.apiKeyEnvVar?.trim() || undefined,
-  baseUrl:
-    draft.runtimeType === 'opencode_cli'
-      ? 'opencode://cli'
-      : draft.baseUrl.trim(),
+  baseUrl: isCliRuntimeType(draft.runtimeType)
+    ? getCliBaseUrl(draft.runtimeType)
+    : draft.baseUrl.trim(),
   defaultModel: draft.defaultModel.trim(),
   name: draft.name.trim(),
-  opencodeCommand: draft.opencodeCommand.trim() || 'opencode',
+  opencodeCommand:
+    draft.opencodeCommand.trim() || getDefaultCliCommand(draft.runtimeType),
   opencodeCommandArgs: parseCommandArgsDraft(draft.opencodeCommandArgs),
 })
 
-const getRuntimeTypeLabel = (endpoint: LlmEndpoint) => {
-  return endpoint.runtimeType === 'opencode_cli'
-    ? 'OpenCode CLI'
-    : 'OpenAI Compatible'
+const parseRuntimeType = (value: string): AgentRuntimeConnectorType => {
+  if (value === 'opencode_cli' || value === 'codex_cli') {
+    return value
+  }
+
+  return 'openai_compatible'
+}
+
+const isCliRuntimeType = (runtimeType: AgentRuntimeConnectorType) => {
+  return runtimeType === 'opencode_cli' || runtimeType === 'codex_cli'
+}
+
+const getCliBaseUrl = (runtimeType: AgentRuntimeConnectorType) => {
+  return runtimeType === 'codex_cli' ? 'codex://cli' : 'opencode://cli'
+}
+
+const getDefaultCliCommand = (runtimeType: AgentRuntimeConnectorType) => {
+  return runtimeType === 'codex_cli' ? 'codex' : 'opencode'
+}
+
+const getCommandArgsPlaceholder = (runtimeType: AgentRuntimeConnectorType) => {
+  return runtimeType === 'codex_cli' ? '[]' : '["dlx","opencode-ai@1.16.2"]'
+}
+
+const getModelPlaceholder = (runtimeType: AgentRuntimeConnectorType) => {
+  return runtimeType === 'codex_cli' ? 'gpt-5.4' : 'provider/model'
+}
+
+const getRuntimeTypeLabel = (runtimeType: AgentRuntimeConnectorType) => {
+  if (runtimeType === 'opencode_cli') {
+    return 'OpenCode CLI'
+  }
+
+  if (runtimeType === 'codex_cli') {
+    return 'Codex CLI'
+  }
+
+  return 'OpenAI Compatible'
 }
 
 const parseCommandArgsDraft = (value: string) => {

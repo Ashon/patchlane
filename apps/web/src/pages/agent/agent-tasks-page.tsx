@@ -18,6 +18,7 @@ import {
   Loader2,
   MoreHorizontal,
   Plus,
+  Square,
   Trash2,
 } from 'lucide-react'
 import { Badge } from '@patchlane/ui/badge'
@@ -42,9 +43,7 @@ import {
   buildTaskWorkItems,
   type TaskWorkItem,
 } from '@/components/issues/task-work-items'
-import {
-  TaskRunMetricBadge,
-} from '@/components/issues/task-list-meta'
+import { TaskRunMetricBadge } from '@/components/issues/task-list-meta'
 import { formatIssueReference } from '@/components/issues/utils'
 import {
   ErrorBanner,
@@ -75,9 +74,11 @@ export const AgentTasksPage = () => {
     agentRuntimeDraft,
     agentTaskDraft,
     endpoint,
+    endpoints,
     error,
     issues,
     onAgentReplyChange,
+    onAgentRunRuntimeChange,
     onAgentRuntimeChange,
     onAgentTaskChange,
     onContinueAgentRun,
@@ -148,10 +149,12 @@ export const AgentTasksPage = () => {
       agentRuntimeDraft={agentRuntimeDraft}
       agentTaskDraft={agentTaskDraft}
       endpoint={endpoint}
+      endpoints={endpoints}
       error={error}
       issueById={issueById}
       projectById={projectById}
       onAgentReplyChange={onAgentReplyChange}
+      onAgentRunRuntimeChange={onAgentRunRuntimeChange}
       onAgentRuntimeChange={onAgentRuntimeChange}
       onAgentTaskChange={onAgentTaskChange}
       onContinueAgentRun={onContinueAgentRun}
@@ -307,10 +310,12 @@ const AgentTaskContentPane = ({
   agentRuntimeDraft,
   agentTaskDraft,
   endpoint,
+  endpoints,
   error,
   issueById,
   projectById,
   onAgentReplyChange,
+  onAgentRunRuntimeChange,
   onAgentRuntimeChange,
   onAgentTaskChange,
   onContinueAgentRun,
@@ -330,10 +335,12 @@ const AgentTaskContentPane = ({
   agentRuntimeDraft: AgentRuntime
   agentTaskDraft: string
   endpoint: LlmEndpoint | null
+  endpoints: LlmEndpoint[]
   error: string | null
   issueById: Map<string, Issue>
   projectById: Map<string, AgentProject>
   onAgentReplyChange: (value: string) => void
+  onAgentRunRuntimeChange: (run: AgentRun, runtime: AgentRuntime) => void
   onAgentRuntimeChange: (value: AgentRuntime) => void
   onAgentTaskChange: (value: string) => void
   onContinueAgentRun: (run: AgentRun) => void
@@ -355,6 +362,9 @@ const AgentTaskContentPane = ({
     : selectedRun?.projectId
       ? projectById.get(selectedRun.projectId)
       : undefined
+  const selectedRunStoppable = selectedRun
+    ? isStoppableAgentRun(selectedRun)
+    : false
 
   return (
     <PagePane className="h-full" minHeight="detail">
@@ -376,6 +386,19 @@ const AgentTaskContentPane = ({
             ) : null}
             {selectedRun?.context ? (
               <AgentRunContextBadge context={selectedRun.context} />
+            ) : null}
+            {selectedRunStoppable ? (
+              <Button
+                className="border-destructive/40 bg-background text-destructive shadow-xs hover:bg-destructive/10 hover:text-destructive dark:border-destructive/50"
+                disabled={runDeletingId === selectedRun?.id}
+                onClick={() => void onStopAgentRun()}
+                size="xs"
+                type="button"
+                variant="outline"
+              >
+                <Square />
+                Stop
+              </Button>
             ) : null}
             {selectedRun ? (
               <TaskActionsMenu
@@ -403,11 +426,15 @@ const AgentTaskContentPane = ({
           <AgentTaskConversation
             draft={agentReplyDraft}
             endpoint={endpoint}
+            endpoints={endpoints}
             error={error}
             isStreaming={selectedRunStreaming}
             onChange={onAgentReplyChange}
             onContinue={() => onContinueAgentRun(selectedRun)}
             onRewind={(messageId) => onRewindAgentRun(selectedRun, messageId)}
+            onRuntimeChange={(runtime) =>
+              onAgentRunRuntimeChange(selectedRun, runtime)
+            }
             onSend={onSendAgentMessage}
             onStop={onStopAgentRun}
             run={selectedRun}
@@ -425,9 +452,7 @@ const AgentTaskContentPane = ({
               <Field label="Agent runtime">
                 <Select
                   onValueChange={(value) =>
-                    onAgentRuntimeChange(
-                      value === 'opencode' ? 'opencode' : 'patchlane',
-                    )
+                    onAgentRuntimeChange(parseAgentRuntime(value))
                   }
                   value={agentRuntimeDraft}
                 >
@@ -437,6 +462,7 @@ const AgentTaskContentPane = ({
                   <SelectContent>
                     <SelectItem value="patchlane">Patchlane</SelectItem>
                     <SelectItem value="opencode">OpenCode</SelectItem>
+                    <SelectItem value="codex">Codex</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
@@ -468,6 +494,18 @@ const AgentTaskContentPane = ({
       </div>
     </PagePane>
   )
+}
+
+const parseAgentRuntime = (value: string): AgentRuntime => {
+  if (value === 'opencode' || value === 'codex') {
+    return value
+  }
+
+  return 'patchlane'
+}
+
+const isStoppableAgentRun = (run: AgentRun) => {
+  return run.status === 'idle' || run.status === 'running'
 }
 
 const AgentTaskHeaderActions = ({ children }: { children: ReactNode }) => {
@@ -545,7 +583,9 @@ const AgentRunCard = ({
               : 'grid-cols-[minmax(0,1fr)_auto]',
           )}
         >
-          {issue ? <IssueReferenceBadge issue={issue} project={project} /> : null}
+          {issue ? (
+            <IssueReferenceBadge issue={issue} project={project} />
+          ) : null}
           <h3 className="min-w-0 truncate text-sm">{run.title}</h3>
           <AgentRunStatusBadge status={run.status} />
         </div>
@@ -619,9 +659,7 @@ const getAgentTaskHeaderDescription = (
     return items.length ? items.join(' · ') : 'Agent task chat'
   }
 
-  const items = [
-    workspace?.name,
-  ].filter(Boolean)
+  const items = [workspace?.name].filter(Boolean)
 
   return items.length ? items.join(' · ') : 'Select a task or start a new run'
 }

@@ -1060,7 +1060,9 @@ export class IssueStore {
 
   private getNextIssueNumber(projectId: string) {
     const row = this.database.sqlite
-      .prepare('SELECT MAX(number) AS max_number FROM issues WHERE project_id = ?')
+      .prepare(
+        'SELECT MAX(number) AS max_number FROM issues WHERE project_id = ?',
+      )
       .get(projectId) as { max_number: number | null } | undefined
 
     return (row?.max_number ?? 0) + 1
@@ -1248,7 +1250,10 @@ const getProjectCodeBase = (value: string) => {
 }
 
 const normalizeProjectCode = (value: string) =>
-  value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+  value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
 
 const getIssueStatusFromRun = (
   run: Pick<AgentRun, 'prUrl' | 'status'>,
@@ -1261,7 +1266,7 @@ const getIssueStatusFromRun = (
     return 'completed'
   }
 
-  if (run.status === 'failed') {
+  if (run.status === 'failed' || run.status === 'cancelled') {
     return 'failed'
   }
 
@@ -1323,7 +1328,7 @@ const getSubtaskStatusFromRun = (
     return 'completed'
   }
 
-  if (status === 'failed') {
+  if (status === 'failed' || status === 'cancelled') {
     return 'failed'
   }
 

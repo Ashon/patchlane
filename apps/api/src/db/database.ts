@@ -31,7 +31,7 @@ export class AppDatabase {
     this.sqlite.exec(`
       CREATE TABLE IF NOT EXISTS llm_endpoints (
         id TEXT PRIMARY KEY,
-        runtime_type TEXT NOT NULL DEFAULT 'openai_compatible' CHECK (runtime_type IN ('openai_compatible', 'opencode_cli')),
+        runtime_type TEXT NOT NULL DEFAULT 'openai_compatible' CHECK (runtime_type IN ('openai_compatible', 'opencode_cli', 'codex_cli')),
         name TEXT NOT NULL,
         base_url TEXT NOT NULL,
         default_model TEXT NOT NULL,
@@ -85,16 +85,17 @@ export class AppDatabase {
         workspace_id TEXT NOT NULL,
         endpoint_id TEXT,
         model TEXT,
-        agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (agent_runtime IN ('patchlane', 'opencode')),
+        agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (agent_runtime IN ('patchlane', 'opencode', 'codex')),
+        runtime_session_id TEXT,
         title TEXT NOT NULL,
-        kind TEXT NOT NULL DEFAULT 'coding' CHECK (kind IN ('coding', 'requirements', 'planning', 'verification', 'publish', 'followup')),
+        kind TEXT NOT NULL DEFAULT 'coding' CHECK (kind IN ('coding', 'requirements', 'planning', 'research', 'verification', 'publish', 'followup')),
         project_id TEXT,
         issue_id TEXT,
         subtask_id TEXT,
         branch_name TEXT,
         pr_url TEXT,
         result_summary TEXT,
-        status TEXT NOT NULL CHECK (status IN ('idle', 'running', 'awaiting_user', 'completed', 'failed')),
+        status TEXT NOT NULL CHECK (status IN ('idle', 'running', 'awaiting_user', 'completed', 'cancelled', 'failed')),
         context_json TEXT,
         error TEXT,
         created_at TEXT NOT NULL,
@@ -132,7 +133,7 @@ export class AppDatabase {
         repository_ref TEXT,
         workspace_id TEXT,
         default_endpoint_id TEXT,
-        default_agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (default_agent_runtime IN ('patchlane', 'opencode')),
+        default_agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (default_agent_runtime IN ('patchlane', 'opencode', 'codex')),
         default_agent_runtime_connector_id TEXT,
         branch_prefix TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -206,7 +207,7 @@ export class AppDatabase {
         title TEXT NOT NULL,
         description TEXT,
         status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'awaiting_user', 'completed', 'failed', 'skipped')),
-        kind TEXT NOT NULL CHECK (kind IN ('inspect', 'edit', 'verify', 'publish', 'followup')),
+        kind TEXT NOT NULL CHECK (kind IN ('research', 'inspect', 'edit', 'verify', 'publish', 'followup')),
         sequence INTEGER NOT NULL,
         depends_on_json TEXT NOT NULL DEFAULT '[]',
         agent_run_id TEXT,
@@ -247,6 +248,7 @@ export class AppDatabase {
       'agent_runtime',
       "TEXT NOT NULL DEFAULT 'patchlane'",
     )
+    this.ensureColumn('agent_runs', 'runtime_session_id', 'TEXT')
     this.ensureColumn('agent_runs', 'project_id', 'TEXT')
     this.ensureColumn('agent_runs', 'issue_id', 'TEXT')
     this.ensureColumn('agent_runs', 'subtask_id', 'TEXT')
@@ -291,8 +293,11 @@ export class AppDatabase {
     this.ensureColumn('issues', 'pr_url', 'TEXT')
     this.ensureColumn('issues', 'number', 'INTEGER NOT NULL DEFAULT 0')
     this.ensureColumn('issues', 'artifact_manifest_json', 'TEXT')
+    this.rebuildLlmEndpointsIfNeeded()
     this.rebuildAgentRunsIfNeeded()
+    this.rebuildAgentProjectsIfNeeded()
     this.rebuildIssuesIfNeeded()
+    this.rebuildIssueSubtasksIfNeeded()
     this.backfillProjectCodes()
     this.backfillIssueNumbers()
     this.sqlite.exec(`
@@ -386,6 +391,54 @@ export class AppDatabase {
     }
   }
 
+  private rebuildLlmEndpointsIfNeeded() {
+    const row = this.sqlite
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'llm_endpoints'",
+      )
+      .get() as { sql?: string } | undefined
+
+    if (row?.sql?.includes("'codex_cli'")) {
+      return
+    }
+
+    this.sqlite.exec('PRAGMA foreign_keys = OFF')
+    try {
+      this.sqlite.exec(`
+        CREATE TABLE llm_endpoints_new (
+          id TEXT PRIMARY KEY,
+          runtime_type TEXT NOT NULL DEFAULT 'openai_compatible' CHECK (runtime_type IN ('openai_compatible', 'opencode_cli', 'codex_cli')),
+          name TEXT NOT NULL,
+          base_url TEXT NOT NULL,
+          default_model TEXT NOT NULL,
+          api_key_env_var TEXT,
+          opencode_command TEXT NOT NULL DEFAULT 'opencode',
+          opencode_command_args_json TEXT NOT NULL DEFAULT '[]',
+          opencode_dangerously_skip_permissions INTEGER NOT NULL DEFAULT 0 CHECK (opencode_dangerously_skip_permissions IN (0, 1)),
+          enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        INSERT INTO llm_endpoints_new (
+          id, runtime_type, name, base_url, default_model, api_key_env_var,
+          opencode_command, opencode_command_args_json, opencode_dangerously_skip_permissions,
+          enabled, created_at, updated_at
+        )
+        SELECT
+          id, COALESCE(runtime_type, 'openai_compatible'), name, base_url, default_model, api_key_env_var,
+          COALESCE(opencode_command, 'opencode'), COALESCE(opencode_command_args_json, '[]'),
+          COALESCE(opencode_dangerously_skip_permissions, 0), enabled, created_at, updated_at
+        FROM llm_endpoints;
+
+        DROP TABLE llm_endpoints;
+        ALTER TABLE llm_endpoints_new RENAME TO llm_endpoints;
+      `)
+    } finally {
+      this.sqlite.exec('PRAGMA foreign_keys = ON')
+    }
+  }
+
   private rebuildAgentRunsIfNeeded() {
     const row = this.sqlite
       .prepare(
@@ -393,7 +446,12 @@ export class AppDatabase {
       )
       .get() as { sql?: string } | undefined
 
-    if (row?.sql?.includes("'verification'")) {
+    if (
+      row?.sql?.includes("'verification'") &&
+      row.sql.includes("'research'") &&
+      row.sql.includes("'codex'") &&
+      row.sql.includes("'cancelled'")
+    ) {
       return
     }
 
@@ -405,16 +463,17 @@ export class AppDatabase {
           workspace_id TEXT NOT NULL,
           endpoint_id TEXT,
           model TEXT,
-          agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (agent_runtime IN ('patchlane', 'opencode')),
+          agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (agent_runtime IN ('patchlane', 'opencode', 'codex')),
+          runtime_session_id TEXT,
           title TEXT NOT NULL,
-          kind TEXT NOT NULL DEFAULT 'coding' CHECK (kind IN ('coding', 'requirements', 'planning', 'verification', 'publish', 'followup')),
+          kind TEXT NOT NULL DEFAULT 'coding' CHECK (kind IN ('coding', 'requirements', 'planning', 'research', 'verification', 'publish', 'followup')),
           project_id TEXT,
           issue_id TEXT,
           subtask_id TEXT,
           branch_name TEXT,
           pr_url TEXT,
           result_summary TEXT,
-          status TEXT NOT NULL CHECK (status IN ('idle', 'running', 'awaiting_user', 'completed', 'failed')),
+          status TEXT NOT NULL CHECK (status IN ('idle', 'running', 'awaiting_user', 'completed', 'cancelled', 'failed')),
           context_json TEXT,
           error TEXT,
           created_at TEXT NOT NULL,
@@ -422,16 +481,63 @@ export class AppDatabase {
         );
 
         INSERT INTO agent_runs_new (
-          id, workspace_id, endpoint_id, model, agent_runtime, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, agent_runtime, runtime_session_id, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
         )
         SELECT
-          id, workspace_id, endpoint_id, model, COALESCE(agent_runtime, 'patchlane'), title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, COALESCE(agent_runtime, 'patchlane'), runtime_session_id, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
         FROM agent_runs;
 
         DROP TABLE agent_runs;
         ALTER TABLE agent_runs_new RENAME TO agent_runs;
+      `)
+    } finally {
+      this.sqlite.exec('PRAGMA foreign_keys = ON')
+    }
+  }
+
+  private rebuildAgentProjectsIfNeeded() {
+    const row = this.sqlite
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_projects'",
+      )
+      .get() as { sql?: string } | undefined
+
+    if (row?.sql?.includes("'codex'")) {
+      return
+    }
+
+    this.sqlite.exec('PRAGMA foreign_keys = OFF')
+    try {
+      this.sqlite.exec(`
+        CREATE TABLE agent_projects_new (
+          id TEXT PRIMARY KEY,
+          code TEXT NOT NULL DEFAULT '',
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          repository_url TEXT,
+          repository_ref TEXT,
+          workspace_id TEXT,
+          default_endpoint_id TEXT,
+          default_agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (default_agent_runtime IN ('patchlane', 'opencode', 'codex')),
+          default_agent_runtime_connector_id TEXT,
+          branch_prefix TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        INSERT INTO agent_projects_new (
+          id, code, name, description, repository_url, repository_ref, workspace_id, default_endpoint_id,
+          default_agent_runtime, default_agent_runtime_connector_id, branch_prefix, created_at, updated_at
+        )
+        SELECT
+          id, COALESCE(code, ''), name, description, repository_url, repository_ref, workspace_id, default_endpoint_id,
+          COALESCE(default_agent_runtime, 'patchlane'), default_agent_runtime_connector_id, branch_prefix, created_at, updated_at
+        FROM agent_projects;
+
+        DROP TABLE agent_projects;
+        ALTER TABLE agent_projects_new RENAME TO agent_projects;
       `)
     } finally {
       this.sqlite.exec('PRAGMA foreign_keys = ON')
@@ -495,6 +601,52 @@ export class AppDatabase {
     }
   }
 
+  private rebuildIssueSubtasksIfNeeded() {
+    const row = this.sqlite
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'issue_subtasks'",
+      )
+      .get() as { sql?: string } | undefined
+
+    if (row?.sql?.includes("'research'")) {
+      return
+    }
+
+    this.sqlite.exec('PRAGMA foreign_keys = OFF')
+    try {
+      this.sqlite.exec(`
+        CREATE TABLE issue_subtasks_new (
+          id TEXT PRIMARY KEY,
+          issue_id TEXT NOT NULL REFERENCES issues (id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          description TEXT,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'awaiting_user', 'completed', 'failed', 'skipped')),
+          kind TEXT NOT NULL CHECK (kind IN ('research', 'inspect', 'edit', 'verify', 'publish', 'followup')),
+          sequence INTEGER NOT NULL,
+          depends_on_json TEXT NOT NULL DEFAULT '[]',
+          agent_run_id TEXT,
+          result_summary TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        INSERT INTO issue_subtasks_new (
+          id, issue_id, title, description, status, kind, sequence, depends_on_json, agent_run_id,
+          result_summary, created_at, updated_at
+        )
+        SELECT
+          id, issue_id, title, description, status, kind, sequence, depends_on_json, agent_run_id,
+          result_summary, created_at, updated_at
+        FROM issue_subtasks;
+
+        DROP TABLE issue_subtasks;
+        ALTER TABLE issue_subtasks_new RENAME TO issue_subtasks;
+      `)
+    } finally {
+      this.sqlite.exec('PRAGMA foreign_keys = ON')
+    }
+  }
+
   private backfillIssueNumbers() {
     const missingRows = this.sqlite
       .prepare(
@@ -533,7 +685,7 @@ export class AppDatabase {
   private backfillProjectCodes() {
     const rows = this.sqlite
       .prepare(
-        "SELECT id, name, code FROM agent_projects ORDER BY created_at ASC, id ASC",
+        'SELECT id, name, code FROM agent_projects ORDER BY created_at ASC, id ASC',
       )
       .all() as Array<{ code: string | null; id: string; name: string }>
     const usedCodes = new Set(
@@ -571,7 +723,10 @@ export const optionalString = (value: unknown) =>
   typeof value === 'string' && value.length > 0 ? value : undefined
 
 const normalizeProjectCode = (value: string) =>
-  value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+  value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
 
 const getUniqueProjectCode = (name: string, usedCodes: Set<string>) => {
   const base = getProjectCodeBase(name)

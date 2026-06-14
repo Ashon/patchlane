@@ -16,7 +16,7 @@ import {
   throwIfAgentRunCancelled,
 } from './runtimeCancellation'
 
-type OpenCodeRuntimeOptions = {
+type CodexRuntimeOptions = {
   runStore: AgentRunStore
   getWorkspace: (id: string) => Promise<SandboxWorkspace>
   getConnector?: (id: string) => Promise<LlmEndpoint>
@@ -28,11 +28,11 @@ type OpenCodeRuntimeOptions = {
   command?: string
   commandArgs?: string[]
   timeoutMs?: number
-  dangerouslySkipPermissions?: boolean
+  dangerouslyBypassSandbox?: boolean
   logger?: ApiLogger
 }
 
-type OpenCodeCommandResult = {
+type CodexCommandResult = {
   ok: boolean
   text: string
   stderr: string
@@ -49,8 +49,8 @@ const defaultTimeoutMs = 600_000
 const maxCapturedOutputChars = 120_000
 const maxPromptChars = 80_000
 
-export class OpenCodeRuntime {
-  constructor(private readonly options: OpenCodeRuntimeOptions) {}
+export class CodexRuntime {
+  constructor(private readonly options: CodexRuntimeOptions) {}
 
   async continue(
     runId: string,
@@ -58,7 +58,7 @@ export class OpenCodeRuntime {
     model?: string,
     signal?: AbortSignal,
   ) {
-    return this.runOpenCode(runId, model, undefined, signal)
+    return this.runCodex(runId, model, undefined, signal)
   }
 
   async continueStream(
@@ -68,10 +68,10 @@ export class OpenCodeRuntime {
     emit: AgentRuntimeStreamEmit,
     signal?: AbortSignal,
   ) {
-    return this.runOpenCode(runId, model, emit, signal)
+    return this.runCodex(runId, model, emit, signal)
   }
 
-  private async runOpenCode(
+  private async runCodex(
     runId: string,
     model?: string,
     emit?: AgentRuntimeStreamEmit,
@@ -86,7 +86,7 @@ export class OpenCodeRuntime {
     run = await this.options.runStore.setStatus(run.id, 'running')
     emit?.({ type: 'run', run })
     const runLogger = this.getRunLogger(run, {
-      cliRuntime: 'opencode',
+      cliRuntime: 'codex',
       endpointId: connector?.id,
       model: activeModel,
       streaming: Boolean(emit),
@@ -96,13 +96,13 @@ export class OpenCodeRuntime {
         event: 'agent.run.started',
         status: run.status,
       },
-      'OpenCode agent run started',
+      'Codex agent run started',
     )
 
     try {
       throwIfAgentRunCancelled(signal)
-      const prompt = buildOpenCodePrompt({ run, workspace })
-      const result = await this.executeOpenCode({
+      const prompt = buildCodexPrompt({ run, workspace })
+      const result = await this.executeCodex({
         emit,
         connector,
         model: activeModel,
@@ -126,7 +126,7 @@ export class OpenCodeRuntime {
             event: 'agent.runtime_session.captured',
             runtimeSessionId: run.runtimeSessionId,
           },
-          'OpenCode runtime session captured',
+          'Codex runtime session captured',
         )
       }
 
@@ -135,7 +135,7 @@ export class OpenCodeRuntime {
       }
 
       if (!result.ok) {
-        const message = getOpenCodeFailureMessage(result)
+        const message = getCodexFailureMessage(result)
         await this.options.runStore.appendMessage(run.id, {
           role: 'system',
           content: message,
@@ -153,14 +153,14 @@ export class OpenCodeRuntime {
             timedOut: result.timedOut,
             status: failedRun.status,
           },
-          'OpenCode agent run failed',
+          'Codex agent run failed',
         )
         await this.options.onRunFinished?.(failedRun)
         emit?.({ type: 'error', error: message, run: failedRun })
         return failedRun
       }
 
-      const content = result.text.trim() || 'OpenCode run completed.'
+      const content = result.text.trim() || 'Codex run completed.'
       run = await this.options.runStore.appendMessage(run.id, {
         role: 'assistant',
         content,
@@ -182,7 +182,7 @@ export class OpenCodeRuntime {
           status: run.status,
           runtimeSessionId: run.runtimeSessionId,
         },
-        'OpenCode agent run finished',
+        'Codex agent run finished',
       )
       await this.addIssueSummaryComment(run, content)
       await this.options.onRunFinished?.(run)
@@ -210,7 +210,7 @@ export class OpenCodeRuntime {
           err: error,
           status: failedRun.status,
         },
-        'OpenCode agent run failed',
+        'Codex agent run failed',
       )
       await this.options.onRunFinished?.(failedRun)
       emit?.({ type: 'error', error: message, run: failedRun })
@@ -219,7 +219,7 @@ export class OpenCodeRuntime {
     }
   }
 
-  private executeOpenCode({
+  private executeCodex({
     connector,
     emit,
     model,
@@ -240,24 +240,21 @@ export class OpenCodeRuntime {
     const command =
       this.options.command ??
       connector?.opencodeCommand ??
-      process.env.OPENCODE_COMMAND ??
-      'opencode'
-    const args = buildOpenCodeCommandArgs({
+      process.env.CODEX_COMMAND ??
+      'codex'
+    const args = buildCodexCommandArgs({
       commandArgs:
         this.options.commandArgs ??
         connector?.opencodeCommandArgs ??
-        parseCommandArgs(process.env.OPENCODE_COMMAND_ARGS),
-      dangerouslySkipPermissions:
-        this.options.dangerouslySkipPermissions ??
-        connector?.opencodeDangerouslySkipPermissions ??
-        isTruthy(process.env.OPENCODE_DANGEROUSLY_SKIP_PERMISSIONS),
+        parseCommandArgs(process.env.CODEX_COMMAND_ARGS),
+      dangerouslyBypassSandbox: shouldBypassSandbox(this.options, connector),
       model,
       prompt,
       run,
       workspace,
     })
 
-    return new Promise<OpenCodeCommandResult>((resolve) => {
+    return new Promise<CodexCommandResult>((resolve) => {
       const child = spawn(command, args, {
         cwd: workspace.path,
         env: process.env,
@@ -283,7 +280,7 @@ export class OpenCodeRuntime {
 
       signal?.addEventListener('abort', abortChild, { once: true })
 
-      const finish = (result: OpenCodeCommandResult) => {
+      const finish = (result: CodexCommandResult) => {
         if (settled) {
           return
         }
@@ -319,10 +316,9 @@ export class OpenCodeRuntime {
           return
         }
 
-        const event = parseOpenCodeJsonLine(trimmed)
-        runtimeSessionId =
-          runtimeSessionId ?? getOpenCodeRuntimeSessionId(event)
-        const text = event ? getOpenCodeEventText(event) : trimmed
+        const event = parseCodexJsonLine(trimmed)
+        runtimeSessionId = runtimeSessionId ?? getCodexRuntimeSessionId(event)
+        const text = event ? getCodexEventText(event) : trimmed
 
         if (text) {
           consumeText(text)
@@ -380,7 +376,7 @@ export class OpenCodeRuntime {
   private async cancelRun(
     run: AgentRun,
     emit?: AgentRuntimeStreamEmit,
-    runLogger = this.getRunLogger(run, { cliRuntime: 'opencode' }),
+    runLogger = this.getRunLogger(run, { cliRuntime: 'codex' }),
   ) {
     const currentRun = await this.options.runStore.find(run.id)
     const alreadyCancelled = currentRun?.status === 'cancelled'
@@ -397,7 +393,7 @@ export class OpenCodeRuntime {
         event: 'agent.run.cancelled',
         status: cancelledRun.status,
       },
-      'OpenCode agent run cancelled',
+      'Codex agent run cancelled',
     )
     emit?.({ type: 'done', run: cancelledRun })
 
@@ -442,9 +438,9 @@ export class OpenCodeRuntime {
 
     const connector = await this.options.getConnector(run.endpointId)
 
-    if (connector.runtimeType !== 'opencode_cli') {
+    if (connector.runtimeType !== 'codex_cli') {
       throw new Error(
-        `Agent runtime '${connector.id}' is not an OpenCode CLI runtime`,
+        `Agent runtime '${connector.id}' is not a Codex CLI runtime`,
       )
     }
 
@@ -474,7 +470,7 @@ export class OpenCodeRuntime {
   }
 }
 
-export const buildOpenCodePrompt = ({
+export const buildCodexPrompt = ({
   run,
   workspace,
 }: {
@@ -484,7 +480,7 @@ export const buildOpenCodePrompt = ({
   const messages = run.messages.map(formatRunMessage).join('\n\n')
   const isResearch = run.kind === 'research'
   const prompt = [
-    'You are OpenCode running as the Patchlane coding backend.',
+    'You are Codex running as the Patchlane coding backend.',
     '',
     isResearch
       ? 'This is a research-only run. Inspect the repository, but do not modify files, create commits, push, or continue into implementation.'
@@ -512,7 +508,7 @@ export const buildOpenCodePrompt = ({
   return truncatePrompt(prompt)
 }
 
-export const parseOpenCodeJsonLine = (line: string) => {
+export const parseCodexJsonLine = (line: string) => {
   try {
     const parsed = JSON.parse(line) as unknown
     return parsed
@@ -521,27 +517,41 @@ export const parseOpenCodeJsonLine = (line: string) => {
   }
 }
 
-export const getOpenCodeEventText = (event: unknown): string | undefined => {
+export const getCodexEventText = (event: unknown): string | undefined => {
   if (typeof event === 'string') {
     return normalizeText(event)
   }
 
   if (Array.isArray(event)) {
-    return joinText(event.map(getOpenCodeEventText))
+    return joinText(event.map(getCodexEventText))
   }
 
   if (!isRecord(event)) {
     return undefined
   }
 
+  const item = isRecord(event.item) ? event.item : undefined
+  const itemType = item ? getString(item.type) : undefined
+
+  if (item) {
+    return isAssistantItemType(itemType)
+      ? getCodexTextFromValue(item)
+      : undefined
+  }
+
+  const eventType = getString(event.type)
+
+  if (isAssistantItemType(eventType)) {
+    return getCodexTextFromValue(event)
+  }
+
   for (const key of [
     'delta',
     'text',
     'content',
-    'summary',
-    'output',
-    'result',
-    'data',
+    'message',
+    'final_message',
+    'last_message',
   ]) {
     const text = getString(event[key])
 
@@ -549,88 +559,63 @@ export const getOpenCodeEventText = (event: unknown): string | undefined => {
       return text
     }
 
-    const nestedText = getOpenCodeEventText(event[key])
+    const nestedText = getCodexEventText(event[key])
 
     if (nestedText) {
       return nestedText
     }
   }
 
-  const messageText = getOpenCodeEventText(event.message)
-
-  if (messageText) {
-    return messageText
-  }
-
-  const partText = getOpenCodeEventText(event.part)
-
-  if (partText) {
-    return partText
-  }
-
-  const choicesText = getOpenCodeEventText(event.choices)
-
-  if (choicesText) {
-    return choicesText
-  }
-
-  const partsText = getOpenCodeEventText(event.parts)
-
-  if (partsText) {
-    return partsText
-  }
-
   return undefined
 }
 
-export const buildOpenCodeCommandArgs = ({
+export const getCodexSandboxMode = (run: Pick<AgentRun, 'kind'>) => {
+  return run.kind === 'research' ? 'read-only' : 'workspace-write'
+}
+
+export const buildCodexCommandArgs = ({
   commandArgs,
-  dangerouslySkipPermissions,
+  dangerouslyBypassSandbox,
   model,
   prompt,
   run,
   workspace,
 }: {
   commandArgs: string[]
-  dangerouslySkipPermissions: boolean
+  dangerouslyBypassSandbox: boolean
   model?: string
   prompt: string
-  run: Pick<AgentRun, 'runtimeSessionId'>
+  run: Pick<AgentRun, 'kind' | 'runtimeSessionId'>
   workspace: Pick<SandboxWorkspace, 'path'>
 }) => {
-  const args = [
-    ...commandArgs,
-    'run',
-    '--format',
-    'json',
-    '--dir',
-    workspace.path,
-  ]
-
-  if (run.runtimeSessionId) {
-    args.push('--session', run.runtimeSessionId)
-  }
+  const args = [...commandArgs, 'exec', '--json', '--cd', workspace.path]
 
   if (model) {
     args.push('--model', model)
   }
 
-  if (dangerouslySkipPermissions) {
-    args.push('--dangerously-skip-permissions')
+  if (dangerouslyBypassSandbox) {
+    args.push('--dangerously-bypass-approvals-and-sandbox')
+  } else {
+    args.push('--sandbox', getCodexSandboxMode(run))
   }
 
-  args.push(prompt)
+  if (run.runtimeSessionId) {
+    args.push('resume', run.runtimeSessionId, prompt)
+  } else {
+    args.push(prompt)
+  }
 
   return args
 }
 
-export const getOpenCodeRuntimeSessionId = (
+export const getCodexRuntimeSessionId = (
   event: unknown,
 ): string | undefined => {
-  return getOpenCodeRuntimeSessionIdFromEvent(event, false)
+  return getCodexRuntimeSessionIdFromEvent(event, false)
 }
 
-const getOpenCodeRuntimeSessionIdFromEvent = (
+const getCodexRuntimeSessionIdFromEvent = (
   event: unknown,
   allowNestedId: boolean,
 ): string | undefined => {
@@ -640,12 +625,12 @@ const getOpenCodeRuntimeSessionIdFromEvent = (
 
   for (const key of [
     ...(allowNestedId ? ['id'] : []),
+    'thread_id',
+    'threadId',
     'session_id',
     'sessionId',
     'conversation_id',
     'conversationId',
-    'thread_id',
-    'threadId',
   ]) {
     const value = getString(event[key])
 
@@ -655,14 +640,14 @@ const getOpenCodeRuntimeSessionIdFromEvent = (
   }
 
   for (const key of [
+    'thread',
     'session',
     'conversation',
-    'thread',
     'data',
     'payload',
     'properties',
   ]) {
-    const value = getOpenCodeRuntimeSessionIdFromEvent(event[key], true)
+    const value = getCodexRuntimeSessionIdFromEvent(event[key], true)
 
     if (value) {
       return value
@@ -672,16 +657,16 @@ const getOpenCodeRuntimeSessionIdFromEvent = (
   return undefined
 }
 
-export const testOpenCodeRuntimeConnection = async (
+export const testCodexRuntimeConnection = async (
   connector: LlmEndpoint,
 ): Promise<LlmEndpointTestResult> => {
   const startedAt = Date.now()
   const command =
-    connector.opencodeCommand || process.env.OPENCODE_COMMAND || 'opencode'
+    connector.opencodeCommand || process.env.CODEX_COMMAND || 'codex'
   const args = [
     ...(connector.opencodeCommandArgs.length
       ? connector.opencodeCommandArgs
-      : parseCommandArgs(process.env.OPENCODE_COMMAND_ARGS)),
+      : parseCommandArgs(process.env.CODEX_COMMAND_ARGS)),
     '--version',
   ]
 
@@ -691,12 +676,11 @@ export const testOpenCodeRuntimeConnection = async (
     return {
       ok: result.exitCode === 0,
       latencyMs: Date.now() - startedAt,
-      models: result.stdout.trim() ? [`OpenCode ${result.stdout.trim()}`] : [],
+      models: result.stdout.trim() ? [`Codex ${result.stdout.trim()}`] : [],
       error:
         result.exitCode === 0
           ? undefined
-          : result.stderr.trim() ||
-            `OpenCode exited with code ${result.exitCode}`,
+          : result.stderr.trim() || `Codex exited with code ${result.exitCode}`,
     }
   } catch (error) {
     return {
@@ -770,7 +754,7 @@ const runCommandForOutput = (
     let stderr = ''
     const timeout = setTimeout(() => {
       child.kill('SIGTERM')
-      reject(new Error('OpenCode version check timed out'))
+      reject(new Error('Codex version check timed out'))
     }, timeoutMs)
 
     child.stdout.setEncoding('utf8')
@@ -792,16 +776,16 @@ const runCommandForOutput = (
   })
 }
 
-const getOpenCodeFailureMessage = (result: OpenCodeCommandResult) => {
+const getCodexFailureMessage = (result: CodexCommandResult) => {
   if (result.timedOut) {
-    return 'OpenCode run timed out.'
+    return 'Codex run timed out.'
   }
 
   const details = result.stderr.trim()
   const status =
     result.exitCode === null
-      ? 'OpenCode process failed to start'
-      : `OpenCode exited with code ${result.exitCode}`
+      ? 'Codex process failed to start'
+      : `Codex exited with code ${result.exitCode}`
   const signal = result.signal ? ` and signal ${result.signal}` : ''
 
   return details ? `${status}${signal}:\n${details}` : `${status}${signal}.`
@@ -809,10 +793,21 @@ const getOpenCodeFailureMessage = (result: OpenCodeCommandResult) => {
 
 const getSpawnErrorMessage = (command: string, error: Error) => {
   if ('code' in error && error.code === 'ENOENT') {
-    return `OpenCode command '${command}' was not found. Install OpenCode or set OPENCODE_COMMAND.`
+    return `Codex command '${command}' was not found. Install Codex CLI or set CODEX_COMMAND.`
   }
 
   return error.message
+}
+
+const shouldBypassSandbox = (
+  options: Pick<CodexRuntimeOptions, 'dangerouslyBypassSandbox'>,
+  connector: LlmEndpoint | undefined,
+) => {
+  return (
+    options.dangerouslyBypassSandbox ??
+    connector?.opencodeDangerouslySkipPermissions ??
+    isTruthy(process.env.CODEX_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX)
+  )
 }
 
 const summarize = (value: string, maxLength = 2_000) => {
@@ -833,6 +828,36 @@ const truncateCapturedOutput = (value: string) =>
     ? value
     : value.slice(value.length - maxCapturedOutputChars)
 
+const getCodexTextFromValue = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return normalizeText(value)
+  }
+
+  if (Array.isArray(value)) {
+    return joinText(value.map(getCodexTextFromValue))
+  }
+
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  for (const key of ['text', 'content', 'message', 'delta']) {
+    const text = getString(value[key])
+
+    if (text) {
+      return text
+    }
+
+    const nestedText = getCodexTextFromValue(value[key])
+
+    if (nestedText) {
+      return nestedText
+    }
+  }
+
+  return undefined
+}
+
 const joinText = (values: Array<string | undefined>) => {
   const text = values.filter(Boolean).join('')
 
@@ -848,6 +873,15 @@ const getString = (value: unknown) =>
 
 const isRecord = (value: unknown): value is RecordValue => {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const isAssistantItemType = (value: string | undefined) => {
+  return (
+    value === 'agent_message' ||
+    value === 'assistant_message' ||
+    value === 'assistant' ||
+    value === 'message'
+  )
 }
 
 const isTruthy = (value: string | undefined) => {
@@ -868,7 +902,7 @@ const parseCommandArgs = (value: string | undefined) => {
     return parsed
   }
 
-  throw new Error('OPENCODE_COMMAND_ARGS must be a JSON string array')
+  throw new Error('CODEX_COMMAND_ARGS must be a JSON string array')
 }
 
 const getErrorMessage = (error: unknown) => {
@@ -876,5 +910,5 @@ const getErrorMessage = (error: unknown) => {
     return error.message
   }
 
-  return 'Unknown OpenCode runtime error'
+  return 'Unknown Codex runtime error'
 }

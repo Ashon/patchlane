@@ -7,17 +7,19 @@ export const agentRunStatusSchema = z.enum([
   'running',
   'awaiting_user',
   'completed',
+  'cancelled',
   'failed',
 ])
 export const agentRunKindSchema = z.enum([
   'coding',
   'requirements',
   'planning',
+  'research',
   'verification',
   'publish',
   'followup',
 ])
-export const agentRuntimeSchema = z.enum(['patchlane', 'opencode'])
+export const agentRuntimeSchema = z.enum(['patchlane', 'opencode', 'codex'])
 
 export const agentRunContextSchema = z.object({
   strategy: z.enum(['full', 'compacted']),
@@ -89,6 +91,7 @@ export const agentRunSchema = z.object({
   endpointId: z.string().min(1).optional(),
   model: z.string().trim().min(1).optional(),
   agentRuntime: agentRuntimeSchema.default('patchlane'),
+  runtimeSessionId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120),
   kind: agentRunKindSchema.default('coding'),
   projectId: z.string().min(1).optional(),
@@ -130,6 +133,12 @@ export const continueAgentRunSchema = z.object({
   model: z.string().trim().min(1).optional(),
 })
 
+export const updateAgentRunRuntimeSchema = z.object({
+  endpointId: z.string().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  agentRuntime: agentRuntimeSchema,
+})
+
 export const rewindAgentRunSchema = z.object({
   messageId: z.string().min(1),
 })
@@ -148,4 +157,7 @@ export type AppendAgentRunMessageInput = z.infer<
   typeof appendAgentRunMessageSchema
 >
 export type ContinueAgentRunInput = z.infer<typeof continueAgentRunSchema>
+export type UpdateAgentRunRuntimeInput = z.infer<
+  typeof updateAgentRunRuntimeSchema
+>
 export type RewindAgentRunInput = z.infer<typeof rewindAgentRunSchema>
