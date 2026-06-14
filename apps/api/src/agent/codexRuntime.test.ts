@@ -6,6 +6,7 @@ import {
 import {
   buildCodexCommandArgs,
   buildCodexPrompt,
+  getCodexCompletedAssistantText,
   getCodexEventText,
   getCodexRunEventInput,
   getCodexRuntimeSessionId,
@@ -169,6 +170,29 @@ describe('Given Codex runtime helpers', () => {
     })
   })
 
+  it('extracts the latest completed assistant item for the stored final text', () => {
+    expect(
+      getCodexCompletedAssistantText({
+        type: 'item.completed',
+        item: {
+          id: 'msg_1',
+          type: 'agent_message',
+          text: 'Final summary.',
+        },
+      }),
+    ).toBe('Final summary.')
+    expect(
+      getCodexCompletedAssistantText({
+        type: 'item.completed',
+        item: {
+          id: 'tool_1',
+          type: 'command_execution',
+          output: 'PASS',
+        },
+      }),
+    ).toBeUndefined()
+  })
+
   it('builds resume args when a Codex runtime session id exists', () => {
     expect(
       buildCodexCommandArgs({
@@ -266,7 +290,8 @@ describe('Given Codex runtime helpers', () => {
     expect(prompt).toContain('research-only run')
     expect(prompt).toContain('do not modify files')
     expect(prompt).toContain('evidence-backed findings')
-    expect(prompt).toContain('confirmation that no files were changed')
+    expect(prompt).toContain('respond in Markdown with short sections')
+    expect(prompt).toContain('avoid a progress log')
   })
 
   it('defaults Codex CLI endpoints to the codex command', () => {

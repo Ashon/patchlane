@@ -9,6 +9,10 @@ import type {
   SandboxWorkspace,
 } from '@patchlane/shared'
 import { estimateTextTokens } from './agentContext'
+import {
+  formatAgentIssueSummary,
+  formatAgentResultSummary,
+} from './agentSummary'
 import { logger as rootLogger, type ApiLogger } from '../logging/logger'
 import type { AgentRunStore } from './agentRunStore'
 import type { AgentRuntimeStreamEmit } from './agentRuntime'
@@ -189,7 +193,7 @@ export class CodexRuntime {
       })
       run = await this.options.runStore.setResultSummary(
         run.id,
-        summarize(content),
+        formatAgentResultSummary(content),
       )
       run = await this.options.runStore.setStatus(run.id, 'completed')
       runLogger.info(
@@ -280,6 +284,7 @@ export class CodexRuntime {
       let stdoutBuffer = ''
       let stderr = ''
       let assistantText = ''
+      let latestCompletedAssistantText = ''
       let settled = false
       let timedOut = false
       let cancelled = false
@@ -380,6 +385,14 @@ export class CodexRuntime {
         const event = parseCodexJsonLine(trimmed)
         persistRunEvent(event, trimmed)
         runtimeSessionId = runtimeSessionId ?? getCodexRuntimeSessionId(event)
+        const completedAssistantText = event
+          ? getCodexCompletedAssistantText(event)
+          : undefined
+
+        if (completedAssistantText) {
+          latestCompletedAssistantText = completedAssistantText
+        }
+
         const toolStart = getCodexToolStartEvent(event)
 
         if (toolStart) {
@@ -456,7 +469,7 @@ export class CodexRuntime {
       child.on('error', (error) => {
         finish({
           ok: false,
-          text: assistantText,
+          text: latestCompletedAssistantText || assistantText,
           stderr: getSpawnErrorMessage(command, error),
           exitCode: null,
           signal: null,
@@ -473,7 +486,7 @@ export class CodexRuntime {
 
         finish({
           ok: exitCode === 0 && !timedOut,
-          text: assistantText,
+          text: latestCompletedAssistantText || assistantText,
           stderr: stderr.trim(),
           exitCode,
           signal,
@@ -539,7 +552,7 @@ export class CodexRuntime {
       runId: run.id,
       author: 'agent',
       kind: 'summary',
-      body: summarize(content, 3_800),
+      body: formatAgentIssueSummary(content),
     })
   }
 
@@ -601,8 +614,8 @@ export const buildCodexPrompt = ({
       ? 'Use targeted searches, file reads, and safe read-only commands to produce evidence-backed findings and an implementation plan.'
       : 'Do not wait for confirmation unless the task is blocked by missing credentials, destructive ambiguity, or unavailable external state.',
     isResearch
-      ? 'When finished, respond with findings, relevant files, recommended edit sequence, verification strategy, residual risks, and confirmation that no files were changed.'
-      : 'When finished, respond with a concise summary of changes, verification, and any remaining risks.',
+      ? 'When finished, respond in Markdown with short sections: Findings, Evidence, Recommendation, Verification, and Risks. Use bullets and avoid a progress log.'
+      : 'When finished, respond in Markdown with short sections: Summary, Changes, Verification, and Risks. Use bullets and avoid a progress log.',
     '',
     `Workspace name: ${workspace.name}`,
     `Workspace path: ${workspace.path}`,
@@ -679,6 +692,20 @@ export const getCodexEventText = (event: unknown): string | undefined => {
   }
 
   return undefined
+}
+
+export const getCodexCompletedAssistantText = (
+  event: unknown,
+): string | undefined => {
+  if (!isCodexItemEvent(event, 'item.completed')) {
+    return undefined
+  }
+
+  const itemType = getString(event.item.type)
+
+  return isAssistantItemType(itemType)
+    ? getCodexTextFromValue(event.item)
+    : undefined
 }
 
 export const getCodexToolStartEvent = (
@@ -1002,14 +1029,6 @@ const shouldBypassSandbox = (
     connector?.opencodeDangerouslySkipPermissions ??
     isTruthy(process.env.CODEX_DANGEROUSLY_BYPASS_APPROVALS_AND_SANDBOX)
   )
-}
-
-const summarize = (value: string, maxLength = 2_000) => {
-  const summary = value.trim().replace(/\s+/gu, ' ')
-
-  return summary.length <= maxLength
-    ? summary
-    : `${summary.slice(0, maxLength - 1)}...`
 }
 
 const getTextMetrics = (value: string) => ({

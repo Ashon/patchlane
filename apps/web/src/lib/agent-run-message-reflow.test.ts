@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import type { AgentRun } from '@patchlane/shared'
 import { getAgentTaskConversationMessages } from './agent-task-messages'
 import {
+  finalizeAssistantSegmentMessage,
   mergeToolResultMessage,
   mergeToolStartMessage,
   mergeVisibleAgentRunMessages,
@@ -97,17 +98,13 @@ describe('agent task tool reflow replay', () => {
     const user = message('user-1', 'user', 'Run checks.')
     const resultContent = JSON.stringify({ ok: true, stdout: 'clean\n' })
 
-    const messages = mergeToolStartMessage(
-      [user],
-      null,
-      {
-        id: 'tool-local-1',
-        role: 'tool',
-        toolName: 'run_command',
-        content: 'Running run_command...',
-        createdAt: timestamp,
-      },
-    )
+    const messages = mergeToolStartMessage([user], null, {
+      id: 'tool-local-1',
+      role: 'tool',
+      toolName: 'run_command',
+      content: 'Running run_command...',
+      createdAt: timestamp,
+    })
     const merged = mergeVisibleAgentRunMessages(messages, [
       {
         id: 'tool-server-1',
@@ -285,6 +282,41 @@ describe('agent task tool reflow replay', () => {
 
     assert.equal(oldMessage?.role, 'assistant')
     assert.equal(oldMessage?.status, undefined)
+  })
+
+  it('finalizes the active stream assistant with the latest server assistant', () => {
+    const user = message('user-1', 'user', 'Implement the feature.')
+    const streamAssistant = message(
+      'stream-assistant',
+      'assistant',
+      'Implemented the feature.',
+    )
+    const serverAssistant = message(
+      'server-assistant',
+      'assistant',
+      'Implemented the feature.\n\nVerification passed.',
+    )
+    let messages = finalizeAssistantSegmentMessage(
+      [user, streamAssistant],
+      {
+        id: streamAssistant.id,
+        content: streamAssistant.content,
+      },
+      [user, serverAssistant],
+    )
+
+    messages = mergeVisibleAgentRunMessages(messages, [user, serverAssistant])
+
+    const assistantMessages = messages.filter(
+      (item) => item.role === 'assistant',
+    )
+
+    assert.equal(assistantMessages.length, 1)
+    assert.equal(assistantMessages[0]?.id, 'stream-assistant')
+    assert.equal(
+      assistantMessages[0]?.content,
+      'Implemented the feature.\n\nVerification passed.',
+    )
   })
 })
 

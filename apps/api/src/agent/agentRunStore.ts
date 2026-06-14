@@ -36,6 +36,14 @@ type AgentRunRow = {
   pr_url: string | null
   result_summary: string | null
   status: AgentRunStatus
+  attempt: number | null
+  queued_at: string | null
+  started_at: string | null
+  heartbeat_at: string | null
+  lease_owner: string | null
+  lease_expires_at: string | null
+  cancellation_requested_at: string | null
+  finished_at: string | null
   context_json: string | null
   error: string | null
   created_at: string
@@ -91,6 +99,30 @@ export type AppendAgentRunEventInput = {
   createdAt?: string
 }
 
+export type ClaimAgentExecutionInput = {
+  leaseDurationMs?: number
+  leaseOwner: string
+  now?: Date
+}
+
+export type HeartbeatAgentExecutionInput = {
+  leaseDurationMs?: number
+  leaseOwner?: string
+  now?: Date
+}
+
+export type ListAgentExecutionsFilter = {
+  issueId?: string
+  projectId?: string
+  subtaskId?: string
+}
+
+const activeAgentExecutionStatuses: AgentRunStatus[] = [
+  'idle',
+  'running',
+  'awaiting_user',
+]
+
 export class AgentRunStore {
   constructor(
     private readonly database: AppDatabase,
@@ -100,11 +132,66 @@ export class AgentRunStore {
   }
 
   async list() {
+    return this.listExecutions()
+  }
+
+  async listExecutions(filter: ListAgentExecutionsFilter = {}) {
+    const conditions: string[] = []
+    const args: string[] = []
+
+    if (filter.projectId) {
+      conditions.push('project_id = ?')
+      args.push(filter.projectId)
+    }
+
+    if (filter.issueId) {
+      conditions.push('issue_id = ?')
+      args.push(filter.issueId)
+    }
+
+    if (filter.subtaskId) {
+      conditions.push('subtask_id = ?')
+      args.push(filter.subtaskId)
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const rows = this.database.sqlite
-      .prepare('SELECT * FROM agent_runs ORDER BY created_at DESC')
-      .all() as unknown as AgentRunRow[]
+      .prepare(`SELECT * FROM agent_runs ${where} ORDER BY created_at DESC`)
+      .all(...args) as unknown as AgentRunRow[]
 
     return agentRunListSchema.parse(rows.map((row) => this.toRun(row)))
+  }
+
+  async listForIssueTask(issueId: string, taskId: string) {
+    const rows = this.database.sqlite
+      .prepare(
+        `
+        SELECT * FROM agent_runs
+        WHERE issue_id = ? AND subtask_id = ?
+        ORDER BY attempt DESC, created_at DESC
+      `,
+      )
+      .all(issueId, taskId) as unknown as AgentRunRow[]
+
+    return agentRunListSchema.parse(rows.map((row) => this.toRun(row)))
+  }
+
+  async findActiveForIssueTask(issueId: string, taskId: string) {
+    const row = this.database.sqlite
+      .prepare(
+        `
+        SELECT * FROM agent_runs
+        WHERE issue_id = ? AND subtask_id = ?
+          AND status IN (${activeAgentExecutionStatuses.map(() => '?').join(', ')})
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      )
+      .get(issueId, taskId, ...activeAgentExecutionStatuses) as
+      | AgentRunRow
+      | undefined
+
+    return row ? this.toRun(row) : undefined
   }
 
   async get(id: string) {
@@ -136,6 +223,7 @@ export class AgentRunStore {
   async create(input: CreateAgentRunInput) {
     const parsed = createAgentRunSchema.parse(input)
     const now = new Date().toISOString()
+    const attempt = this.getNextAttempt(parsed)
     const run = agentRunSchema.parse({
       id: randomUUID(),
       workspaceId: parsed.workspaceId,
@@ -149,6 +237,8 @@ export class AgentRunStore {
       subtaskId: parsed.subtaskId,
       branchName: parsed.branchName,
       status: 'idle',
+      attempt,
+      queuedAt: now,
       messages: [
         createMessage({
           role: 'user',
@@ -171,36 +261,56 @@ export class AgentRunStore {
     id: string,
     message: Omit<AgentRunMessage, 'id' | 'createdAt'>,
   ) {
-    return this.update(id, (run) => ({
-      ...run,
-      messages: [...run.messages, createMessage(message)],
-      status: message.role === 'user' ? 'idle' : run.status,
-      updatedAt: new Date().toISOString(),
-    }))
+    return this.update(id, (run) => {
+      const now = new Date().toISOString()
+      const nextRun =
+        message.role === 'user'
+          ? resetExecutionForQueuedRun(run, now)
+          : { ...run, updatedAt: now }
+
+      return {
+        ...nextRun,
+        messages: [...run.messages, createMessage(message)],
+      }
+    })
   }
 
   async appendMessages(
     id: string,
     messages: Array<Omit<AgentRunMessage, 'id' | 'createdAt'>>,
   ) {
-    return this.update(id, (run) => ({
-      ...run,
-      messages: [
-        ...run.messages,
-        ...messages.map((message) => createMessage(message)),
-      ],
-      updatedAt: new Date().toISOString(),
-    }))
+    return this.update(id, (run) => {
+      const now = new Date().toISOString()
+      const hasUserMessage = messages.some((message) => message.role === 'user')
+      const nextRun = hasUserMessage
+        ? resetExecutionForQueuedRun(run, now)
+        : { ...run, updatedAt: now }
+
+      return {
+        ...nextRun,
+        messages: [
+          ...run.messages,
+          ...messages.map((message) => createMessage(message)),
+        ],
+      }
+    })
   }
 
   async upsertMessage(id: string, message: UpsertAgentRunMessageInput) {
     return this.update(id, (run) => {
+      const normalizedMessage = {
+        ...message,
+        id: this.getMessageIdForRun(id, message.id),
+      }
       const existingIndex = run.messages.findIndex(
-        (item) => item.id === message.id,
+        (item) => item.id === normalizedMessage.id,
       )
       const existing =
         existingIndex >= 0 ? run.messages[existingIndex] : undefined
-      const nextMessage = createMessageWithId(message, existing?.createdAt)
+      const nextMessage = createMessageWithId(
+        normalizedMessage,
+        existing?.createdAt,
+      )
 
       return {
         ...run,
@@ -263,15 +373,71 @@ export class AgentRunStore {
   }
 
   async setStatus(id: string, status: AgentRunStatus, error?: string) {
+    return this.update(id, (run) =>
+      applyExecutionStatus(run, status, {
+        error,
+        now: new Date().toISOString(),
+      }),
+    )
+  }
+
+  async claimExecution(id: string, input: ClaimAgentExecutionInput) {
+    const now = (input.now ?? new Date()).toISOString()
+    const leaseExpiresAt = getLeaseExpiresAt(now, input.leaseDurationMs)
+
+    return this.update(id, (run) =>
+      applyExecutionStatus(run, 'running', {
+        now,
+        patch: {
+          leaseExpiresAt,
+          leaseOwner: input.leaseOwner,
+        },
+      }),
+    )
+  }
+
+  async heartbeat(id: string, input: HeartbeatAgentExecutionInput = {}) {
+    const now = (input.now ?? new Date()).toISOString()
+    const leaseExpiresAt = getLeaseExpiresAt(now, input.leaseDurationMs)
+
     return this.update(id, (run) => ({
       ...run,
-      status,
-      error,
-      updatedAt: new Date().toISOString(),
+      heartbeatAt: now,
+      leaseExpiresAt: leaseExpiresAt ?? run.leaseExpiresAt,
+      leaseOwner: input.leaseOwner ?? run.leaseOwner,
+      updatedAt: now,
     }))
   }
 
+  async requestCancellation(id: string) {
+    const now = new Date().toISOString()
+
+    return this.update(id, (run) => ({
+      ...run,
+      cancellationRequestedAt: run.cancellationRequestedAt ?? now,
+      updatedAt: now,
+    }))
+  }
+
+  async listExpiredLeases(now = new Date()) {
+    const rows = this.database.sqlite
+      .prepare(
+        `
+        SELECT * FROM agent_runs
+        WHERE status = 'running'
+          AND lease_expires_at IS NOT NULL
+          AND lease_expires_at < ?
+        ORDER BY lease_expires_at ASC
+      `,
+      )
+      .all(now.toISOString()) as unknown as AgentRunRow[]
+
+    return agentRunListSchema.parse(rows.map((row) => this.toRun(row)))
+  }
+
   async cancel(id: string, message = 'Agent run stopped by user.') {
+    const now = new Date().toISOString()
+
     return this.update(id, (run) => {
       const shouldAppendMessage = !run.messages.some(
         (item) => item.role === 'system' && item.content === message,
@@ -279,7 +445,11 @@ export class AgentRunStore {
 
       return {
         ...run,
+        cancellationRequestedAt: run.cancellationRequestedAt ?? now,
         error: message,
+        finishedAt: run.finishedAt ?? now,
+        leaseExpiresAt: undefined,
+        leaseOwner: undefined,
         messages: shouldAppendMessage
           ? [
               ...run.messages,
@@ -290,7 +460,7 @@ export class AgentRunStore {
             ]
           : run.messages,
         status: 'cancelled',
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       }
     })
   }
@@ -313,13 +483,11 @@ export class AgentRunStore {
 
   async updateRuntime(id: string, input: UpdateAgentRunRuntimeInput) {
     return this.update(id, (run) => ({
-      ...run,
+      ...resetExecutionForQueuedRun(run, new Date().toISOString()),
       agentRuntime: input.agentRuntime,
       endpointId: input.endpointId,
-      error: undefined,
       model: input.model,
       runtimeSessionId: undefined,
-      updatedAt: new Date().toISOString(),
     }))
   }
 
@@ -350,15 +518,12 @@ export class AgentRunStore {
       }
 
       return {
-        ...run,
+        ...resetExecutionForQueuedRun(run, new Date().toISOString()),
         context: undefined,
-        error: undefined,
         messages: run.messages.slice(0, messageIndex + 1),
         prUrl: undefined,
         resultSummary: undefined,
         runtimeSessionId: undefined,
-        status: 'idle',
-        updatedAt: new Date().toISOString(),
       }
     })
   }
@@ -388,7 +553,8 @@ export class AgentRunStore {
           `
           UPDATE agent_runs
           SET workspace_id = ?, endpoint_id = ?, model = ?, agent_runtime = ?, runtime_session_id = ?, title = ?, kind = ?, project_id = ?, issue_id = ?,
-            subtask_id = ?, branch_name = ?, pr_url = ?, result_summary = ?, status = ?, context_json = ?, error = ?, updated_at = ?
+            subtask_id = ?, branch_name = ?, pr_url = ?, result_summary = ?, status = ?, attempt = ?, queued_at = ?, started_at = ?, heartbeat_at = ?,
+            lease_owner = ?, lease_expires_at = ?, cancellation_requested_at = ?, finished_at = ?, context_json = ?, error = ?, updated_at = ?
           WHERE id = ?
         `,
         )
@@ -407,6 +573,14 @@ export class AgentRunStore {
           updated.prUrl ?? null,
           updated.resultSummary ?? null,
           updated.status,
+          updated.attempt ?? 1,
+          updated.queuedAt ?? null,
+          updated.startedAt ?? null,
+          updated.heartbeatAt ?? null,
+          updated.leaseOwner ?? null,
+          updated.leaseExpiresAt ?? null,
+          updated.cancellationRequestedAt ?? null,
+          updated.finishedAt ?? null,
           updated.context ? JSON.stringify(updated.context) : null,
           updated.error ?? null,
           updated.updatedAt,
@@ -427,6 +601,18 @@ export class AgentRunStore {
       .prepare('SELECT * FROM agent_runs WHERE id = ?')
       .get(id) as unknown as AgentRunRow | undefined
     return row ? this.toRun(row) : undefined
+  }
+
+  private getMessageIdForRun(runId: string, messageId: string) {
+    const row = this.database.sqlite
+      .prepare('SELECT run_id FROM agent_run_messages WHERE id = ?')
+      .get(messageId) as { run_id: string } | undefined
+
+    if (!row || row.run_id === runId) {
+      return messageId
+    }
+
+    return `${runId}:${messageId}`
   }
 
   private toRun(row: AgentRunRow) {
@@ -452,6 +638,14 @@ export class AgentRunStore {
       prUrl: optionalString(row.pr_url),
       resultSummary: optionalString(row.result_summary),
       status: row.status,
+      attempt: row.attempt ?? 1,
+      queuedAt: optionalString(row.queued_at),
+      startedAt: optionalString(row.started_at),
+      heartbeatAt: optionalString(row.heartbeat_at),
+      leaseOwner: optionalString(row.lease_owner),
+      leaseExpiresAt: optionalString(row.lease_expires_at),
+      cancellationRequestedAt: optionalString(row.cancellation_requested_at),
+      finishedAt: optionalString(row.finished_at),
       messages: messageRows.map(toMessage),
       context: parseContext(row.context_json),
       error: optionalString(row.error),
@@ -488,8 +682,9 @@ export class AgentRunStore {
         `
         INSERT INTO agent_runs (
           id, workspace_id, endpoint_id, model, agent_runtime, runtime_session_id, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
-          result_summary, status, context_json, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          result_summary, status, attempt, queued_at, started_at, heartbeat_at, lease_owner, lease_expires_at, cancellation_requested_at, finished_at,
+          context_json, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -508,6 +703,14 @@ export class AgentRunStore {
         run.prUrl ?? null,
         run.resultSummary ?? null,
         run.status,
+        run.attempt ?? 1,
+        run.queuedAt ?? null,
+        run.startedAt ?? null,
+        run.heartbeatAt ?? null,
+        run.leaseOwner ?? null,
+        run.leaseExpiresAt ?? null,
+        run.cancellationRequestedAt ?? null,
+        run.finishedAt ?? null,
         run.context ? JSON.stringify(run.context) : null,
         run.error ?? null,
         run.createdAt,
@@ -515,6 +718,37 @@ export class AgentRunStore {
       )
 
     this.insertMessages(run.id, run.messages)
+  }
+
+  private getNextAttempt(
+    input: Pick<CreateAgentRunInput, 'issueId' | 'kind' | 'subtaskId'>,
+  ) {
+    if (!input.issueId) {
+      return 1
+    }
+
+    const kind = input.kind ?? 'coding'
+    const row = input.subtaskId
+      ? (this.database.sqlite
+          .prepare(
+            `
+            SELECT COALESCE(MAX(attempt), 0) + 1 AS attempt
+            FROM agent_runs
+            WHERE issue_id = ? AND subtask_id = ?
+          `,
+          )
+          .get(input.issueId, input.subtaskId) as { attempt: number })
+      : (this.database.sqlite
+          .prepare(
+            `
+            SELECT COALESCE(MAX(attempt), 0) + 1 AS attempt
+            FROM agent_runs
+            WHERE issue_id = ? AND subtask_id IS NULL AND kind = ?
+          `,
+          )
+          .get(input.issueId, kind) as { attempt: number })
+
+    return row.attempt
   }
 
   private insertMessages(runId: string, messages: AgentRunMessage[]) {
@@ -741,6 +975,83 @@ const createMessageWithId = (
     createdAt:
       message.createdAt || fallbackCreatedAt || new Date().toISOString(),
   })
+}
+
+const applyExecutionStatus = (
+  run: AgentRun,
+  status: AgentRunStatus,
+  {
+    error,
+    now,
+    patch = {},
+  }: {
+    error?: string
+    now: string
+    patch?: Partial<AgentRun>
+  },
+) => {
+  if (status === 'idle') {
+    return resetExecutionForQueuedRun(
+      {
+        ...run,
+        ...patch,
+        error,
+      },
+      now,
+    )
+  }
+
+  const terminal = isTerminalAgentRunStatus(status)
+  const running = status === 'running'
+
+  return {
+    ...run,
+    ...patch,
+    error,
+    finishedAt: terminal ? (run.finishedAt ?? now) : patch.finishedAt,
+    heartbeatAt: running
+      ? (patch.heartbeatAt ?? now)
+      : (patch.heartbeatAt ?? run.heartbeatAt),
+    leaseExpiresAt: running
+      ? (patch.leaseExpiresAt ?? run.leaseExpiresAt)
+      : undefined,
+    leaseOwner: running ? (patch.leaseOwner ?? run.leaseOwner) : undefined,
+    queuedAt: run.queuedAt,
+    startedAt: running ? (run.startedAt ?? now) : run.startedAt,
+    status,
+    updatedAt: now,
+  }
+}
+
+const resetExecutionForQueuedRun = (run: AgentRun, now: string): AgentRun => {
+  return {
+    ...run,
+    cancellationRequestedAt: undefined,
+    error: undefined,
+    finishedAt: undefined,
+    heartbeatAt: undefined,
+    leaseExpiresAt: undefined,
+    leaseOwner: undefined,
+    queuedAt: now,
+    startedAt: undefined,
+    status: 'idle',
+    updatedAt: now,
+  }
+}
+
+const getLeaseExpiresAt = (
+  now: string,
+  leaseDurationMs: number | undefined,
+) => {
+  if (!leaseDurationMs) {
+    return undefined
+  }
+
+  return new Date(new Date(now).getTime() + leaseDurationMs).toISOString()
+}
+
+const isTerminalAgentRunStatus = (status: AgentRunStatus) => {
+  return status === 'completed' || status === 'cancelled' || status === 'failed'
 }
 
 const getTitle = (task: string) => {

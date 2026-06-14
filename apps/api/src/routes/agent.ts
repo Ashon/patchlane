@@ -334,6 +334,7 @@ export const createAgentRouter = ({
         return
       }
 
+      await runStore.requestCancellation(id)
       activeRunControllers.get(id)?.abort(agentRunCancellationMessage)
       const run = await runStore.cancel(id, agentRunCancellationMessage)
       await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)

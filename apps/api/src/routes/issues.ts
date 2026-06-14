@@ -200,6 +200,23 @@ export const createIssuesRouter = ({
     }),
   )
 
+  router.get(
+    '/:id/tasks/:taskId/executions',
+    asyncHandler(async (request, response) => {
+      const issueId = getRouteParam(request.params.id, 'id')
+      const taskId = getRouteParam(request.params.taskId, 'taskId')
+      const issue = await issueStore.getIssue(issueId)
+
+      if (!issue.subtasks.some((task) => task.id === taskId)) {
+        throw badRequest(`Issue task '${taskId}' was not found`)
+      }
+
+      response.json({
+        executions: await runStore.listForIssueTask(issueId, taskId),
+      })
+    }),
+  )
+
   router.post(
     '/:id/plan',
     asyncHandler(async (request, response) => {
@@ -237,7 +254,11 @@ export const createIssuesRouter = ({
         throw badRequest(`Issue task '${taskId}' was not found`)
       }
 
-      if (task.status !== 'pending' && task.status !== 'awaiting_user') {
+      if (
+        task.status !== 'pending' &&
+        task.status !== 'awaiting_user' &&
+        task.status !== 'failed'
+      ) {
         throw badRequest(
           `Issue task '${taskId}' cannot be started from status ${task.status}`,
         )
@@ -281,7 +302,11 @@ export const createIssuesRouter = ({
         throw badRequest(`Issue subtask '${subtaskId}' was not found`)
       }
 
-      if (subtask.status !== 'pending' && subtask.status !== 'awaiting_user') {
+      if (
+        subtask.status !== 'pending' &&
+        subtask.status !== 'awaiting_user' &&
+        subtask.status !== 'failed'
+      ) {
         throw badRequest(
           `Issue subtask '${subtaskId}' cannot be started from status ${subtask.status}`,
         )
@@ -698,6 +723,29 @@ export const createIssuesRouter = ({
     task: IssueTask
   }) {
     const startedAt = Date.now()
+    const activeRun = await runStore.findActiveForIssueTask(issue.id, task.id)
+
+    if (activeRun) {
+      const { issue: updatedIssue } = await issueStore.markTaskRunStarted(
+        issue.id,
+        task.id,
+        activeRun.id,
+      )
+      workflowLogger.info(
+        {
+          event: 'workflow.task_run.reused',
+          issueId: updatedIssue.id,
+          taskId: task.id,
+          runId: activeRun.id,
+          status: activeRun.status,
+          durationMs: Date.now() - startedAt,
+        },
+        'Issue task reused active agent run',
+      )
+
+      return { issue: updatedIssue, run: activeRun }
+    }
+
     const { branchName, project, workspace } =
       await getOrCreateIssueTaskWorkspace(issue)
     const selectedEndpointId =

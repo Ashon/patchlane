@@ -14,6 +14,7 @@ import {
 import { logger } from './logging/logger'
 import { LlmEndpointStore } from './llm/endpointStore'
 import { createAgentRouter } from './routes/agent'
+import { createExecutionsRouter } from './routes/executions'
 import { createIssuesRouter } from './routes/issues'
 import { createLlmRouter } from './routes/llm'
 import { createSandboxRouter } from './routes/sandbox'
@@ -84,6 +85,12 @@ export const createApiApp = (config: ApiEnvironment = env) => {
       sandboxSettings: config.sandbox,
       toolSettingsStore,
       workspaceStore: sandboxWorkspaceStore,
+    }),
+  )
+  app.use(
+    '/api/executions',
+    createExecutionsRouter({
+      runStore: agentRunStore,
     }),
   )
   app.use(

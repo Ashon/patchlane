@@ -8,6 +8,10 @@ import type {
   SandboxWorkspace,
 } from '@patchlane/shared'
 import { estimateTextTokens } from './agentContext'
+import {
+  formatAgentIssueSummary,
+  formatAgentResultSummary,
+} from './agentSummary'
 import { logger as rootLogger, type ApiLogger } from '../logging/logger'
 import type { AgentRunStore } from './agentRunStore'
 import type { AgentRuntimeStreamEmit } from './agentRuntime'
@@ -173,7 +177,7 @@ export class OpenCodeRuntime {
       })
       run = await this.options.runStore.setResultSummary(
         run.id,
-        summarize(content),
+        formatAgentResultSummary(content),
       )
       run = await this.options.runStore.setStatus(run.id, 'completed')
       runLogger.info(
@@ -431,7 +435,7 @@ export class OpenCodeRuntime {
       runId: run.id,
       author: 'agent',
       kind: 'summary',
-      body: summarize(content, 3_800),
+      body: formatAgentIssueSummary(content),
     })
   }
 
@@ -493,8 +497,8 @@ export const buildOpenCodePrompt = ({
       ? 'Use targeted searches, file reads, and safe read-only commands to produce evidence-backed findings and an implementation plan.'
       : 'Do not wait for confirmation unless the task is blocked by missing credentials, destructive ambiguity, or unavailable external state.',
     isResearch
-      ? 'When finished, respond with findings, relevant files, recommended edit sequence, verification strategy, residual risks, and confirmation that no files were changed.'
-      : 'When finished, respond with a concise summary of changes, verification, and any remaining risks.',
+      ? 'When finished, respond in Markdown with short sections: Findings, Evidence, Recommendation, Verification, and Risks. Use bullets and avoid a progress log.'
+      : 'When finished, respond in Markdown with short sections: Summary, Changes, Verification, and Risks. Use bullets and avoid a progress log.',
     '',
     `Workspace name: ${workspace.name}`,
     `Workspace path: ${workspace.path}`,
@@ -813,14 +817,6 @@ const getSpawnErrorMessage = (command: string, error: Error) => {
   }
 
   return error.message
-}
-
-const summarize = (value: string, maxLength = 2_000) => {
-  const summary = value.trim().replace(/\s+/gu, ' ')
-
-  return summary.length <= maxLength
-    ? summary
-    : `${summary.slice(0, maxLength - 1)}...`
 }
 
 const getTextMetrics = (value: string) => ({

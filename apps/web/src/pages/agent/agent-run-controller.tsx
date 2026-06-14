@@ -64,6 +64,11 @@ type AgentRunControllerValue = {
   onRewindAgentRun: (run: AgentRun, messageId: string) => void
   onSelectAgentRun: (run: AgentRun) => void
   onSendAgentMessage: () => void
+  onStartIssueTask: (
+    issue: Issue,
+    task: Issue['subtasks'][number],
+    options?: { onRunStarted?: (run: AgentRun) => void },
+  ) => Promise<void>
   onStartIssueRun: (
     issue: Issue,
     options?: { onRunStarted?: (run: AgentRun) => void },
@@ -954,6 +959,50 @@ export const AgentRunControllerProvider = ({
     ],
   )
 
+  const startIssueTaskRun = useCallback(
+    async (
+      issue: Issue,
+      task: Issue['subtasks'][number],
+      options?: { onRunStarted?: (run: AgentRun) => void },
+    ) => {
+      setError(null)
+
+      const project = projects.find((item) => item.id === issue.projectId)
+      const runtime = project?.defaultAgentRuntime ?? 'patchlane'
+      const fallbackRuntimeConnectorId = getAgentRuntimeConnectorId(runtime, {
+        codexEndpoint,
+        endpoint,
+        opencodeEndpoint,
+      })
+      const response = await api.startIssueTask(issue.id, task.id, {
+        agentRuntime: runtime,
+        agentRuntimeConnectorId:
+          project?.defaultAgentRuntimeConnectorId ?? fallbackRuntimeConnectorId,
+        endpointId:
+          issue.endpointId ??
+          project?.defaultEndpointId ??
+          endpoint?.id ??
+          fallbackRuntimeConnectorId,
+      })
+
+      upsertIssue(response.issue)
+      upsertAgentRunsInCache(response.runs ?? [response.run])
+      upsertAgentRun({ ...response.run, status: 'running' })
+      options?.onRunStarted?.(response.run)
+      await streamAgentRun(response.run, response.issue.id)
+    },
+    [
+      codexEndpoint,
+      endpoint,
+      opencodeEndpoint,
+      projects,
+      streamAgentRun,
+      upsertAgentRun,
+      upsertAgentRunsInCache,
+      upsertIssue,
+    ],
+  )
+
   const planIssue = useCallback(
     async (issue: Issue) => {
       setError(null)
@@ -1073,6 +1122,7 @@ export const AgentRunControllerProvider = ({
       onRewindAgentRun: rewindAgentRun,
       onSelectAgentRun: selectAgentRun,
       onSendAgentMessage: sendAgentMessage,
+      onStartIssueTask: startIssueTaskRun,
       onStartIssueRun: startIssueRun,
       onStartNewAgentRun: startNewAgentRun,
       onStopAgentRun: stopAgentRun,
@@ -1109,6 +1159,7 @@ export const AgentRunControllerProvider = ({
       selectedRunStreaming,
       selectedWorkspace,
       sendAgentMessage,
+      startIssueTaskRun,
       startIssueRun,
       startNewAgentRun,
       stopAgentRun,

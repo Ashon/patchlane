@@ -83,10 +83,17 @@ describe('Given AgentRunStore cancellation', () => {
       run.id,
       'codex-session-1',
     )
+    await store.setStatus(run.id, 'running')
+    const completed = await store.setStatus(run.id, 'completed')
 
     const rewound = await store.rewind(run.id, run.messages[0].id)
 
     expect(withSession.runtimeSessionId).toBe('codex-session-1')
+    expect(completed.finishedAt).toBeDefined()
+    expect(rewound.status).toBe('idle')
+    expect(rewound.startedAt).toBeUndefined()
+    expect(rewound.heartbeatAt).toBeUndefined()
+    expect(rewound.finishedAt).toBeUndefined()
     expect(rewound.runtimeSessionId).toBeUndefined()
   })
 
@@ -133,6 +140,58 @@ describe('Given AgentRunStore cancellation', () => {
     expect(toolMessages[0]?.createdAt).toBe(started.messages.at(-1)?.createdAt)
   })
 
+  it('scopes generated message ids when provider item ids repeat across runs', async () => {
+    const store = new AgentRunStore(new AppDatabase(':memory:'))
+    const firstRun = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      title: 'First run',
+      task: 'Run a command.',
+    })
+    const secondRun = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      title: 'Second run',
+      task: 'Run another command.',
+    })
+
+    const first = await store.upsertMessage(firstRun.id, {
+      id: 'item_1',
+      role: 'tool',
+      toolName: 'run_command',
+      toolInput: { command: 'pnpm test' },
+      content: 'Running run_command...',
+    })
+    const secondStarted = await store.upsertMessage(secondRun.id, {
+      id: 'item_1',
+      role: 'tool',
+      toolName: 'run_command',
+      toolInput: { command: 'pnpm lint' },
+      content: 'Running run_command...',
+    })
+    const secondCompleted = await store.upsertMessage(secondRun.id, {
+      id: 'item_1',
+      role: 'tool',
+      toolName: 'run_command',
+      toolInput: { command: 'pnpm lint' },
+      content: '{"ok":true,"stdout":"clean"}',
+    })
+
+    const secondToolMessages = secondCompleted.messages.filter(
+      (message) => message.role === 'tool',
+    )
+
+    expect(first.messages.at(-1)?.id).toBe('item_1')
+    expect(secondStarted.messages.at(-1)?.id).toBe(`${secondRun.id}:item_1`)
+    expect(secondToolMessages).toHaveLength(1)
+    expect(secondToolMessages[0]).toMatchObject({
+      id: `${secondRun.id}:item_1`,
+      content: '{"ok":true,"stdout":"clean"}',
+      toolInput: { command: 'pnpm lint' },
+      toolName: 'run_command',
+    })
+  })
+
   it('stores agent run events in sequence order', async () => {
     const store = new AgentRunStore(new AppDatabase(':memory:'))
     const run = await store.create({
@@ -176,5 +235,233 @@ describe('Given AgentRunStore cancellation', () => {
         sequence: 1,
       },
     ])
+  })
+
+  it('tracks execution attempts per issue task', async () => {
+    const store = new AgentRunStore(new AppDatabase(':memory:'))
+    const first = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      issueId: 'issue-1',
+      subtaskId: 'task-1',
+      title: 'Task attempt 1',
+      task: 'Try the task.',
+    })
+    const second = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      issueId: 'issue-1',
+      subtaskId: 'task-1',
+      title: 'Task attempt 2',
+      task: 'Retry the task.',
+    })
+    const otherTask = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      issueId: 'issue-1',
+      subtaskId: 'task-2',
+      title: 'Other task',
+      task: 'Run another task.',
+    })
+
+    expect(first.attempt).toBe(1)
+    expect(second.attempt).toBe(2)
+    expect(otherTask.attempt).toBe(1)
+    expect(first.queuedAt).toBeDefined()
+  })
+
+  it('lists execution history for a single issue task', async () => {
+    const store = new AgentRunStore(new AppDatabase(':memory:'))
+    const first = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      issueId: 'issue-1',
+      projectId: 'project-1',
+      subtaskId: 'task-1',
+      title: 'Task attempt 1',
+      task: 'Try the task.',
+    })
+    const second = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      issueId: 'issue-1',
+      projectId: 'project-1',
+      subtaskId: 'task-1',
+      title: 'Task attempt 2',
+      task: 'Retry the task.',
+    })
+    await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      issueId: 'issue-1',
+      projectId: 'project-1',
+      subtaskId: 'task-2',
+      title: 'Other task',
+      task: 'Run another task.',
+    })
+
+    const taskHistory = await store.listForIssueTask('issue-1', 'task-1')
+    const projectExecutions = await store.listExecutions({
+      projectId: 'project-1',
+    })
+    const taskExecutions = await store.listExecutions({
+      issueId: 'issue-1',
+      subtaskId: 'task-1',
+    })
+
+    expect(taskHistory.map((execution) => execution.id)).toEqual([
+      second.id,
+      first.id,
+    ])
+    expect(projectExecutions).toHaveLength(3)
+    expect(taskExecutions.map((execution) => execution.id).sort()).toEqual(
+      [first.id, second.id].sort(),
+    )
+  })
+
+  it('finds only active executions for an issue task', async () => {
+    const store = new AgentRunStore(new AppDatabase(':memory:'))
+    const first = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      issueId: 'issue-1',
+      subtaskId: 'task-1',
+      title: 'First attempt',
+      task: 'Try the task.',
+    })
+    const second = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      issueId: 'issue-1',
+      subtaskId: 'task-1',
+      title: 'Second attempt',
+      task: 'Retry the task.',
+    })
+
+    await store.setStatus(first.id, 'failed')
+    await store.setStatus(second.id, 'running')
+
+    const active = await store.findActiveForIssueTask('issue-1', 'task-1')
+    await store.setStatus(second.id, 'completed')
+    const none = await store.findActiveForIssueTask('issue-1', 'task-1')
+
+    expect(active?.id).toBe(second.id)
+    expect(none).toBeUndefined()
+  })
+
+  it('maintains execution lifecycle timestamps when status changes', async () => {
+    const store = new AgentRunStore(new AppDatabase(':memory:'))
+    const run = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'patchlane',
+      title: 'Lifecycle',
+      task: 'Track lifecycle.',
+    })
+
+    const running = await store.setStatus(run.id, 'running')
+    const completed = await store.setStatus(run.id, 'completed')
+
+    expect(running.startedAt).toBeDefined()
+    expect(running.heartbeatAt).toBeDefined()
+    expect(running.finishedAt).toBeUndefined()
+    expect(completed.startedAt).toBe(running.startedAt)
+    expect(completed.heartbeatAt).toBe(running.heartbeatAt)
+    expect(completed.finishedAt).toBeDefined()
+    expect(completed.leaseOwner).toBeUndefined()
+    expect(completed.leaseExpiresAt).toBeUndefined()
+  })
+
+  it('resets execution lifecycle metadata when a user continuation is queued', async () => {
+    const store = new AgentRunStore(new AppDatabase(':memory:'))
+    const run = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      title: 'Continue',
+      task: 'Start the task.',
+    })
+
+    const claimed = await store.claimExecution(run.id, {
+      leaseDurationMs: 1_000,
+      leaseOwner: 'worker-1',
+      now: new Date('2026-01-01T00:00:00.000Z'),
+    })
+    const requested = await store.requestCancellation(run.id)
+    const continued = await store.appendMessage(run.id, {
+      role: 'user',
+      content: 'Continue after cancellation.',
+    })
+
+    expect(claimed.startedAt).toBeDefined()
+    expect(claimed.heartbeatAt).toBeDefined()
+    expect(claimed.leaseOwner).toBe('worker-1')
+    expect(requested.cancellationRequestedAt).toBeDefined()
+    expect(continued.status).toBe('idle')
+    expect(continued.queuedAt).toBeDefined()
+    expect(continued.startedAt).toBeUndefined()
+    expect(continued.heartbeatAt).toBeUndefined()
+    expect(continued.leaseOwner).toBeUndefined()
+    expect(continued.leaseExpiresAt).toBeUndefined()
+    expect(continued.cancellationRequestedAt).toBeUndefined()
+    expect(continued.error).toBeUndefined()
+    expect(continued.messages.at(-1)).toMatchObject({
+      role: 'user',
+      content: 'Continue after cancellation.',
+    })
+  })
+
+  it('claims, heartbeats, and lists expired execution leases', async () => {
+    const store = new AgentRunStore(new AppDatabase(':memory:'))
+    const run = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'codex',
+      title: 'Lease',
+      task: 'Track a lease.',
+    })
+    const now = new Date('2026-01-01T00:00:00.000Z')
+
+    const claimed = await store.claimExecution(run.id, {
+      leaseDurationMs: 1_000,
+      leaseOwner: 'worker-1',
+      now,
+    })
+    const activeBeforeExpiry = await store.listExpiredLeases(
+      new Date('2026-01-01T00:00:00.500Z'),
+    )
+    const expired = await store.listExpiredLeases(
+      new Date('2026-01-01T00:00:01.500Z'),
+    )
+    const heartbeat = await store.heartbeat(run.id, {
+      leaseDurationMs: 2_000,
+      leaseOwner: 'worker-2',
+      now: new Date('2026-01-01T00:00:02.000Z'),
+    })
+
+    expect(claimed.status).toBe('running')
+    expect(claimed.leaseOwner).toBe('worker-1')
+    expect(claimed.leaseExpiresAt).toBe('2026-01-01T00:00:01.000Z')
+    expect(activeBeforeExpiry).toHaveLength(0)
+    expect(expired.map((item) => item.id)).toEqual([run.id])
+    expect(heartbeat.leaseOwner).toBe('worker-2')
+    expect(heartbeat.leaseExpiresAt).toBe('2026-01-01T00:00:04.000Z')
+  })
+
+  it('records cancellation requests before cancellation finishes', async () => {
+    const store = new AgentRunStore(new AppDatabase(':memory:'))
+    const run = await store.create({
+      workspaceId: 'workspace-1',
+      agentRuntime: 'opencode',
+      title: 'Cancel',
+      task: 'Cancel this task.',
+    })
+
+    const requested = await store.requestCancellation(run.id)
+    const cancelled = await store.cancel(run.id)
+
+    expect(requested.cancellationRequestedAt).toBeDefined()
+    expect(cancelled.cancellationRequestedAt).toBe(
+      requested.cancellationRequestedAt,
+    )
+    expect(cancelled.finishedAt).toBeDefined()
+    expect(cancelled.status).toBe('cancelled')
   })
 })

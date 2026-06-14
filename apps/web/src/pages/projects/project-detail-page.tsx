@@ -30,7 +30,6 @@ import {
   normalizeIssueDraft,
   normalizeProjectDraft,
   toProjectDraft,
-  upsertAgentRuns,
   upsertIssue,
   upsertProject,
 } from '@/components/issues/utils'
@@ -68,6 +67,7 @@ export const ProjectDetailPage = () => {
     onPlanIssue,
     onRewindAgentRun,
     onSendAgentMessage,
+    onStartIssueTask,
     onStartIssueRun,
     onStopAgentRun,
     runs: agentRuns,
@@ -344,18 +344,9 @@ export const ProjectDetailPage = () => {
     setLocalError(null)
 
     try {
-      const response = await api.startIssueTask(issue.id, task.id, {
-        agentRuntime: project?.defaultAgentRuntime ?? 'patchlane',
-        agentRuntimeConnectorId: project?.defaultAgentRuntimeConnectorId,
-        endpointId:
-          issue.endpointId ||
-          project?.defaultEndpointId ||
-          selectedEndpoint?.id,
+      await onStartIssueTask(issue, task, {
+        onRunStarted: (run) => openProjectTaskRun(run.id),
       })
-
-      upsertIssue(queryClient, response.issue)
-      upsertAgentRuns(queryClient, response.runs ?? [response.run])
-      openProjectTaskRun(response.run.id)
     } catch (actionError) {
       setLocalError(getErrorMessage(actionError))
     } finally {

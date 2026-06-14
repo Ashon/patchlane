@@ -299,10 +299,9 @@ const getFinalAssistantMessage = (
   serverMessages: AgentRunMessage[],
   fallback?: AgentRunMessage,
 ) => {
-  const serverMessage = serverMessages.find(
-    (message) =>
-      message.role === 'assistant' &&
-      message.content === assistantSegment.content,
+  const serverMessage = getMatchingFinalAssistantMessage(
+    assistantSegment,
+    serverMessages,
   )
 
   return {
@@ -312,11 +311,44 @@ const getFinalAssistantMessage = (
     id: fallback?.id ?? assistantSegment.id,
     content: serverMessage?.content ?? assistantSegment.content,
     metadata:
-      serverMessage?.metadata ?? assistantSegment.metadata ?? fallback?.metadata,
+      serverMessage?.metadata ??
+      assistantSegment.metadata ??
+      fallback?.metadata,
   }
 }
 
-const findLastIndex = <T,>(
+const getMatchingFinalAssistantMessage = (
+  assistantSegment: Exclude<AssistantStreamSegment, null>,
+  serverMessages: AgentRunMessage[],
+) => {
+  const exactMatch = serverMessages.find(
+    (message) =>
+      message.role === 'assistant' &&
+      message.content === assistantSegment.content,
+  )
+
+  if (exactMatch) {
+    return exactMatch
+  }
+
+  const latestUserIndex = findLastIndex(
+    serverMessages,
+    (message) => message.role === 'user',
+  )
+  const currentAssistantIndex = findLastIndex(
+    serverMessages,
+    (message, index) =>
+      index > latestUserIndex &&
+      message.role === 'assistant' &&
+      Boolean(getVisibleAgentAssistantText(message.content)),
+  )
+
+  return currentAssistantIndex >= 0
+    ? serverMessages[currentAssistantIndex]
+    : undefined
+}
+
+const findLastIndex = <T>(
   values: T[],
   predicate: (value: T, index: number) => boolean,
 ) => {

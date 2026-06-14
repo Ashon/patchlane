@@ -131,6 +131,7 @@ describe('Given OpenCode runtime helpers', () => {
     expect(prompt).toContain('research-only run')
     expect(prompt).toContain('do not modify files')
     expect(prompt).toContain('evidence-backed findings')
-    expect(prompt).toContain('confirmation that no files were changed')
+    expect(prompt).toContain('respond in Markdown with short sections')
+    expect(prompt).toContain('avoid a progress log')
   })
 })

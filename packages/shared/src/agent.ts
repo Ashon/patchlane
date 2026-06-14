@@ -101,6 +101,14 @@ export const agentRunSchema = z.object({
   prUrl: z.string().url().optional(),
   resultSummary: z.string().max(8_000).optional(),
   status: agentRunStatusSchema,
+  attempt: z.number().int().positive().optional(),
+  queuedAt: isoDateSchema.optional(),
+  startedAt: isoDateSchema.optional(),
+  heartbeatAt: isoDateSchema.optional(),
+  leaseOwner: z.string().trim().min(1).optional(),
+  leaseExpiresAt: isoDateSchema.optional(),
+  cancellationRequestedAt: isoDateSchema.optional(),
+  finishedAt: isoDateSchema.optional(),
   messages: z.array(agentRunMessageSchema),
   context: agentRunContextSchema.optional(),
   error: z.string().optional(),
@@ -152,6 +160,8 @@ export type AgentRunMessageMetadata = z.infer<
 >
 export type AgentRunContext = z.infer<typeof agentRunContextSchema>
 export type AgentRun = z.infer<typeof agentRunSchema>
+export const agentExecutionSchema = agentRunSchema
+export type AgentExecution = AgentRun
 export type CreateAgentRunInput = z.infer<typeof createAgentRunSchema>
 export type AppendAgentRunMessageInput = z.infer<
   typeof appendAgentRunMessageSchema

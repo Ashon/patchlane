@@ -1,4 +1,5 @@
 import type {
+  AgentExecution,
   AgentRun,
   AgentRunMessageMetadata,
   AppendAgentRunMessageInput,
@@ -448,6 +449,43 @@ export const api = {
   },
   async listAgentRunEvents(id: string) {
     return request<{ events: AgentRunEvent[] }>(`/api/agent/runs/${id}/events`)
+  },
+  async listExecutions(
+    filters: {
+      issueId?: string
+      projectId?: string
+      taskId?: string
+    } = {},
+  ) {
+    const params = new URLSearchParams()
+
+    if (filters.issueId) {
+      params.set('issueId', filters.issueId)
+    }
+
+    if (filters.projectId) {
+      params.set('projectId', filters.projectId)
+    }
+
+    if (filters.taskId) {
+      params.set('taskId', filters.taskId)
+    }
+
+    const query = params.toString()
+    return request<{ executions: AgentExecution[] }>(
+      `/api/executions${query ? `?${query}` : ''}`,
+    )
+  },
+  async getExecution(id: string) {
+    return request<{ execution: AgentExecution }>(`/api/executions/${id}`)
+  },
+  async listExecutionEvents(id: string) {
+    return request<{ events: AgentRunEvent[] }>(`/api/executions/${id}/events`)
+  },
+  async listIssueTaskExecutions(id: string, taskId: string) {
+    return request<{ executions: AgentExecution[] }>(
+      `/api/issues/${id}/tasks/${taskId}/executions`,
+    )
   },
   async createAgentRun(input: CreateAgentRunInput) {
     return request<{ run: AgentRun }>('/api/agent/runs', {

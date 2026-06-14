@@ -96,6 +96,14 @@ export class AppDatabase {
         pr_url TEXT,
         result_summary TEXT,
         status TEXT NOT NULL CHECK (status IN ('idle', 'running', 'awaiting_user', 'completed', 'cancelled', 'failed')),
+        attempt INTEGER NOT NULL DEFAULT 1,
+        queued_at TEXT,
+        started_at TEXT,
+        heartbeat_at TEXT,
+        lease_owner TEXT,
+        lease_expires_at TEXT,
+        cancellation_requested_at TEXT,
+        finished_at TEXT,
         context_json TEXT,
         error TEXT,
         created_at TEXT NOT NULL,
@@ -271,6 +279,14 @@ export class AppDatabase {
     this.ensureColumn('agent_runs', 'branch_name', 'TEXT')
     this.ensureColumn('agent_runs', 'pr_url', 'TEXT')
     this.ensureColumn('agent_runs', 'result_summary', 'TEXT')
+    this.ensureColumn('agent_runs', 'attempt', 'INTEGER NOT NULL DEFAULT 1')
+    this.ensureColumn('agent_runs', 'queued_at', 'TEXT')
+    this.ensureColumn('agent_runs', 'started_at', 'TEXT')
+    this.ensureColumn('agent_runs', 'heartbeat_at', 'TEXT')
+    this.ensureColumn('agent_runs', 'lease_owner', 'TEXT')
+    this.ensureColumn('agent_runs', 'lease_expires_at', 'TEXT')
+    this.ensureColumn('agent_runs', 'cancellation_requested_at', 'TEXT')
+    this.ensureColumn('agent_runs', 'finished_at', 'TEXT')
     this.ensureColumn('agent_runs', 'context_json', 'TEXT')
     this.ensureColumn('agent_run_messages', 'tool_input_json', 'TEXT')
     this.ensureColumn('agent_run_messages', 'metadata_json', 'TEXT')
@@ -496,6 +512,14 @@ export class AppDatabase {
           pr_url TEXT,
           result_summary TEXT,
           status TEXT NOT NULL CHECK (status IN ('idle', 'running', 'awaiting_user', 'completed', 'cancelled', 'failed')),
+          attempt INTEGER NOT NULL DEFAULT 1,
+          queued_at TEXT,
+          started_at TEXT,
+          heartbeat_at TEXT,
+          lease_owner TEXT,
+          lease_expires_at TEXT,
+          cancellation_requested_at TEXT,
+          finished_at TEXT,
           context_json TEXT,
           error TEXT,
           created_at TEXT NOT NULL,
@@ -504,11 +528,13 @@ export class AppDatabase {
 
         INSERT INTO agent_runs_new (
           id, workspace_id, endpoint_id, model, agent_runtime, runtime_session_id, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
-          result_summary, status, context_json, error, created_at, updated_at
+          result_summary, status, attempt, queued_at, started_at, heartbeat_at, lease_owner, lease_expires_at, cancellation_requested_at, finished_at,
+          context_json, error, created_at, updated_at
         )
         SELECT
           id, workspace_id, endpoint_id, model, COALESCE(agent_runtime, 'patchlane'), runtime_session_id, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
-          result_summary, status, context_json, error, created_at, updated_at
+          result_summary, status, COALESCE(attempt, 1), queued_at, started_at, heartbeat_at, lease_owner, lease_expires_at, cancellation_requested_at, finished_at,
+          context_json, error, created_at, updated_at
         FROM agent_runs;
 
         DROP TABLE agent_runs;
