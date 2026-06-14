@@ -2,11 +2,13 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import type {
   AgentProject,
   AgentRun,
+  AgentRuntime,
   Issue,
   LlmEndpoint,
 } from '@patchlane/shared'
-import { Bot } from 'lucide-react'
+import { Bot, Square } from 'lucide-react'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
+import { Button } from '@patchlane/ui/button'
 import { ScrollArea } from '@patchlane/ui/scroll-area'
 import {
   ResizableHandle,
@@ -45,9 +47,11 @@ const projectTaskResizableMediaQuery = '(min-width: 640px)'
 export const ProjectTasksView = ({
   agentReplyDraft,
   endpoint,
+  endpoints,
   error,
   issues,
   onAgentReplyChange,
+  onRunRuntimeChange,
   onContinueRun,
   onRewindRun,
   onSelectRun,
@@ -61,9 +65,11 @@ export const ProjectTasksView = ({
 }: {
   agentReplyDraft: string
   endpoint: LlmEndpoint | null
+  endpoints: LlmEndpoint[]
   error: string | null
   issues: Issue[]
   onAgentReplyChange: (value: string) => void
+  onRunRuntimeChange: (run: AgentRun, runtime: AgentRuntime) => void
   onContinueRun: (run: AgentRun) => void
   onRewindRun: (run: AgentRun, messageId: string) => void
   onSelectRun: (runId: string) => void
@@ -122,9 +128,11 @@ export const ProjectTasksView = ({
     <TaskChatPane
       agentReplyDraft={agentReplyDraft}
       endpoint={endpoint}
+      endpoints={endpoints}
       error={error}
       issueById={issueById}
       onAgentReplyChange={onAgentReplyChange}
+      onRunRuntimeChange={onRunRuntimeChange}
       onContinueRun={onContinueRun}
       onRewindRun={onRewindRun}
       onSendMessage={onSendMessage}
@@ -285,7 +293,9 @@ const TaskListItem = ({
               : 'grid-cols-[minmax(0,1fr)_auto]',
           )}
         >
-          {issue ? <IssueReferenceBadge issue={issue} project={project} /> : null}
+          {issue ? (
+            <IssueReferenceBadge issue={issue} project={project} />
+          ) : null}
           <span className="min-w-0 truncate text-sm">{run.title}</span>
           <AgentRunStatusBadge status={run.status} />
         </div>
@@ -335,9 +345,11 @@ const IssueTaskListItem = ({
 const TaskChatPane = ({
   agentReplyDraft,
   endpoint,
+  endpoints,
   error,
   issueById,
   onAgentReplyChange,
+  onRunRuntimeChange,
   onContinueRun,
   onRewindRun,
   onSendMessage,
@@ -348,9 +360,11 @@ const TaskChatPane = ({
 }: {
   agentReplyDraft: string
   endpoint: LlmEndpoint | null
+  endpoints: LlmEndpoint[]
   error: string | null
   issueById: Map<string, Issue>
   onAgentReplyChange: (value: string) => void
+  onRunRuntimeChange: (run: AgentRun, runtime: AgentRuntime) => void
   onContinueRun: (run: AgentRun) => void
   onRewindRun: (run: AgentRun, messageId: string) => void
   onSendMessage: () => void
@@ -372,6 +386,18 @@ const TaskChatPane = ({
               <>
                 <AgentRunStatusBadge status={selectedRun.status} />
                 <TaskRunMetricBadge run={selectedRun} />
+                {isStoppableAgentRun(selectedRun) ? (
+                  <Button
+                    className="border-destructive/40 bg-background text-destructive shadow-xs hover:bg-destructive/10 hover:text-destructive dark:border-destructive/50"
+                    onClick={() => void onStopRun()}
+                    size="xs"
+                    type="button"
+                    variant="outline"
+                  >
+                    <Square />
+                    Stop
+                  </Button>
+                ) : null}
               </>
             }
             description={getTaskDetailDescription(
@@ -386,11 +412,15 @@ const TaskChatPane = ({
             <AgentTaskConversation
               draft={agentReplyDraft}
               endpoint={endpoint}
+              endpoints={endpoints}
               error={error}
               isStreaming={selectedRunStreaming}
               onChange={onAgentReplyChange}
               onContinue={() => onContinueRun(selectedRun)}
               onRewind={(messageId) => onRewindRun(selectedRun, messageId)}
+              onRuntimeChange={(runtime) =>
+                onRunRuntimeChange(selectedRun, runtime)
+              }
               onSend={onSendMessage}
               onStop={onStopRun}
               run={selectedRun}
@@ -404,6 +434,10 @@ const TaskChatPane = ({
       )}
     </section>
   )
+}
+
+const isStoppableAgentRun = (run: AgentRun) => {
+  return run.status === 'idle' || run.status === 'running'
 }
 
 const getTaskDetailDescription = (

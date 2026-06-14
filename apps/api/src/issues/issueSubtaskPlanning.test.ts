@@ -41,7 +41,9 @@ describe('Given issue task planning', () => {
     expect(prompt).toContain('Return only JSON')
     expect(prompt).toContain('2 to 8 issue tasks')
     expect(prompt).toContain('"tasks"')
-    expect(prompt).toContain('inspect, edit, and verify')
+    expect(prompt).toContain('research or inspect, edit, and verify')
+    expect(prompt).toContain('Use research instead of inspect')
+    expect(prompt).toContain('A research task is read-only')
     expect(prompt).toContain('concrete completion signal')
     expect(prompt).toContain('one focused agent run')
     expect(prompt).toContain('Do not create vague tasks')
@@ -55,9 +57,9 @@ describe('Given issue task planning', () => {
       {
         "tasks": [
           {
-            "title": "Inspect current issue workflow",
+            "title": "Research current issue workflow",
             "description": "Find the API, store, and UI points that assume one run per issue.",
-            "kind": "inspect"
+            "kind": "research"
           },
           {
             "title": "Persist issue subtasks",
@@ -75,11 +77,11 @@ describe('Given issue task planning', () => {
     `)
 
     expect(plan.tasks.map((task) => task.kind)).toEqual([
-      'inspect',
+      'research',
       'edit',
       'verify',
     ])
-    expect(plan.tasks[0]?.title).toBe('Inspect current issue workflow')
+    expect(plan.tasks[0]?.title).toBe('Research current issue workflow')
   })
 
   it('when parsing a legacy subtask JSON plan, then it maps it to issue tasks', () => {

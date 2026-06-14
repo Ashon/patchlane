@@ -13,6 +13,7 @@ import {
   type AgentRuntime,
   type AgentRunStatus,
   type CreateAgentRunInput,
+  type UpdateAgentRunRuntimeInput,
 } from '@patchlane/shared'
 import { AppDatabase, optionalString } from '../db/database'
 import { readLegacyJson } from '../db/legacyJson'
@@ -25,6 +26,7 @@ type AgentRunRow = {
   endpoint_id: string | null
   model: string | null
   agent_runtime: AgentRuntime | null
+  runtime_session_id: string | null
   title: string
   kind: AgentRun['kind']
   project_id: string | null
@@ -151,6 +153,30 @@ export class AgentRunStore {
     }))
   }
 
+  async cancel(id: string, message = 'Agent run stopped by user.') {
+    return this.update(id, (run) => {
+      const shouldAppendMessage = !run.messages.some(
+        (item) => item.role === 'system' && item.content === message,
+      )
+
+      return {
+        ...run,
+        error: message,
+        messages: shouldAppendMessage
+          ? [
+              ...run.messages,
+              createMessage({
+                role: 'system',
+                content: message,
+              }),
+            ]
+          : run.messages,
+        status: 'cancelled',
+        updatedAt: new Date().toISOString(),
+      }
+    })
+  }
+
   async setContext(id: string, context: AgentRunContext) {
     return this.update(id, (run) => ({
       ...run,
@@ -163,6 +189,26 @@ export class AgentRunStore {
     return this.update(id, (run) => ({
       ...run,
       prUrl,
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  async updateRuntime(id: string, input: UpdateAgentRunRuntimeInput) {
+    return this.update(id, (run) => ({
+      ...run,
+      agentRuntime: input.agentRuntime,
+      endpointId: input.endpointId,
+      error: undefined,
+      model: input.model,
+      runtimeSessionId: undefined,
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  async setRuntimeSessionId(id: string, runtimeSessionId: string) {
+    return this.update(id, (run) => ({
+      ...run,
+      runtimeSessionId,
       updatedAt: new Date().toISOString(),
     }))
   }
@@ -192,6 +238,7 @@ export class AgentRunStore {
         messages: run.messages.slice(0, messageIndex + 1),
         prUrl: undefined,
         resultSummary: undefined,
+        runtimeSessionId: undefined,
         status: 'idle',
         updatedAt: new Date().toISOString(),
       }
@@ -222,7 +269,7 @@ export class AgentRunStore {
         .prepare(
           `
           UPDATE agent_runs
-          SET workspace_id = ?, endpoint_id = ?, model = ?, agent_runtime = ?, title = ?, kind = ?, project_id = ?, issue_id = ?,
+          SET workspace_id = ?, endpoint_id = ?, model = ?, agent_runtime = ?, runtime_session_id = ?, title = ?, kind = ?, project_id = ?, issue_id = ?,
             subtask_id = ?, branch_name = ?, pr_url = ?, result_summary = ?, status = ?, context_json = ?, error = ?, updated_at = ?
           WHERE id = ?
         `,
@@ -232,6 +279,7 @@ export class AgentRunStore {
           updated.endpointId ?? null,
           updated.model ?? null,
           updated.agentRuntime,
+          updated.runtimeSessionId ?? null,
           updated.title,
           updated.kind,
           updated.projectId ?? null,
@@ -276,6 +324,7 @@ export class AgentRunStore {
       endpointId: optionalString(row.endpoint_id),
       model: optionalString(row.model),
       agentRuntime: row.agent_runtime ?? 'patchlane',
+      runtimeSessionId: optionalString(row.runtime_session_id),
       title: row.title,
       kind: row.kind ?? 'coding',
       projectId: optionalString(row.project_id),
@@ -320,9 +369,9 @@ export class AgentRunStore {
       .prepare(
         `
         INSERT INTO agent_runs (
-          id, workspace_id, endpoint_id, model, agent_runtime, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, agent_runtime, runtime_session_id, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
           result_summary, status, context_json, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -331,6 +380,7 @@ export class AgentRunStore {
         run.endpointId ?? null,
         run.model ?? null,
         run.agentRuntime,
+        run.runtimeSessionId ?? null,
         run.title,
         run.kind,
         run.projectId ?? null,

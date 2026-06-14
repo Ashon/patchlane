@@ -53,6 +53,7 @@ type AgentRunControllerValue = {
   issuesError: string | null
   loading: boolean
   onAgentReplyChange: (value: string) => void
+  onAgentRunRuntimeChange: (run: AgentRun, runtime: AgentRuntime) => void
   onAgentRuntimeChange: (value: AgentRuntime) => void
   onAgentTaskChange: (value: string) => void
   onContinueAgentRun: (run: AgentRun) => void
@@ -158,6 +159,14 @@ export const AgentRunControllerProvider = ({
       ) ?? null,
     [endpoints],
   )
+  const codexEndpoint = useMemo(
+    () =>
+      endpoints.find(
+        (candidate) =>
+          candidate.runtimeType === 'codex_cli' && candidate.enabled,
+      ) ?? null,
+    [endpoints],
+  )
   const workspaces = useMemo(
     () => sandboxWorkspacesQuery.data?.workspaces ?? [],
     [sandboxWorkspacesQuery.data?.workspaces],
@@ -182,7 +191,11 @@ export const AgentRunControllerProvider = ({
     [openAiEndpoints],
   )
   const agentRuntimeConnector =
-    agentRuntimeDraft === 'opencode' ? opencodeEndpoint : endpoint
+    agentRuntimeDraft === 'opencode'
+      ? opencodeEndpoint
+      : agentRuntimeDraft === 'codex'
+        ? codexEndpoint
+        : endpoint
   const selectedWorkspace = useMemo(
     () =>
       workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ??
@@ -534,7 +547,7 @@ export const AgentRunControllerProvider = ({
         await api.streamAgentRun(
           run.id,
           {
-            endpointId: endpoint?.id,
+            endpointId: run.endpointId,
           },
           {
             signal: controller.signal,
@@ -705,7 +718,6 @@ export const AgentRunControllerProvider = ({
       }
     },
     [
-      endpoint?.id,
       queryClient,
       refreshIssues,
       syncIssueFromRun,
@@ -728,10 +740,11 @@ export const AgentRunControllerProvider = ({
       try {
         const response = await api.createAgentRun({
           workspaceId: selectedWorkspace.id,
-          endpointId:
-            agentRuntimeDraft === 'patchlane'
-              ? endpoint?.id
-              : opencodeEndpoint?.id,
+          endpointId: getAgentRuntimeConnectorId(agentRuntimeDraft, {
+            codexEndpoint,
+            endpoint,
+            opencodeEndpoint,
+          }),
           agentRuntime: agentRuntimeDraft,
           task: agentTaskDraft,
         })
@@ -748,6 +761,7 @@ export const AgentRunControllerProvider = ({
     [
       agentTaskDraft,
       agentRuntimeDraft,
+      codexEndpoint,
       endpoint,
       opencodeEndpoint,
       selectedWorkspace,
@@ -782,6 +796,34 @@ export const AgentRunControllerProvider = ({
     [agentRunning, upsertAgentRun],
   )
 
+  const updateAgentRunRuntime = useCallback(
+    async (run: AgentRun, runtime: AgentRuntime) => {
+      if (run.status === 'running') {
+        setError('Stop this run before changing its runtime')
+        return
+      }
+
+      const endpointId = getAgentRuntimeConnectorId(runtime, {
+        codexEndpoint,
+        endpoint,
+        opencodeEndpoint,
+      })
+
+      setError(null)
+
+      try {
+        const response = await api.updateAgentRunRuntime(run.id, {
+          agentRuntime: runtime,
+          endpointId,
+        })
+        upsertAgentRun(response.run)
+      } catch (runtimeError) {
+        setError(getErrorMessage(runtimeError))
+      }
+    },
+    [codexEndpoint, endpoint, opencodeEndpoint, upsertAgentRun],
+  )
+
   const sendAgentMessage = useCallback(async () => {
     if (!selectedRun || agentRunning || !agentReplyDraft.trim()) {
       return
@@ -810,9 +852,30 @@ export const AgentRunControllerProvider = ({
     upsertAgentRun,
   ])
 
-  const stopAgentRun = useCallback(() => {
+  const stopAgentRun = useCallback(async () => {
+    const runId = streamingAgentRunId ?? selectedRun?.id
+
+    if (!runId) {
+      return
+    }
+
     agentStreamAbortRef.current?.abort()
-  }, [])
+    setError(null)
+
+    try {
+      const response = await api.stopAgentRun(runId)
+      upsertAgentRun(response.run)
+
+      if (response.run.issueId) {
+        await refreshIssues()
+      }
+    } catch (stopError) {
+      setError(getErrorMessage(stopError))
+    } finally {
+      setAgentRunning(false)
+      setStreamingAgentRunId((current) => (current === runId ? null : current))
+    }
+  }, [refreshIssues, selectedRun?.id, streamingAgentRunId, upsertAgentRun])
 
   const deleteAgentRun = useCallback(
     async (run: AgentRun) => {
@@ -848,15 +911,20 @@ export const AgentRunControllerProvider = ({
 
       const project = projects.find((item) => item.id === issue.projectId)
       const runtime = project?.defaultAgentRuntime ?? 'patchlane'
+      const fallbackRuntimeConnectorId = getAgentRuntimeConnectorId(runtime, {
+        codexEndpoint,
+        endpoint,
+        opencodeEndpoint,
+      })
       const response = await api.continueIssueWorkflow(issue.id, {
         agentRuntime: runtime,
         agentRuntimeConnectorId:
-          project?.defaultAgentRuntimeConnectorId ??
-          (runtime === 'opencode' ? opencodeEndpoint?.id : endpoint?.id),
+          project?.defaultAgentRuntimeConnectorId ?? fallbackRuntimeConnectorId,
         endpointId:
           issue.endpointId ??
           project?.defaultEndpointId ??
-          (runtime === 'opencode' ? opencodeEndpoint?.id : endpoint?.id),
+          endpoint?.id ??
+          fallbackRuntimeConnectorId,
       })
       upsertIssue(response.issue)
       upsertAgentRunsInCache(response.runs)
@@ -870,8 +938,9 @@ export const AgentRunControllerProvider = ({
       await streamAgentRun(response.run, response.issue.id)
     },
     [
-      endpoint?.id,
-      opencodeEndpoint?.id,
+      codexEndpoint,
+      endpoint,
+      opencodeEndpoint,
       projects,
       streamAgentRun,
       upsertAgentRun,
@@ -988,6 +1057,7 @@ export const AgentRunControllerProvider = ({
       issuesError,
       loading,
       onAgentReplyChange: setAgentReplyDraft,
+      onAgentRunRuntimeChange: updateAgentRunRuntime,
       onAgentRuntimeChange: setAgentRuntimeDraft,
       onAgentTaskChange: setAgentTaskDraft,
       onContinueAgentRun: continueAgentRun,
@@ -1037,6 +1107,7 @@ export const AgentRunControllerProvider = ({
       startIssueRun,
       startNewAgentRun,
       stopAgentRun,
+      updateAgentRunRuntime,
       visibleError,
       workspaces,
     ],
@@ -1061,6 +1132,25 @@ export const useAgentRunController = () => {
   return controller
 }
 
+const getAgentRuntimeConnectorId = (
+  runtime: AgentRuntime,
+  endpoints: {
+    codexEndpoint: LlmEndpoint | null
+    endpoint: LlmEndpoint | null
+    opencodeEndpoint: LlmEndpoint | null
+  },
+) => {
+  if (runtime === 'opencode') {
+    return endpoints.opencodeEndpoint?.id
+  }
+
+  if (runtime === 'codex') {
+    return endpoints.codexEndpoint?.id
+  }
+
+  return endpoints.endpoint?.id
+}
+
 const getIssueStatusFromRun = (run: AgentRun): IssueStatus => {
   if (run.prUrl) {
     return 'review'
@@ -1070,7 +1160,7 @@ const getIssueStatusFromRun = (run: AgentRun): IssueStatus => {
     return 'completed'
   }
 
-  if (run.status === 'failed') {
+  if (run.status === 'failed' || run.status === 'cancelled') {
     return 'failed'
   }
 

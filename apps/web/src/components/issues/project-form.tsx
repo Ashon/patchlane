@@ -1,5 +1,9 @@
 import type { FormEvent } from 'react'
-import type { LlmEndpoint, SandboxWorkspace } from '@patchlane/shared'
+import type {
+  AgentRuntime,
+  LlmEndpoint,
+  SandboxWorkspace,
+} from '@patchlane/shared'
 import { Loader2, Plus, Save } from 'lucide-react'
 import { Button } from '@patchlane/ui/button'
 import { Input } from '@patchlane/ui/input'
@@ -39,7 +43,9 @@ export const ProjectForm = ({
   const runtimeConnectors = endpoints.filter((endpoint) =>
     draft.defaultAgentRuntime === 'opencode'
       ? endpoint.runtimeType === 'opencode_cli'
-      : endpoint.runtimeType === 'openai_compatible',
+      : draft.defaultAgentRuntime === 'codex'
+        ? endpoint.runtimeType === 'codex_cli'
+        : endpoint.runtimeType === 'openai_compatible',
   )
 
   return (
@@ -150,8 +156,7 @@ export const ProjectForm = ({
           <Select
             onValueChange={(value) =>
               onChange({
-                defaultAgentRuntime:
-                  value === 'opencode' ? 'opencode' : 'patchlane',
+                defaultAgentRuntime: parseAgentRuntime(value),
                 defaultAgentRuntimeConnectorId: '',
               })
             }
@@ -163,6 +168,7 @@ export const ProjectForm = ({
             <SelectContent>
               <SelectItem value="patchlane">Patchlane</SelectItem>
               <SelectItem value="opencode">OpenCode</SelectItem>
+              <SelectItem value="codex">Codex</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -195,4 +201,12 @@ export const ProjectForm = ({
       </div>
     </form>
   )
+}
+
+const parseAgentRuntime = (value: string): AgentRuntime => {
+  if (value === 'opencode' || value === 'codex') {
+    return value
+  }
+
+  return 'patchlane'
 }

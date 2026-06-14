@@ -26,22 +26,31 @@ const optionalShortTextSchema = z.preprocess((value) => {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : undefined
 }, z.string().max(200).optional())
-const projectCodeSchema = z.preprocess((value) => {
-  if (typeof value !== 'string') {
-    return value
-  }
+const projectCodeSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string') {
+      return value
+    }
 
-  const normalized = value.trim().toUpperCase()
-  return normalized.length > 0 ? normalized : undefined
-}, z.string().regex(/^[A-Z][A-Z0-9]{1,7}$/))
-const optionalProjectCodeSchema = z.preprocess((value) => {
-  if (typeof value !== 'string') {
-    return value
-  }
+    const normalized = value.trim().toUpperCase()
+    return normalized.length > 0 ? normalized : undefined
+  },
+  z.string().regex(/^[A-Z][A-Z0-9]{1,7}$/),
+)
+const optionalProjectCodeSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string') {
+      return value
+    }
 
-  const normalized = value.trim().toUpperCase()
-  return normalized.length > 0 ? normalized : undefined
-}, z.string().regex(/^[A-Z][A-Z0-9]{1,7}$/).optional())
+    const normalized = value.trim().toUpperCase()
+    return normalized.length > 0 ? normalized : undefined
+  },
+  z
+    .string()
+    .regex(/^[A-Z][A-Z0-9]{1,7}$/)
+    .optional(),
+)
 
 export const agentProjectSchema = z.object({
   id: z.string().min(1),
@@ -100,6 +109,7 @@ export const issueSubtaskStatusSchema = z.enum([
   'skipped',
 ])
 export const issueSubtaskKindSchema = z.enum([
+  'research',
   'inspect',
   'edit',
   'verify',
@@ -296,9 +306,7 @@ export type UpdateAgentProjectInput = z.infer<typeof updateAgentProjectSchema>
 export type Issue = z.infer<typeof issueSchema>
 export type IssueStatus = z.infer<typeof issueStatusSchema>
 export type IssuePriority = z.infer<typeof issuePrioritySchema>
-export type IssueArtifactManifest = z.infer<
-  typeof issueArtifactManifestSchema
->
+export type IssueArtifactManifest = z.infer<typeof issueArtifactManifestSchema>
 export type IssueSubtask = z.infer<typeof issueSubtaskSchema>
 export type IssueSubtaskStatus = z.infer<typeof issueSubtaskStatusSchema>
 export type IssueSubtaskKind = z.infer<typeof issueSubtaskKindSchema>

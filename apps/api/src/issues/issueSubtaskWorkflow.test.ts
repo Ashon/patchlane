@@ -71,6 +71,7 @@ describe('Given issue task workflow', () => {
   })
 
   it('when mapping task kinds, then verification and publish runs keep distinct run kinds', () => {
+    expect(getIssueTaskRunKind('research')).toBe('research')
     expect(getIssueTaskRunKind('inspect')).toBe('coding')
     expect(getIssueTaskRunKind('edit')).toBe('coding')
     expect(getIssueTaskRunKind('verify')).toBe('verification')

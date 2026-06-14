@@ -7,6 +7,11 @@ import { env } from './config/env'
 import { AppDatabase } from './db/database'
 import { HttpError } from './http/errors'
 import { IssueStore } from './issues/issueStore'
+import {
+  createAccessLogMiddleware,
+  getRequestLogger,
+} from './logging/accessLog'
+import { logger } from './logging/logger'
 import { LlmEndpointStore } from './llm/endpointStore'
 import { createAgentRouter } from './routes/agent'
 import { createIssuesRouter } from './routes/issues'
@@ -47,6 +52,7 @@ export const createApiApp = (config: ApiEnvironment = env) => {
       credentials: true,
     }),
   )
+  app.use(createAccessLogMiddleware(logger))
   app.use(express.json({ limit: '1mb' }))
 
   app.get('/health', (_request, response) => {
@@ -92,11 +98,27 @@ export const createApiApp = (config: ApiEnvironment = env) => {
   app.use(
     (
       error: unknown,
-      _request: express.Request,
+      request: express.Request,
       response: express.Response,
       _next: express.NextFunction,
     ) => {
+      const requestLogger = getRequestLogger(response)
+
       if (error instanceof ZodError) {
+        requestLogger.warn(
+          {
+            component: 'http',
+            event: 'http.request.validation_failed',
+            method: request.method,
+            path: request.originalUrl,
+            issues: error.issues.map((issue) => ({
+              code: issue.code,
+              path: issue.path.join('.'),
+              message: issue.message,
+            })),
+          },
+          'Request validation failed',
+        )
         response.status(400).json({
           error: 'Validation failed',
           details: error.flatten(),
@@ -105,6 +127,17 @@ export const createApiApp = (config: ApiEnvironment = env) => {
       }
 
       if (error instanceof HttpError) {
+        requestLogger.warn(
+          {
+            component: 'http',
+            event: 'http.request.rejected',
+            method: request.method,
+            path: request.originalUrl,
+            statusCode: error.status,
+            details: error.details,
+          },
+          error.message,
+        )
         response.status(error.status).json({
           error: error.message,
           details: error.details,
@@ -112,7 +145,16 @@ export const createApiApp = (config: ApiEnvironment = env) => {
         return
       }
 
-      console.error(error)
+      requestLogger.error(
+        {
+          component: 'http',
+          event: 'http.request.failed',
+          err: error,
+          method: request.method,
+          path: request.originalUrl,
+        },
+        'Unhandled API request error',
+      )
       response.status(500).json({ error: 'Internal server error' })
     },
   )
@@ -134,7 +176,16 @@ export const startApiServer = (
   const api = createApiApp(config)
   const server = api.app.listen(config.port, config.host, () => {
     const displayHost = config.host === '0.0.0.0' ? 'localhost' : config.host
-    console.log(`API listening on http://${displayHost}:${config.port}`)
+    logger.info(
+      {
+        component: 'server',
+        event: 'api.server.started',
+        host: config.host,
+        port: config.port,
+        url: `http://${displayHost}:${config.port}`,
+      },
+      'API server started',
+    )
   })
 
   return {

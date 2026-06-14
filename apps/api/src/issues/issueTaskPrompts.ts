@@ -99,8 +99,9 @@ export const buildIssueTaskRunTaskPrompt = ({
     'Task execution rules:',
     '- Complete only this task, while preserving the existing issue branch/worktree changes.',
     '- Use earlier task summaries and the current workspace state as context. Do not restart the whole issue from scratch.',
-    '- Budget tool calls aggressively: after a handful of targeted reads or commands, either finish, make the focused edit, run the narrow verification, or ask for a precise blocker.',
+    getIssueTaskBudgetGuidance(task),
     getIssueTaskKindGuidance(task),
+    '- If this is a research task, finish with evidence-backed findings, a recommended implementation plan, a verification strategy, and an explicit no-file-changes note.',
     '- If this is an inspect task, finish with concise findings and explicitly say no file changes were needed when appropriate.',
     '- If this is an edit task, make the smallest correct change for this task and run focused verification when practical.',
     '- If this is a verify task, run the relevant checks, fix only small directly related failures, and summarize any remaining risk.',
@@ -130,6 +131,15 @@ export const buildIssueSubtaskRunTaskPrompt = ({
   })
 
 const getIssueTaskKindGuidance = (task: IssueTask) => {
+  if (task.kind === 'research') {
+    return [
+      '- Research task boundary: do not modify files, do not call write_file, do not commit, and do not continue into implementation.',
+      '- Build an evidence-backed map of the relevant files, data flow, prompt/contracts, likely failure modes, and open questions.',
+      '- Use targeted searches plus confirming file reads or safe read-only commands. Each tool call should test a concrete hypothesis or close a named knowledge gap.',
+      '- End with the recommended edit sequence, the narrowest useful verification commands, residual risks, and confirmation that no repository files were changed.',
+    ].join('\n')
+  }
+
   if (task.kind === 'inspect') {
     return [
       '- Inspect task boundary: do not modify files, do not call write_file, do not commit, and do not continue into implementation.',
@@ -163,4 +173,15 @@ const getIssueTaskKindGuidance = (task: IssueTask) => {
   return [
     '- Follow-up task boundary: address only the explicit follow-up target and finish once that target is resolved.',
   ].join('\n')
+}
+
+const getIssueTaskBudgetGuidance = (task: IssueTask) => {
+  if (task.kind === 'research') {
+    return [
+      '- Budget research deliberately: start with a compact repo map, then follow only the branches needed to answer the task.',
+      '- Do not stop at the first plausible answer. Cross-check important claims against source files, tests, schemas, or runtime prompts before finishing.',
+    ].join('\n')
+  }
+
+  return '- Budget tool calls aggressively: after a handful of targeted reads or commands, either finish, make the focused edit, run the narrow verification, or ask for a precise blocker.'
 }

@@ -6,6 +6,7 @@ import {
   createStreamingChatCompletion,
   testEndpointConnection,
 } from '../llm/openaiClient'
+import { testCodexRuntimeConnection } from '../agent/codexRuntime'
 import { testOpenCodeRuntimeConnection } from '../agent/opencodeRuntime'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
@@ -58,7 +59,9 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
       const result =
         endpoint.runtimeType === 'opencode_cli'
           ? await testOpenCodeRuntimeConnection(endpoint)
-          : await testEndpointConnection(endpoint)
+          : endpoint.runtimeType === 'codex_cli'
+            ? await testCodexRuntimeConnection(endpoint)
+            : await testEndpointConnection(endpoint)
       response.json({ result })
     }),
   )

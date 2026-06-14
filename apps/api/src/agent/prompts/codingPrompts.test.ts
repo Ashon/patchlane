@@ -48,6 +48,21 @@ describe('Given coding agent prompts', () => {
     expect(prompt).toContain('final summary issue comment')
   })
 
+  it('when building a research system prompt, then it prevents implementation drift', () => {
+    const prompt = buildCodingSystemPrompt({
+      runKind: 'research',
+      settings,
+      workspace,
+    })
+
+    expect(prompt).toContain('research-only run')
+    expect(prompt).toContain('Do not modify files')
+    expect(prompt).toContain('read-only inspection')
+    expect(prompt).toContain('Do not stop at the first plausible answer')
+    expect(prompt).toContain('confirm no repository files changed')
+    expect(prompt).toContain('final research summary issue comment')
+  })
+
   it('when building a durability retry prompt, then it preserves retry budget context', () => {
     const prompt = buildDurabilityRetryPrompt({
       attempt: 2,

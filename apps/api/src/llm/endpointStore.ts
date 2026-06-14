@@ -221,7 +221,9 @@ const toEndpoint = (row: LlmEndpointRow) => {
     baseUrl: row.base_url,
     defaultModel: row.default_model,
     apiKeyEnvVar: optionalString(row.api_key_env_var),
-    opencodeCommand: row.opencode_command ?? 'opencode',
+    opencodeCommand:
+      row.opencode_command ??
+      (row.runtime_type === 'codex_cli' ? 'codex' : 'opencode'),
     opencodeCommandArgs: parseJsonStringArray(row.opencode_command_args_json),
     opencodeDangerouslySkipPermissions: fromSqlBoolean(
       row.opencode_dangerously_skip_permissions,

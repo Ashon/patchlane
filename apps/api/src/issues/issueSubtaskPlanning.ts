@@ -25,7 +25,7 @@ export const buildIssueTaskPlanningPrompt = ({
           {
             description:
               'Concrete expected outcome, target area, and verification signal.',
-            kind: 'inspect | edit | verify | publish | followup',
+            kind: 'research | inspect | edit | verify | publish | followup',
             title: 'Short actionable issue task title',
           },
         ],
@@ -36,7 +36,9 @@ export const buildIssueTaskPlanningPrompt = ({
     '',
     'Planning rules:',
     '- Use 2 to 8 issue tasks for complex work. Use 1 task only for truly tiny work.',
-    '- Prefer inspect, edit, and verify as the minimum shape for non-trivial coding work.',
+    '- Prefer research or inspect, edit, and verify as the minimum shape for non-trivial coding work.',
+    '- Use research instead of inspect when the issue is ambiguous, cross-cutting, prompt-sensitive, or requires comparing multiple code paths before editing.',
+    '- A research task is read-only and should produce findings plus a proposed implementation and verification plan, not code changes.',
     '- Each task must have a concrete completion signal and should fit in one focused agent run.',
     '- Do not create vague tasks like "implement everything" or "finish remaining work".',
     '- Put verification in its own task when the change affects behavior, types, tests, or build output.',

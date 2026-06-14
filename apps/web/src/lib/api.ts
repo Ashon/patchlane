@@ -24,6 +24,7 @@ import type {
   SandboxWorkspace,
   CreateSandboxWorkspaceInput,
   StartIssueInput,
+  UpdateAgentRunRuntimeInput,
   UpdateAgentProjectInput,
   UpdateGitHubToolSettingsInput,
   UpdateLlmEndpointInput,
@@ -454,6 +455,17 @@ export const api = {
   },
   async continueAgentRun(id: string, input: ContinueAgentRunInput) {
     return request<{ run: AgentRun }>(`/api/agent/runs/${id}/continue`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+  async stopAgentRun(id: string) {
+    return request<{ run: AgentRun }>(`/api/agent/runs/${id}/stop`, {
+      method: 'POST',
+    })
+  },
+  async updateAgentRunRuntime(id: string, input: UpdateAgentRunRuntimeInput) {
+    return request<{ run: AgentRun }>(`/api/agent/runs/${id}/runtime`, {
       method: 'POST',
       body: JSON.stringify(input),
     })
