@@ -114,12 +114,14 @@ type AgentRunStreamEvent =
     }
   | {
       type: 'tool_start'
+      toolCallId?: string
       toolName: string
       toolInput?: string
       metadata?: AgentRunMessageMetadata
     }
   | {
       type: 'tool_result'
+      toolCallId?: string
       toolName: string
       content: string
       metadata?: AgentRunMessageMetadata
@@ -137,6 +139,18 @@ type AgentRunStreamEvent =
 type AgentRunStreamHandlers = {
   signal?: AbortSignal
   onEvent: (event: AgentRunStreamEvent) => void
+}
+
+export type AgentRunEvent = {
+  id: string
+  runId: string
+  source: string
+  eventType?: string
+  itemType?: string
+  itemId?: string
+  payload: unknown
+  createdAt: string
+  sequence: number
 }
 
 const readSseResponse = async <TEvent>(
@@ -431,6 +445,9 @@ export const api = {
   },
   async getAgentRun(id: string) {
     return request<{ run: AgentRun }>(`/api/agent/runs/${id}`)
+  },
+  async listAgentRunEvents(id: string) {
+    return request<{ events: AgentRunEvent[] }>(`/api/agent/runs/${id}/events`)
   },
   async createAgentRun(input: CreateAgentRunInput) {
     return request<{ run: AgentRun }>('/api/agent/runs', {

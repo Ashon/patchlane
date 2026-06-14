@@ -53,6 +53,7 @@ export type ChatConversationProps = {
   inputFooter: ReactNode
   inputLoading: boolean
   inputPlaceholder: string
+  inputTextareaDisabled?: boolean
   inputValue: string
   messages: ConversationMessage[]
   onInputChange: (value: string) => void
@@ -60,6 +61,7 @@ export type ChatConversationProps = {
   onRewindMessage?: (message: ConversationMessage) => void
   preserveEmptyMessages?: boolean
   showAssistantAvatar?: boolean
+  showInputLoadingIndicator?: boolean
   showInlineActivity?: boolean
   showMessageMeta?: boolean
   showStreamingPlaceholder?: boolean

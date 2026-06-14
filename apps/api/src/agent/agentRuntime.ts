@@ -95,12 +95,14 @@ export type AgentRuntimeStreamEvent =
     }
   | {
       type: 'tool_start'
+      toolCallId?: string
       toolName: string
       toolInput?: string
       metadata?: AgentRunMessageMetadata
     }
   | {
       type: 'tool_result'
+      toolCallId?: string
       toolName: string
       content: string
       metadata?: AgentRunMessageMetadata

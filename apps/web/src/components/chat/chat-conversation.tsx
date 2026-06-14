@@ -55,6 +55,7 @@ export const ChatConversation = ({
   inputFooter,
   inputLoading,
   inputPlaceholder,
+  inputTextareaDisabled = inputDisabled,
   inputValue,
   messages,
   onInputChange,
@@ -62,6 +63,7 @@ export const ChatConversation = ({
   onRewindMessage,
   preserveEmptyMessages = false,
   showAssistantAvatar = true,
+  showInputLoadingIndicator = true,
   showInlineActivity = true,
   showMessageMeta = false,
   showStreamingPlaceholder = true,
@@ -247,10 +249,13 @@ export const ChatConversation = ({
           onValueChange={onInputChange}
           value={inputValue}
         >
-          <PromptInputTextarea placeholder={inputPlaceholder} />
+          <PromptInputTextarea
+            disabled={inputTextareaDisabled}
+            placeholder={inputPlaceholder}
+          />
           <div className="flex min-h-8 items-center justify-between gap-2 px-2 pb-1">
             <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-              {inputLoading ? (
+              {showInputLoadingIndicator && inputLoading ? (
                 <Loader
                   className="text-primary"
                   size="md"

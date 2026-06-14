@@ -207,11 +207,13 @@ export const AgentRunControllerProvider = ({
     [runs, selectedAgentRunId],
   )
   const selectedRunStreaming =
-    Boolean(streamingAgentRunId) && selectedAgentRunId === streamingAgentRunId
+    selectedRun?.status === 'running' ||
+    (Boolean(streamingAgentRunId) && selectedAgentRunId === streamingAgentRunId)
   const hasActiveAgentTasks = useMemo(
     () => runs.some((run) => run.status === 'running' || run.status === 'idle'),
     [runs],
   )
+  const agentBusy = agentRunning || hasActiveAgentTasks
   const loading =
     endpointsQuery.isFetching ||
     sandboxWorkspacesQuery.isFetching ||
@@ -631,7 +633,7 @@ export const AgentRunControllerProvider = ({
                 const parsedToolInput = parseToolInputArguments(event.toolInput)
                 const nextToolMessageId = shouldReuseAssistantMessageId
                   ? assistantSegment!.id
-                  : `tool-${crypto.randomUUID()}`
+                  : (event.toolCallId ?? `tool-${crypto.randomUUID()}`)
                 pendingToolMessages.push({
                   id: nextToolMessageId,
                   toolInput: parsedToolInput,
@@ -663,7 +665,10 @@ export const AgentRunControllerProvider = ({
                 const now = new Date().toISOString()
                 const pendingTool = consumePendingToolMessage(event.toolName)
                 const resultMessage: AgentRun['messages'][number] = {
-                  id: pendingTool?.id ?? `tool-${crypto.randomUUID()}`,
+                  id:
+                    pendingTool?.id ??
+                    event.toolCallId ??
+                    `tool-${crypto.randomUUID()}`,
                   role: 'tool',
                   toolName: event.toolName,
                   toolInput: pendingTool?.toolInput,
@@ -1046,7 +1051,7 @@ export const AgentRunControllerProvider = ({
   const value = useMemo<AgentRunControllerValue>(
     () => ({
       agentReplyDraft,
-      agentRunning,
+      agentRunning: agentBusy,
       agentRuntimeConnector,
       agentRuntimeDraft,
       agentTaskDraft,
@@ -1082,7 +1087,7 @@ export const AgentRunControllerProvider = ({
     [
       agentReplyDraft,
       agentRunDeletingId,
-      agentRunning,
+      agentBusy,
       agentRuntimeConnector,
       agentRuntimeDraft,
       agentTaskDraft,

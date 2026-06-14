@@ -7,8 +7,11 @@ import {
   buildCodexCommandArgs,
   buildCodexPrompt,
   getCodexEventText,
+  getCodexRunEventInput,
   getCodexRuntimeSessionId,
   getCodexSandboxMode,
+  getCodexToolResultEvent,
+  getCodexToolStartEvent,
   parseCodexJsonLine,
 } from './codexRuntime'
 
@@ -54,6 +57,116 @@ describe('Given Codex runtime helpers', () => {
         data: { sessionId: 'nested-session' },
       }),
     ).toBe('nested-session')
+  })
+
+  it('extracts raw Codex JSONL event metadata for persistence', () => {
+    expect(
+      getCodexRunEventInput(
+        {
+          type: 'item.started',
+          item: {
+            id: 'item_1',
+            type: 'command_execution',
+            command: 'pnpm test',
+          },
+        },
+        '',
+      ),
+    ).toMatchObject({
+      source: 'codex_jsonl',
+      eventType: 'item.started',
+      itemType: 'command_execution',
+      itemId: 'item_1',
+      payload: {
+        type: 'item.started',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'pnpm test',
+        },
+      },
+    })
+  })
+
+  it('maps Codex command execution items to tool stream events', () => {
+    const start = getCodexToolStartEvent({
+      type: 'item.started',
+      item: {
+        id: 'item_1',
+        type: 'command_execution',
+        command: 'bash -lc pnpm test',
+        status: 'in_progress',
+      },
+    })
+    const activeItems = new Map([
+      [
+        'item_1',
+        {
+          input: start?.input,
+          startedAt: Date.now() - 10,
+          toolName: start?.toolName ?? 'run_command',
+        },
+      ],
+    ])
+    const result = getCodexToolResultEvent(
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc pnpm test',
+          output: 'PASS\n',
+          status: 'completed',
+        },
+      },
+      activeItems,
+    )
+
+    expect(start).toMatchObject({
+      id: 'item_1',
+      toolName: 'run_command',
+      input: {
+        command: 'bash -lc pnpm test',
+        status: 'in_progress',
+      },
+    })
+    expect(result).toMatchObject({
+      id: 'item_1',
+      toolName: 'run_command',
+      input: {
+        command: 'bash -lc pnpm test',
+        status: 'in_progress',
+      },
+      output: {
+        ok: true,
+        command: 'bash -lc pnpm test',
+        stdout: 'PASS\n',
+        stderr: '',
+        status: 'completed',
+      },
+    })
+    expect(result?.metadata?.durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('maps other Codex work item types to generic Codex tools', () => {
+    expect(
+      getCodexToolStartEvent({
+        type: 'item.started',
+        item: {
+          id: 'item_2',
+          type: 'web_search',
+          query: 'Patchlane logging',
+          status: 'in_progress',
+        },
+      }),
+    ).toMatchObject({
+      id: 'item_2',
+      toolName: 'codex_web_search',
+      input: {
+        query: 'Patchlane logging',
+        status: 'in_progress',
+      },
+    })
   })
 
   it('builds resume args when a Codex runtime session id exists', () => {

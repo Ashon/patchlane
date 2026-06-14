@@ -54,6 +54,43 @@ type AgentRunMessageRow = {
   sequence: number
 }
 
+type AgentRunEventRow = {
+  id: string
+  run_id: string
+  source: string
+  event_type: string | null
+  item_type: string | null
+  item_id: string | null
+  payload_json: string
+  created_at: string
+  sequence: number
+}
+
+type UpsertAgentRunMessageInput = Omit<AgentRunMessage, 'createdAt'> & {
+  createdAt?: string
+}
+
+export type AgentRunEvent = {
+  id: string
+  runId: string
+  source: string
+  eventType?: string
+  itemType?: string
+  itemId?: string
+  payload: unknown
+  createdAt: string
+  sequence: number
+}
+
+export type AppendAgentRunEventInput = {
+  source: string
+  eventType?: string
+  itemType?: string
+  itemId?: string
+  payload: unknown
+  createdAt?: string
+}
+
 export class AgentRunStore {
   constructor(
     private readonly database: AppDatabase,
@@ -78,6 +115,18 @@ export class AgentRunStore {
     }
 
     return run
+  }
+
+  async listEvents(id: string) {
+    await this.get(id)
+
+    const rows = this.database.sqlite
+      .prepare(
+        'SELECT * FROM agent_run_events WHERE run_id = ? ORDER BY sequence ASC',
+      )
+      .all(id) as unknown as AgentRunEventRow[]
+
+    return rows.map(toEvent)
   }
 
   async find(id: string) {
@@ -142,6 +191,75 @@ export class AgentRunStore {
       ],
       updatedAt: new Date().toISOString(),
     }))
+  }
+
+  async upsertMessage(id: string, message: UpsertAgentRunMessageInput) {
+    return this.update(id, (run) => {
+      const existingIndex = run.messages.findIndex(
+        (item) => item.id === message.id,
+      )
+      const existing =
+        existingIndex >= 0 ? run.messages[existingIndex] : undefined
+      const nextMessage = createMessageWithId(message, existing?.createdAt)
+
+      return {
+        ...run,
+        messages:
+          existingIndex >= 0
+            ? run.messages.map((item, index) =>
+                index === existingIndex ? nextMessage : item,
+              )
+            : [...run.messages, nextMessage],
+        updatedAt: new Date().toISOString(),
+      }
+    })
+  }
+
+  async appendEvent(id: string, input: AppendAgentRunEventInput) {
+    await this.get(id)
+
+    const event = this.database.transaction(() => {
+      const sequenceRow = this.database.sqlite
+        .prepare(
+          'SELECT COALESCE(MAX(sequence), -1) + 1 AS sequence FROM agent_run_events WHERE run_id = ?',
+        )
+        .get(id) as { sequence: number }
+      const event = {
+        id: randomUUID(),
+        runId: id,
+        source: input.source,
+        eventType: input.eventType,
+        itemType: input.itemType,
+        itemId: input.itemId,
+        payload: input.payload,
+        createdAt: input.createdAt || new Date().toISOString(),
+        sequence: sequenceRow.sequence,
+      }
+
+      this.database.sqlite
+        .prepare(
+          `
+          INSERT INTO agent_run_events (
+            id, run_id, source, event_type, item_type, item_id, payload_json, created_at, sequence
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        )
+        .run(
+          event.id,
+          event.runId,
+          event.source,
+          event.eventType ?? null,
+          event.itemType ?? null,
+          event.itemId ?? null,
+          JSON.stringify(event.payload ?? null),
+          event.createdAt,
+          event.sequence,
+        )
+
+      return event
+    })
+
+    return event
   }
 
   async setStatus(id: string, status: AgentRunStatus, error?: string) {
@@ -442,6 +560,20 @@ const toMessage = (row: AgentRunMessageRow) => {
   })
 }
 
+const toEvent = (row: AgentRunEventRow): AgentRunEvent => {
+  return {
+    id: row.id,
+    runId: row.run_id,
+    source: row.source,
+    eventType: optionalString(row.event_type),
+    itemType: optionalString(row.item_type),
+    itemId: optionalString(row.item_id),
+    payload: parseEventPayload(row.payload_json),
+    createdAt: row.created_at,
+    sequence: row.sequence,
+  }
+}
+
 const parseContext = (value: string | null) => {
   if (!value) {
     return undefined
@@ -451,6 +583,14 @@ const parseContext = (value: string | null) => {
     return agentRunContextSchema.parse(JSON.parse(value))
   } catch {
     return undefined
+  }
+}
+
+const parseEventPayload = (value: string) => {
+  try {
+    return JSON.parse(value) as unknown
+  } catch {
+    return { raw: value }
   }
 }
 
@@ -589,6 +729,17 @@ const createMessage = (
     ...message,
     id: randomUUID(),
     createdAt: message.createdAt || new Date().toISOString(),
+  })
+}
+
+const createMessageWithId = (
+  message: UpsertAgentRunMessageInput,
+  fallbackCreatedAt?: string,
+) => {
+  return agentRunMessageSchema.parse({
+    ...message,
+    createdAt:
+      message.createdAt || fallbackCreatedAt || new Date().toISOString(),
   })
 }
 

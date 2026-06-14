@@ -156,7 +156,7 @@ const AgentWorkDetailAction = ({
   const toolPart = isTool ? toToolPart(message) : undefined
   const error = toolPart?.state === 'output-error'
   const running = message.status === 'streaming'
-  const title = isTool ? (message.toolName ?? 'tool') : 'Reasoning'
+  const title = isTool ? getAgentWorkToolTitle(message.toolName) : 'Reasoning'
   const metricLabel = getMessageMetricLabel(message.metadata)
 
   return (
@@ -289,7 +289,7 @@ const getAgentWorkItemPreview = (
   }
 
   if (toolPart.state === 'input-streaming') {
-    return 'Running tool call'
+    return getRunningToolPreview(toolPart)
   }
 
   if (toolPart.errorText) {
@@ -306,6 +306,38 @@ const getAgentWorkItemPreview = (
   }
 
   return 'No payload recorded'
+}
+
+const getAgentWorkToolTitle = (toolName?: string) => {
+  switch (toolName) {
+    case 'run_command':
+      return 'Command'
+    case 'codex_file_change':
+      return 'File change'
+    case 'codex_mcp_tool_call':
+      return 'MCP tool'
+    case 'codex_plan_update':
+      return 'Plan update'
+    case 'codex_reasoning':
+      return 'Reasoning'
+    case 'codex_web_search':
+      return 'Web search'
+    default:
+      return toolName ?? 'Tool'
+  }
+}
+
+const getRunningToolPreview = (toolPart: ReturnType<typeof toToolPart>) => {
+  const command =
+    typeof toolPart.input?.command === 'string'
+      ? toolPart.input.command.trim()
+      : ''
+
+  if (toolPart.type === 'run_command' && command) {
+    return normalizeInlinePreview(`Running ${command}`)
+  }
+
+  return 'Running tool call'
 }
 
 const getAgentWorkGroupSummary = (

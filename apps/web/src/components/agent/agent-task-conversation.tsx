@@ -11,6 +11,7 @@ import {
 import { ChatConversation } from '@/components/chat/chat-conversation'
 import { Badge } from '@patchlane/ui/badge'
 import { Button } from '@patchlane/ui/button'
+import { Loader } from '@patchlane/ui/loader'
 import {
   Select,
   SelectContent,
@@ -72,6 +73,7 @@ export const AgentTaskConversation = ({
     <AgentRuntimeFooter
       disabled={isStreaming || run.status === 'running' || terminal}
       endpoints={endpoints}
+      loading={isStreaming}
       onChange={onRuntimeChange}
       run={run}
     />
@@ -152,6 +154,7 @@ export const AgentTaskConversation = ({
             ? 'Select an enabled endpoint before continuing'
             : `${getAgentRuntimeLabel(run.agentRuntime)} is not available`
       }
+      inputTextareaDisabled={!canUseBackend || terminal || isStreaming}
       inputValue={draft}
       messages={messages}
       onInputChange={onChange}
@@ -163,6 +166,7 @@ export const AgentTaskConversation = ({
       onRewindMessage={(message) => onRewind(message.id)}
       preserveEmptyMessages
       showAssistantAvatar={false}
+      showInputLoadingIndicator={false}
       showInlineActivity={false}
       showMessageMeta
       showStreamingPlaceholder
@@ -174,11 +178,13 @@ export const AgentTaskConversation = ({
 const AgentRuntimeFooter = ({
   disabled,
   endpoints,
+  loading,
   onChange,
   run,
 }: {
   disabled: boolean
   endpoints: LlmEndpoint[]
+  loading: boolean
   onChange: (runtime: AgentRuntime) => void
   run: AgentRun
 }) => {
@@ -197,6 +203,15 @@ const AgentRuntimeFooter = ({
       className="flex min-w-0 items-center gap-1.5"
       onClick={(event) => event.stopPropagation()}
     >
+      {loading ? (
+        <span
+          aria-label="LLM response generating"
+          className="flex h-6 shrink-0 items-center"
+          role="status"
+        >
+          <Loader className="text-primary" size="md" variant="pulse-dot" />
+        </span>
+      ) : null}
       <Select
         disabled={disabled}
         onValueChange={(value) => {
@@ -208,7 +223,7 @@ const AgentRuntimeFooter = ({
         }}
         value={run.agentRuntime}
       >
-        <SelectTrigger className="h-6 min-w-36 max-w-44 border-input bg-background px-2 text-xs shadow-xs">
+        <SelectTrigger className="h-6 min-w-28 max-w-40 border-0 bg-transparent px-1.5 text-xs shadow-none hover:bg-muted/70 focus:ring-0 data-[state=open]:bg-muted/70 disabled:cursor-default disabled:opacity-100">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

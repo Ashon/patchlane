@@ -112,6 +112,17 @@ export const createAgentRouter = ({
     }),
   )
 
+  router.get(
+    '/runs/:id/events',
+    asyncHandler(async (request, response) => {
+      response.json({
+        events: await runStore.listEvents(
+          getRouteParam(request.params.id, 'id'),
+        ),
+      })
+    }),
+  )
+
   router.delete(
     '/runs/:id',
     asyncHandler(async (request, response) => {

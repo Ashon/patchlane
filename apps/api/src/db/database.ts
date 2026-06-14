@@ -124,6 +124,22 @@ export class AppDatabase {
       CREATE INDEX IF NOT EXISTS idx_agent_run_messages_run_id_sequence
         ON agent_run_messages (run_id, sequence);
 
+      CREATE TABLE IF NOT EXISTS agent_run_events (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES agent_runs (id) ON DELETE CASCADE,
+        source TEXT NOT NULL,
+        event_type TEXT,
+        item_type TEXT,
+        item_id TEXT,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        UNIQUE (run_id, sequence)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_agent_run_events_run_id_sequence
+        ON agent_run_events (run_id, sequence);
+
       CREATE TABLE IF NOT EXISTS agent_projects (
         id TEXT PRIMARY KEY,
         code TEXT NOT NULL DEFAULT '',
@@ -315,6 +331,12 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_agent_runs_kind_created_at
         ON agent_runs (kind, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_agent_run_events_run_id_sequence
+        ON agent_run_events (run_id, sequence);
+
+      CREATE INDEX IF NOT EXISTS idx_agent_run_events_run_id_created_at
+        ON agent_run_events (run_id, created_at ASC);
 
       CREATE INDEX IF NOT EXISTS idx_issues_project_status
         ON issues (project_id, status);

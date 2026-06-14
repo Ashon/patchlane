@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import type {
   AgentRun,
+  AgentRunMessageMetadata,
   CreateIssueCommentInput,
   IssueComment,
   LlmEndpoint,
@@ -44,6 +45,21 @@ type CodexCommandResult = {
 }
 
 type RecordValue = Record<string, unknown>
+type CodexWorkMessage = Omit<AgentRun['messages'][number], 'createdAt'> & {
+  createdAt?: string
+}
+export type CodexWorkItemState = {
+  input?: Record<string, unknown>
+  startedAt: number
+  toolName: string
+}
+export type CodexToolEvent = {
+  id: string
+  input?: Record<string, unknown>
+  metadata?: AgentRunMessageMetadata
+  output?: Record<string, unknown>
+  toolName: string
+}
 
 const defaultTimeoutMs = 600_000
 const maxCapturedOutputChars = 120_000
@@ -268,6 +284,9 @@ export class CodexRuntime {
       let timedOut = false
       let cancelled = false
       let runtimeSessionId = run.runtimeSessionId
+      const activeWorkItems = new Map<string, CodexWorkItemState>()
+      let persistChain = Promise.resolve()
+      let persistError: unknown
       const timeoutMs = this.options.timeoutMs ?? defaultTimeoutMs
       const timeout = setTimeout(() => {
         timedOut = true
@@ -288,7 +307,49 @@ export class CodexRuntime {
         settled = true
         clearTimeout(timeout)
         signal?.removeEventListener('abort', abortChild)
-        resolve(result)
+        void persistChain.then(() => {
+          if (!persistError) {
+            resolve(result)
+            return
+          }
+
+          resolve({
+            ...result,
+            ok: false,
+            stderr: [result.stderr, getErrorMessage(persistError)]
+              .filter(Boolean)
+              .join('\n'),
+          })
+        })
+      }
+
+      const enqueuePersistence = (operation: () => Promise<void>) => {
+        persistChain = persistChain
+          .then(async () => {
+            if (persistError) {
+              return
+            }
+
+            await operation()
+          })
+          .catch((error: unknown) => {
+            persistError = persistError ?? error
+          })
+      }
+
+      const persistRunEvent = (event: unknown, rawLine: string) => {
+        enqueuePersistence(async () => {
+          await this.options.runStore.appendEvent(
+            run.id,
+            getCodexRunEventInput(event, rawLine),
+          )
+        })
+      }
+
+      const persistWorkMessage = (message: CodexWorkMessage) => {
+        enqueuePersistence(async () => {
+          await this.options.runStore.upsertMessage(run.id, message)
+        })
       }
 
       const consumeText = (text: string) => {
@@ -317,7 +378,58 @@ export class CodexRuntime {
         }
 
         const event = parseCodexJsonLine(trimmed)
+        persistRunEvent(event, trimmed)
         runtimeSessionId = runtimeSessionId ?? getCodexRuntimeSessionId(event)
+        const toolStart = getCodexToolStartEvent(event)
+
+        if (toolStart) {
+          const now = new Date().toISOString()
+          activeWorkItems.set(toolStart.id, {
+            input: toolStart.input,
+            startedAt: Date.now(),
+            toolName: toolStart.toolName,
+          })
+          persistWorkMessage({
+            id: toolStart.id,
+            role: 'tool',
+            toolName: toolStart.toolName,
+            toolInput: toolStart.input,
+            content: `Running ${toolStart.toolName}...`,
+            metadata: toolStart.metadata,
+            createdAt: now,
+          })
+          emit?.({
+            type: 'tool_start',
+            toolCallId: toolStart.id,
+            toolInput: toolStart.input
+              ? JSON.stringify(toolStart.input)
+              : undefined,
+            toolName: toolStart.toolName,
+            metadata: toolStart.metadata,
+          })
+        }
+
+        const toolResult = getCodexToolResultEvent(event, activeWorkItems)
+
+        if (toolResult) {
+          const content = JSON.stringify(toolResult.output ?? {})
+          persistWorkMessage({
+            id: toolResult.id,
+            role: 'tool',
+            toolName: toolResult.toolName,
+            toolInput: toolResult.input,
+            content,
+            metadata: toolResult.metadata,
+          })
+          emit?.({
+            type: 'tool_result',
+            toolCallId: toolResult.id,
+            toolName: toolResult.toolName,
+            content,
+            metadata: toolResult.metadata,
+          })
+        }
+
         const text = event ? getCodexEventText(event) : trimmed
 
         if (text) {
@@ -567,6 +679,88 @@ export const getCodexEventText = (event: unknown): string | undefined => {
   }
 
   return undefined
+}
+
+export const getCodexToolStartEvent = (
+  event: unknown,
+): CodexToolEvent | undefined => {
+  if (!isCodexItemEvent(event, 'item.started')) {
+    return undefined
+  }
+
+  const item = event.item
+  const id = getCodexItemId(item)
+  const toolName = getCodexToolName(item)
+
+  if (!id || !toolName) {
+    return undefined
+  }
+
+  const input = getCodexToolInput(item)
+
+  return {
+    id,
+    input,
+    toolName,
+    metadata: input
+      ? {
+          tool: {
+            input: getTextMetrics(JSON.stringify(input)),
+          },
+        }
+      : undefined,
+  }
+}
+
+export const getCodexRunEventInput = (event: unknown, rawLine: string) => {
+  const item = isRecord(event) && isRecord(event.item) ? event.item : undefined
+
+  return {
+    source: 'codex_jsonl',
+    eventType: isRecord(event) ? getString(event.type) : undefined,
+    itemType: item ? getString(item.type) : undefined,
+    itemId: item ? getCodexItemId(item) : undefined,
+    payload: event ?? { raw: rawLine },
+  }
+}
+
+export const getCodexToolResultEvent = (
+  event: unknown,
+  activeItems = new Map<string, CodexWorkItemState>(),
+): CodexToolEvent | undefined => {
+  if (!isCodexItemEvent(event, 'item.completed')) {
+    return undefined
+  }
+
+  const item = event.item
+  const id = getCodexItemId(item)
+  const toolName = getCodexToolName(item)
+
+  if (!id || !toolName) {
+    return undefined
+  }
+
+  const activeItem = activeItems.get(id)
+  const input = activeItem?.input ?? getCodexToolInput(item)
+  const output = getCodexToolOutput(item, input)
+  const durationMs = activeItem ? Date.now() - activeItem.startedAt : undefined
+  const metadata: AgentRunMessageMetadata = {
+    durationMs,
+    tool: {
+      input: input ? getTextMetrics(JSON.stringify(input)) : undefined,
+      output: getTextMetrics(JSON.stringify(output)),
+    },
+  }
+
+  activeItems.delete(id)
+
+  return {
+    id,
+    input,
+    metadata,
+    output: durationMs === undefined ? output : { ...output, durationMs },
+    toolName,
+  }
 }
 
 export const getCodexSandboxMode = (run: Pick<AgentRun, 'kind'>) => {
@@ -858,6 +1052,138 @@ const getCodexTextFromValue = (value: unknown): string | undefined => {
   return undefined
 }
 
+const isCodexItemEvent = (
+  event: unknown,
+  eventType: 'item.completed' | 'item.started',
+): event is { item: RecordValue; type: string } => {
+  return (
+    isRecord(event) &&
+    getString(event.type) === eventType &&
+    isRecord(event.item)
+  )
+}
+
+const getCodexItemId = (item: RecordValue) => {
+  return getString(item.id)
+}
+
+const getCodexItemType = (item: RecordValue) => {
+  return getString(item.type)
+}
+
+const getCodexToolName = (item: RecordValue): string | undefined => {
+  const itemType = getCodexItemType(item)
+
+  if (!itemType || isAssistantItemType(itemType)) {
+    return undefined
+  }
+
+  if (itemType === 'command_execution') {
+    return 'run_command'
+  }
+
+  if (itemType === 'file_change' || itemType === 'file_changes') {
+    return 'codex_file_change'
+  }
+
+  if (itemType === 'web_search') {
+    return 'codex_web_search'
+  }
+
+  if (itemType === 'plan_update') {
+    return 'codex_plan_update'
+  }
+
+  if (itemType === 'mcp_tool_call') {
+    return 'codex_mcp_tool_call'
+  }
+
+  if (itemType === 'reasoning') {
+    return 'codex_reasoning'
+  }
+
+  return `codex_${itemType}`
+}
+
+const getCodexToolInput = (
+  item: RecordValue,
+): Record<string, unknown> | undefined => {
+  if (getCodexItemType(item) === 'command_execution') {
+    return {
+      command: getString(item.command) ?? getString(item.cmd),
+      status: getString(item.status),
+    }
+  }
+
+  const input = pickDefined({
+    arguments: item.arguments,
+    command: item.command,
+    files: item.files,
+    name: item.name,
+    path: item.path,
+    query: item.query,
+    status: item.status,
+    title: item.title,
+    tool: item.tool,
+  })
+
+  return Object.keys(input).length ? input : undefined
+}
+
+const getCodexToolOutput = (
+  item: RecordValue,
+  input?: Record<string, unknown>,
+): Record<string, unknown> => {
+  const itemType = getCodexItemType(item)
+  const status = getString(item.status)
+
+  if (itemType === 'command_execution') {
+    const command =
+      getString(item.command) ??
+      getString(item.cmd) ??
+      getString(input?.command)
+    const stdout =
+      getString(item.output) ??
+      getString(item.stdout) ??
+      getString(item.text) ??
+      ''
+    const stderr = getString(item.stderr) ?? getString(item.error) ?? ''
+    const exitCode = getNumber(item.exit_code) ?? getNumber(item.exitCode)
+
+    return pickDefined({
+      ok: !isCodexFailedStatus(status),
+      command,
+      stdout,
+      stderr,
+      exitCode,
+      status,
+    })
+  }
+
+  return pickDefined({
+    ok: !isCodexFailedStatus(status),
+    type: itemType,
+    status,
+    output: item.output,
+    text: item.text,
+    message: item.message,
+    files: item.files,
+    changes: item.changes,
+    result: item.result,
+    error: item.error,
+  })
+}
+
+const isCodexFailedStatus = (status: string | undefined) => {
+  return status === 'failed' || status === 'error' || status === 'cancelled'
+}
+
+const pickDefined = (value: Record<string, unknown>) => {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+  )
+}
+
 const joinText = (values: Array<string | undefined>) => {
   const text = values.filter(Boolean).join('')
 
@@ -870,6 +1196,9 @@ const normalizeText = (value: string) => {
 
 const getString = (value: unknown) =>
   typeof value === 'string' ? normalizeText(value) : undefined
+
+const getNumber = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
 
 const isRecord = (value: unknown): value is RecordValue => {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
