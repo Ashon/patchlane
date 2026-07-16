@@ -255,10 +255,18 @@ export class SandboxWorkspaceStore {
   async remove(id: string) {
     const workspace = await this.get(id)
 
-    await rm(ensureWithinRoot(this.rootDir, workspace.path), {
-      force: true,
-      recursive: true,
-    })
+    // Only delete files that live inside our own sandbox root. A record whose
+    // path points outside the current root (e.g. created under a different
+    // project root) is stale metadata — drop the record without touching a
+    // directory we do not own, instead of failing the whole deletion.
+    const workspacePath = resolveWithinRoot(this.rootDir, workspace.path)
+
+    if (workspacePath) {
+      await rm(workspacePath, {
+        force: true,
+        recursive: true,
+      })
+    }
 
     const result = this.database.sqlite
       .prepare('DELETE FROM sandbox_workspaces WHERE id = ?')
@@ -356,12 +364,25 @@ export class SandboxWorkspaceStore {
   }
 }
 
-export const ensureWithinRoot = (rootDir: string, candidatePath: string) => {
+export const resolveWithinRoot = (
+  rootDir: string,
+  candidatePath: string,
+): string | null => {
   const resolvedRoot = path.resolve(rootDir)
   const resolvedPath = path.resolve(candidatePath)
   const relativePath = path.relative(resolvedRoot, resolvedPath)
 
   if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    return null
+  }
+
+  return resolvedPath
+}
+
+export const ensureWithinRoot = (rootDir: string, candidatePath: string) => {
+  const resolvedPath = resolveWithinRoot(rootDir, candidatePath)
+
+  if (resolvedPath === null) {
     throw new Error(`Path '${candidatePath}' is outside sandbox root`)
   }
 
