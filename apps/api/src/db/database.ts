@@ -160,6 +160,7 @@ export class AppDatabase {
         default_agent_runtime TEXT NOT NULL DEFAULT 'patchlane' CHECK (default_agent_runtime IN ('patchlane', 'opencode', 'codex')),
         default_agent_runtime_connector_id TEXT,
         branch_prefix TEXT NOT NULL,
+        autopilot INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -303,6 +304,11 @@ export class AppDatabase {
       'agent_projects',
       'default_agent_runtime_connector_id',
       'TEXT',
+    )
+    this.ensureColumn(
+      'agent_projects',
+      'autopilot',
+      'INTEGER NOT NULL DEFAULT 0',
     )
     this.ensureColumn(
       'sandbox_workspaces',

@@ -1,9 +1,17 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import type { Issue } from '@patchlane/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardList, ListChecks, Pencil } from 'lucide-react'
+import {
+  ArrowLeft,
+  ClipboardList,
+  ListChecks,
+  MoreVertical,
+  Pencil,
+  Trash2,
+} from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { DangerConfirmDialog } from '@/components/app/danger-confirm-dialog'
 import { Badge } from '@patchlane/ui/badge'
 import { Button } from '@patchlane/ui/button'
 import {
@@ -13,6 +21,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@patchlane/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@patchlane/ui/dropdown-menu'
 import { EmptyState, ProjectRepositoryBadge } from '@/components/issues/common'
 import { emptyIssueDraft } from '@/components/issues/constants'
 import { ProjectForm } from '@/components/issues/project-form'
@@ -29,6 +44,7 @@ import {
   getProjectLinkedRunIds,
   normalizeIssueDraft,
   normalizeProjectDraft,
+  removeProjectFromCache,
   toProjectDraft,
   upsertIssue,
   upsertProject,
@@ -86,6 +102,11 @@ export const ProjectDetailPage = () => {
   )
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
+  const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
+  const [deletingProject, setDeletingProject] = useState(false)
+  const [deleteProjectError, setDeleteProjectError] = useState<string | null>(
+    null,
+  )
   const endpointsQuery = useQuery({
     queryKey: queryKeys.endpoints,
     queryFn: api.listEndpoints,
@@ -271,6 +292,28 @@ export const ProjectDetailPage = () => {
     }
   }
 
+  const deleteProject = async () => {
+    if (!project) {
+      return
+    }
+
+    setDeletingProject(true)
+    setDeleteProjectError(null)
+
+    try {
+      await api.deleteProject(project.id)
+      removeProjectFromCache(queryClient, project.id)
+      const agentRunResponse = await api.listAgentRuns()
+      queryClient.setQueryData(queryKeys.agentRuns, agentRunResponse)
+      setDeleteProjectOpen(false)
+      navigate(buildRoute('/projects', { issue: null, project: null }))
+    } catch (actionError) {
+      setDeleteProjectError(getErrorMessage(actionError))
+    } finally {
+      setDeletingProject(false)
+    }
+  }
+
   const createIssue = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -432,6 +475,11 @@ export const ProjectDetailPage = () => {
               className="h-7 px-2 text-xs"
               project={project}
             />
+            {project.autopilot ? (
+              <Badge className="h-7 px-2 text-xs" variant="secondary">
+                Autopilot
+              </Badge>
+            ) : null}
             <Badge className="h-7 px-2 text-xs" variant="secondary">
               {projectIssues.length} issues
             </Badge>
@@ -443,15 +491,36 @@ export const ProjectDetailPage = () => {
                 {workspace.name}
               </Badge>
             ) : null}
-            <Button
-              className="bg-background"
-              onClick={() => setEditProjectOpen(true)}
-              size="icon-sm"
-              type="button"
-              variant="outline"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  aria-label="Project actions"
+                  className="bg-background"
+                  size="icon-sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <MoreVertical className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setEditProjectOpen(true)}>
+                  <Pencil />
+                  Edit project
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setDeleteProjectError(null)
+                    setDeleteProjectOpen(true)
+                  }}
+                  variant="destructive"
+                >
+                  <Trash2 />
+                  Delete project
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
         description={project.repositoryUrl || undefined}
@@ -490,6 +559,34 @@ export const ProjectDetailPage = () => {
             />
           </DialogContent>
         </Dialog>
+
+        <DangerConfirmDialog
+          confirmLabel="Delete project"
+          confirmPhrase={project.code}
+          description={
+            <>
+              This permanently deletes{' '}
+              <span className="font-semibold text-foreground">
+                {project.name}
+              </span>{' '}
+              along with its {projectIssues.length}{' '}
+              {projectIssues.length === 1 ? 'issue' : 'issues'} and{' '}
+              {projectTaskItems.length}{' '}
+              {projectTaskItems.length === 1 ? 'task' : 'tasks'}. This cannot be
+              undone.
+            </>
+          }
+          error={deleteProjectError}
+          loading={deletingProject}
+          onConfirm={() => void deleteProject()}
+          onOpenChange={(open) => {
+            if (!deletingProject) {
+              setDeleteProjectOpen(open)
+            }
+          }}
+          open={deleteProjectOpen}
+          title="Delete project"
+        />
 
         {selectedTab === 'issues' ? (
           <ProjectIssuesView

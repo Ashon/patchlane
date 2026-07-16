@@ -20,14 +20,10 @@ type ChatPanelProps = {
   endpoints: LlmEndpoint[]
   loading?: boolean
   onEndpointChange: (id: string) => void
+  orchestrator?: boolean
   systemPrompt?: string
   title?: string
   variant?: 'page' | 'sidebar'
-}
-
-type ChatMessage = ConversationMessage & {
-  role: 'user' | 'assistant'
-  reasoning: string
 }
 
 export const ChatPanel = ({
@@ -36,11 +32,12 @@ export const ChatPanel = ({
   endpoints,
   loading = false,
   onEndpointChange,
+  orchestrator = false,
   systemPrompt,
   title = 'Agent Chat',
   variant = 'page',
 }: ChatPanelProps) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ConversationMessage[]>([])
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -48,7 +45,9 @@ export const ChatPanel = ({
 
   const canChat = Boolean(endpoint?.enabled)
   const isSidebar = variant === 'sidebar'
-  const panelSuggestions = isSidebar ? supervisorChatSuggestions : chatSuggestions
+  const panelSuggestions = isSidebar
+    ? supervisorChatSuggestions
+    : chatSuggestions
 
   const apiMessages = useMemo<LlmChatMessage[]>(
     () =>
@@ -59,41 +58,179 @@ export const ChatPanel = ({
             (message.role === 'assistant' && message.status === 'done'),
         )
         .map((message) => ({
-          role: message.role,
+          role: message.role as 'user' | 'assistant',
           content: message.content,
         })),
     [messages],
   )
 
-  const sendMessage = async (value = input) => {
-    const prompt = value.trim()
+  const buildHistory = (prompt: string): LlmChatMessage[] => [
+    ...(systemPrompt
+      ? ([{ role: 'system', content: systemPrompt }] satisfies LlmChatMessage[])
+      : []),
+    ...apiMessages,
+    { role: 'user', content: prompt },
+  ]
 
-    if (!endpoint || !canChat || !prompt || isStreaming) {
+  const handleStreamFailure = (streamError: unknown, assistantId?: string) => {
+    if (isAbortError(streamError)) {
+      setMessages((current) =>
+        current.map((message) =>
+          message.status === 'streaming'
+            ? { ...message, status: 'stopped' }
+            : message,
+        ),
+      )
       return
     }
 
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: prompt,
-      reasoning: '',
-      status: 'done',
-    }
-    const assistantId = crypto.randomUUID()
-    const assistantMessage: ChatMessage = {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      reasoning: '',
-      status: 'streaming',
-    }
-    const controller = new AbortController()
+    const message = getErrorMessage(streamError)
+    setError(message)
+    setMessages((current) =>
+      current.map((item) =>
+        item.status === 'streaming' ||
+        (assistantId !== undefined && item.id === assistantId)
+          ? {
+              ...item,
+              status: 'error',
+              content:
+                item.role === 'assistant' && !item.content
+                  ? message
+                  : item.content,
+            }
+          : item,
+      ),
+    )
+  }
 
-    abortRef.current = controller
-    setInput('')
-    setError(null)
-    setIsStreaming(true)
-    setMessages((current) => [...current, userMessage, assistantMessage])
+  const sendSupervisorMessage = async (
+    history: LlmChatMessage[],
+    controller: AbortController,
+  ) => {
+    if (!endpoint) {
+      return
+    }
+
+    const assistantId = crypto.randomUUID()
+    let assistantCreated = false
+    let assistantContent = ''
+
+    try {
+      await api.streamSupervisorChat(
+        {
+          endpointId: endpoint.id,
+          messages: history,
+          model: endpoint.defaultModel,
+        },
+        {
+          signal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === 'tool_call') {
+              const toolMessage: ConversationMessage = {
+                id: event.id,
+                role: 'tool',
+                content: '',
+                status: 'streaming',
+                toolName: event.name,
+                toolCallId: event.id,
+                toolInput: parseToolArguments(event.arguments),
+              }
+              setMessages((current) => [...current, toolMessage])
+            } else if (event.type === 'tool_result') {
+              const parsedOutput = parseJson(event.result)
+              setMessages((current) =>
+                current.map((message) =>
+                  message.id === event.id
+                    ? {
+                        ...message,
+                        status: event.ok ? 'done' : 'error',
+                        content: event.result,
+                        toolOutput: parsedOutput,
+                        toolError: event.ok
+                          ? undefined
+                          : (extractErrorText(parsedOutput) ??
+                            'Tool call failed'),
+                      }
+                    : message,
+                ),
+              )
+            } else if (event.type === 'delta') {
+              assistantContent += event.content || ''
+
+              if (!assistantCreated) {
+                assistantCreated = true
+                setMessages((current) => [
+                  ...current,
+                  {
+                    id: assistantId,
+                    role: 'assistant',
+                    content: assistantContent,
+                    status: 'streaming',
+                  },
+                ])
+              } else {
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === assistantId
+                      ? { ...message, content: assistantContent }
+                      : message,
+                  ),
+                )
+              }
+            } else if (event.type === 'finish') {
+              setMessages((current) =>
+                current.map((message) =>
+                  message.id === assistantId
+                    ? {
+                        ...message,
+                        status: 'done',
+                        finishReason: event.finishReason,
+                      }
+                    : message,
+                ),
+              )
+            } else if (event.type === 'error') {
+              throw new Error(event.error)
+            }
+          },
+        },
+      )
+
+      if (!assistantCreated) {
+        setMessages((current) => [
+          ...current,
+          {
+            id: assistantId,
+            role: 'assistant',
+            content: 'Done.',
+            status: 'done',
+          },
+        ])
+      }
+    } catch (streamError) {
+      handleStreamFailure(streamError, assistantId)
+    }
+  }
+
+  const sendPlainMessage = async (
+    history: LlmChatMessage[],
+    controller: AbortController,
+  ) => {
+    if (!endpoint) {
+      return
+    }
+
+    const assistantId = crypto.randomUUID()
+    setMessages((current) => [
+      ...current,
+      {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        reasoning: '',
+        status: 'streaming',
+      },
+    ])
 
     try {
       let rawContent = ''
@@ -103,13 +240,7 @@ export const ChatPanel = ({
         {
           endpointId: endpoint.id,
           maxTokens: 2048,
-          messages: [
-            ...(systemPrompt
-              ? ([{ role: 'system', content: systemPrompt }] satisfies LlmChatMessage[])
-              : []),
-            ...apiMessages,
-            { role: 'user', content: prompt },
-          ],
+          messages: history,
           model: endpoint.defaultModel,
           temperature: 0.2,
         },
@@ -158,28 +289,37 @@ export const ChatPanel = ({
         ),
       )
     } catch (streamError) {
-      if (isAbortError(streamError)) {
-        setMessages((current) =>
-          current.map((message) =>
-            message.id === assistantId
-              ? { ...message, status: 'stopped' }
-              : message,
-          ),
-        )
+      handleStreamFailure(streamError, assistantId)
+    }
+  }
+
+  const sendMessage = async (value = input) => {
+    const prompt = value.trim()
+
+    if (!endpoint || !canChat || !prompt || isStreaming) {
+      return
+    }
+
+    const userMessage: ConversationMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: prompt,
+      status: 'done',
+    }
+    const controller = new AbortController()
+    const history = buildHistory(prompt)
+
+    abortRef.current = controller
+    setInput('')
+    setError(null)
+    setIsStreaming(true)
+    setMessages((current) => [...current, userMessage])
+
+    try {
+      if (orchestrator) {
+        await sendSupervisorMessage(history, controller)
       } else {
-        const message = getErrorMessage(streamError)
-        setError(message)
-        setMessages((current) =>
-          current.map((item) =>
-            item.id === assistantId
-              ? {
-                  ...item,
-                  content: message,
-                  status: 'error',
-                }
-              : item,
-          ),
-        )
+        await sendPlainMessage(history, controller)
       }
     } finally {
       abortRef.current = null
@@ -238,14 +378,14 @@ export const ChatPanel = ({
         isSidebar
           ? (contextLabel ?? 'Supervisor Chat')
           : endpoint
-          ? `${endpoint.baseUrl} · ${endpoint.defaultModel}`
-          : 'Select an enabled endpoint'
+            ? `${endpoint.baseUrl} · ${endpoint.defaultModel}`
+            : 'Select an enabled endpoint'
       }
       inputLoading={isStreaming}
       inputPlaceholder={
         canChat
           ? isSidebar
-            ? 'Ask the supervisor...'
+            ? 'Ask the supervisor to plan, create, or assign...'
             : 'Ask the selected model...'
           : 'Select an enabled endpoint first'
       }
@@ -259,6 +399,36 @@ export const ChatPanel = ({
       wideMessages={isSidebar}
     />
   )
+}
+
+const parseJson = (value: string): unknown => {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+const parseToolArguments = (
+  value: string,
+): Record<string, unknown> | undefined => {
+  const parsed = parseJson(value)
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : undefined
+}
+
+const extractErrorText = (value: unknown): string | undefined => {
+  if (
+    value &&
+    typeof value === 'object' &&
+    'error' in value &&
+    typeof (value as { error: unknown }).error === 'string'
+  ) {
+    return (value as { error: string }).error
+  }
+
+  return undefined
 }
 
 const isAbortError = (error: unknown) => {

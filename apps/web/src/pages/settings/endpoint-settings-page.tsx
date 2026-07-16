@@ -26,6 +26,7 @@ import {
   emptyEndpointDraft as emptyDraft,
   type EndpointDraft,
 } from '@/components/app/app-types'
+import { DangerConfirmDialog } from '@/components/app/danger-confirm-dialog'
 import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge, TestBadge } from '@/components/app/status-badges'
 import { Badge } from '@patchlane/ui/badge'
@@ -67,6 +68,9 @@ export const EndpointSettingsPage = () => {
     Record<string, LlmEndpointTestResult>
   >({})
   const [error, setError] = useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingEndpoint, setDeletingEndpoint] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const healthQuery = useQuery({
     queryKey: queryKeys.health,
@@ -133,23 +137,24 @@ export const EndpointSettingsPage = () => {
       return
     }
 
-    setSaving(true)
-    setError(null)
+    setDeletingEndpoint(true)
+    setDeleteError(null)
 
     try {
       await api.deleteEndpoint(selectedEndpoint.id)
       const response = await api.listEndpoints()
       queryClient.setQueryData(queryKeys.endpoints, response)
+      setDeleteDialogOpen(false)
 
       if (response.endpoints[0]) {
         selectEndpoint(response.endpoints[0])
       } else {
         startNewEndpoint()
       }
-    } catch (deleteError) {
-      setError(getErrorMessage(deleteError))
+    } catch (deleteFailure) {
+      setDeleteError(getErrorMessage(deleteFailure))
     } finally {
-      setSaving(false)
+      setDeletingEndpoint(false)
     }
   }
 
@@ -437,7 +442,10 @@ export const EndpointSettingsPage = () => {
                 <Button
                   className="mr-auto"
                   disabled={saving}
-                  onClick={() => void deleteEndpoint()}
+                  onClick={() => {
+                    setDeleteError(null)
+                    setDeleteDialogOpen(true)
+                  }}
                   size="sm"
                   type="button"
                   variant="destructive"
@@ -454,6 +462,31 @@ export const EndpointSettingsPage = () => {
           </form>
         </PageSection>
       </PageAside>
+
+      <DangerConfirmDialog
+        confirmLabel="Delete endpoint"
+        description={
+          selectedEndpoint ? (
+            <>
+              This removes the LLM endpoint{' '}
+              <span className="font-semibold text-foreground">
+                {selectedEndpoint.name}
+              </span>
+              . Projects or chats using it will fall back to another endpoint.
+            </>
+          ) : null
+        }
+        error={deleteError}
+        loading={deletingEndpoint}
+        onConfirm={() => void deleteEndpoint()}
+        onOpenChange={(open) => {
+          if (!deletingEndpoint) {
+            setDeleteDialogOpen(open)
+          }
+        }}
+        open={deleteDialogOpen}
+        title="Delete endpoint"
+      />
     </PageSplit>
   )
 }

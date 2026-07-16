@@ -45,6 +45,10 @@ const dataDir = path.resolve(
 export const env = {
   host: process.env.HOST?.trim() || '0.0.0.0',
   port: readInt('PORT', 8787),
+  // Loopback origin the server uses to call its own API (autopilot orchestration).
+  internalBaseUrl:
+    process.env.INTERNAL_API_BASE_URL?.trim() ||
+    `http://127.0.0.1:${readInt('PORT', 8787)}`,
   webOrigin: process.env.WEB_ORIGIN?.trim() || 'http://localhost:8788',
   databaseFile: path.resolve(
     process.cwd(),

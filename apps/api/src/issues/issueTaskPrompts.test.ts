@@ -20,6 +20,7 @@ describe('Given issue task prompts', () => {
 
   const issue: Issue = {
     analysis: 'The API prompt code should be easier to test.',
+    comments: [],
     createdAt: '2026-06-03T00:00:00.000Z',
     description: 'Refactor prompt construction out of the route.',
     events: [],
@@ -62,6 +63,8 @@ describe('Given issue task prompts', () => {
     expect(prompt).toContain('inspect git status/diff')
     expect(prompt).toContain('summary issue comment')
     expect(prompt).toContain('run relevant verification')
+    expect(prompt).toContain('Stay scoped to THIS issue')
+    expect(prompt).toContain('Other issues in this project')
   })
 
   it('when building an issue task run task, then it scopes execution to the current task and prior summaries', () => {
@@ -102,15 +105,70 @@ describe('Given issue task prompts', () => {
 
     expect(prompt).toContain('Current task: Persist issue tasks')
     expect(prompt).toContain('Task completion target:')
-    expect(prompt).toContain('Previous completed tasks:')
+    expect(prompt).toContain('Issue task plan (you own only the current task')
+    // The completed sibling task appears in the plan with its summary.
     expect(prompt).toContain('Found issue store')
+    // The current task is marked with ">".
+    expect(prompt).toContain('> #2 [current · edit] Persist issue tasks')
     expect(prompt).toContain('Complete only this task')
     expect(prompt).toContain('preserving the existing issue branch/worktree')
     expect(prompt).toContain('Do not restart the whole issue from scratch')
+    expect(prompt).toContain(
+      'do not do work explicitly assigned to a later task',
+    )
+    expect(prompt).toContain('record it with add_issue_comment (kind=decision)')
     expect(prompt).toContain('Budget tool calls aggressively')
     expect(prompt).toContain('Edit task boundary')
     expect(prompt).toContain('final task summary')
     expect(prompt).toContain('Call finish when this task is complete')
+  })
+
+  it('when related issues and prior updates exist, then they are surfaced as context', () => {
+    const task = {
+      createdAt: '2026-06-03T00:00:00.000Z',
+      description: 'Add persistence for issue tasks.',
+      id: 'subtask-1',
+      issueId: issue.id,
+      kind: 'edit' as const,
+      sequence: 0,
+      status: 'pending' as const,
+      title: 'Persist issue tasks',
+      updatedAt: '2026-06-03T00:00:00.000Z',
+    }
+    const relatedIssue: Issue = {
+      ...issue,
+      id: 'issue-2',
+      number: 2,
+      title: 'Add task metrics',
+      status: 'backlog',
+    }
+    const prompt = buildIssueTaskRunTaskPrompt({
+      branchName: 'agent/refactor-prompts',
+      issue: {
+        ...issue,
+        comments: [
+          {
+            author: 'agent',
+            body: 'Decided to keep the store API synchronous.',
+            createdAt: '2026-06-03T00:00:00.000Z',
+            id: 'comment-1',
+            issueId: issue.id,
+            kind: 'decision',
+          },
+        ],
+        subtasks: [task],
+      },
+      project,
+      relatedIssues: [issue, relatedIssue],
+      task,
+    })
+
+    expect(prompt).toContain('Other issues in this project')
+    expect(prompt).toContain('#2 Add task metrics [backlog]')
+    // The current issue must not list itself among "other" issues.
+    expect(prompt).not.toContain('#1 Refactor API prompts')
+    expect(prompt).toContain('Recent issue updates')
+    expect(prompt).toContain('[agent/decision] Decided to keep the store API')
   })
 
   it('when building an inspect issue task run task, then it forbids implementation drift', () => {

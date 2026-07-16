@@ -1,8 +1,17 @@
 import { type FormEvent, useMemo, useState } from 'react'
-import type { CreateAgentProjectInput } from '@patchlane/shared'
+import type { AgentProject, CreateAgentProjectInput } from '@patchlane/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Layers3, Loader2, Plus, RefreshCw } from 'lucide-react'
+import {
+  Layers3,
+  Loader2,
+  MoreVertical,
+  Plus,
+  RefreshCw,
+  SquareArrowOutUpRight,
+  Trash2,
+} from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { DangerConfirmDialog } from '@/components/app/danger-confirm-dialog'
 import { Badge } from '@patchlane/ui/badge'
 import { Button } from '@patchlane/ui/button'
 import {
@@ -13,6 +22,13 @@ import {
   DialogTitle,
 } from '@patchlane/ui/dialog'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@patchlane/ui/dropdown-menu'
+import {
   EmptyState,
   MetricBadge,
   ProjectRepositoryBadge,
@@ -22,6 +38,7 @@ import type { ProjectDraft } from '@/components/issues/types'
 import {
   getErrorMessage,
   normalizeProjectDraft,
+  removeProjectFromCache,
   toProjectDraft,
   upsertProject,
 } from '@/components/issues/utils'
@@ -84,7 +101,9 @@ export const ProjectsListPage = () => {
         (endpoint) =>
           endpoint.runtimeType === 'openai_compatible' && endpoint.enabled,
       ) ??
-      endpoints.find((endpoint) => endpoint.runtimeType === 'openai_compatible') ??
+      endpoints.find(
+        (endpoint) => endpoint.runtimeType === 'openai_compatible',
+      ) ??
       null,
     [endpoints],
   )
@@ -98,8 +117,18 @@ export const ProjectsListPage = () => {
   )
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [savingProject, setSavingProject] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<AgentProject | null>(null)
+  const [deletingProject, setDeletingProject] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const visibleError =
     localError ?? getQueryErrorMessage(projectsQuery.error, issuesQuery.error)
+  const deleteTargetIssues = deleteTarget
+    ? issues.filter((issue) => issue.projectId === deleteTarget.id)
+    : []
+  const deleteTargetTaskCount = deleteTargetIssues.reduce(
+    (total, issue) => total + issue.subtasks.length,
+    0,
+  )
 
   const buildRoute = (
     pathname: string,
@@ -152,6 +181,32 @@ export const ProjectsListPage = () => {
     setProjectDialogOpen(true)
   }
 
+  const requestDeleteProject = (project: AgentProject) => {
+    setDeleteError(null)
+    setDeleteTarget(project)
+  }
+
+  const confirmDeleteProject = async () => {
+    if (!deleteTarget) {
+      return
+    }
+
+    setDeletingProject(true)
+    setDeleteError(null)
+
+    try {
+      await api.deleteProject(deleteTarget.id)
+      removeProjectFromCache(queryClient, deleteTarget.id)
+      const agentRunResponse = await api.listAgentRuns()
+      queryClient.setQueryData(queryKeys.agentRuns, agentRunResponse)
+      setDeleteTarget(null)
+    } catch (deleteFailure) {
+      setDeleteError(getErrorMessage(deleteFailure))
+    } finally {
+      setDeletingProject(false)
+    }
+  }
+
   const createProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSavingProject(true)
@@ -181,29 +236,29 @@ export const ProjectsListPage = () => {
         <PageHeader
           actions={
             <div className="flex items-center gap-1">
-            <Button
-              disabled={loading}
-              onClick={() => void refreshProjects()}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              onClick={resetDraft}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <Plus />
-              New
-            </Button>
-          </div>
+              <Button
+                disabled={loading}
+                onClick={() => void refreshProjects()}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                onClick={resetDraft}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <Plus />
+                New
+              </Button>
+            </div>
           }
           description="Repository-scoped coding workspaces and issues"
           icon={<Layers3 className="h-4 w-4" />}
@@ -229,11 +284,14 @@ export const ProjectsListPage = () => {
 
                 return (
                   <PageListItem
-                    asChild
-                    className="text-left md:grid-cols-[minmax(0,1fr)_auto]"
+                    className="grid-cols-[minmax(0,1fr)_auto] items-center"
                     key={project.id}
                   >
-                    <button onClick={() => openProject(project.id)} type="button">
+                    <button
+                      className="grid min-w-0 gap-2 text-left md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+                      onClick={() => openProject(project.id)}
+                      type="button"
+                    >
                       <div className="min-w-0">
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <span className="truncate text-sm font-semibold">
@@ -244,6 +302,9 @@ export const ProjectsListPage = () => {
                             <Badge variant="outline">
                               {project.repositoryRef}
                             </Badge>
+                          ) : null}
+                          {project.autopilot ? (
+                            <Badge variant="secondary">Autopilot</Badge>
                           ) : null}
                         </div>
                         {project.description ? (
@@ -260,6 +321,34 @@ export const ProjectsListPage = () => {
                         <MetricBadge label="Active" value={activeCount} />
                       </div>
                     </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          aria-label={`Actions for ${project.name}`}
+                          size="icon-sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => openProject(project.id)}
+                        >
+                          <SquareArrowOutUpRight />
+                          Open
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onSelect={() => requestDeleteProject(project)}
+                          variant="destructive"
+                        >
+                          <Trash2 />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </PageListItem>
                 )
               })}
@@ -294,6 +383,36 @@ export const ProjectsListPage = () => {
           />
         </DialogContent>
       </Dialog>
+
+      <DangerConfirmDialog
+        confirmLabel="Delete project"
+        confirmPhrase={deleteTarget?.code}
+        description={
+          deleteTarget ? (
+            <>
+              This permanently deletes{' '}
+              <span className="font-semibold text-foreground">
+                {deleteTarget.name}
+              </span>{' '}
+              along with its {deleteTargetIssues.length}{' '}
+              {deleteTargetIssues.length === 1 ? 'issue' : 'issues'} and{' '}
+              {deleteTargetTaskCount}{' '}
+              {deleteTargetTaskCount === 1 ? 'task' : 'tasks'}. This cannot be
+              undone.
+            </>
+          ) : null
+        }
+        error={deleteError}
+        loading={deletingProject}
+        onConfirm={() => void confirmDeleteProject()}
+        onOpenChange={(open) => {
+          if (!open && !deletingProject) {
+            setDeleteTarget(null)
+          }
+        }}
+        open={Boolean(deleteTarget)}
+        title="Delete project"
+      />
     </Page>
   )
 }

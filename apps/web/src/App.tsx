@@ -94,8 +94,7 @@ const AppContent = () => {
     return (
       chatEndpoints.find(
         (endpoint) => endpoint.id === selectedChatEndpointId,
-      ) ??
-      defaultEndpoint
+      ) ?? defaultEndpoint
     )
   }, [chatEndpoints, defaultEndpoint, selectedChatEndpointId])
   const enabledCount = endpoints.filter((endpoint) => endpoint.enabled).length
@@ -144,9 +143,9 @@ const AppContent = () => {
     () =>
       [
         'You are the Supervisor Chat for Patchlane.',
-        'Help coordinate project issues, agent tasks, workspace setup, endpoints, and verification across the whole app.',
+        'You can orchestrate the workspace directly with tools: create and update projects, create/triage/update issues, plan issues, and start coding runs.',
         `Current app context: ${supervisorContextLabel}.`,
-        'If the user asks for an app action you cannot perform through this chat endpoint, explain the exact page or control they should use.',
+        'Prefer taking action with tools over describing manual UI steps. Confirm ids and results after acting. Deleting projects, issues, or runs is not available as a tool and must be done from the UI.',
       ].join('\n'),
     [supervisorContextLabel],
   )
@@ -240,6 +239,7 @@ const AppContent = () => {
             endpoints={chatEndpoints}
             loading={loading}
             onEndpointChange={(id) => void setSelectedChatEndpointId(id)}
+            orchestrator
             systemPrompt={supervisorChatSystemPrompt}
             title="Supervisor Chat"
             variant="sidebar"

@@ -5,7 +5,7 @@ export const chatSuggestions = [
 ]
 
 export const supervisorChatSuggestions = [
-  '현재 페이지에서 다음 액션을 정리해줘.',
-  '열려 있는 이슈와 태스크 흐름을 점검해줘.',
-  'Patchlane 운영 관점에서 리스크를 찾아줘.',
+  '새 프로젝트를 만들고 첫 이슈를 등록해줘.',
+  '열려 있는 이슈를 점검하고 다음 작업을 계획(plan)해줘.',
+  '준비된 이슈에 코딩 런을 시작해줘.',
 ]

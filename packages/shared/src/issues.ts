@@ -64,6 +64,7 @@ export const agentProjectSchema = z.object({
   defaultAgentRuntime: agentRuntimeSchema.default('patchlane'),
   defaultAgentRuntimeConnectorId: z.string().min(1).optional(),
   branchPrefix: z.string().trim().min(1).max(80).default('agent'),
+  autopilot: z.boolean().default(false),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
 })
@@ -79,6 +80,7 @@ export const createAgentProjectSchema = z.object({
   defaultAgentRuntime: agentRuntimeSchema.default('patchlane'),
   defaultAgentRuntimeConnectorId: z.string().min(1).optional(),
   branchPrefix: z.string().trim().min(1).max(80).default('agent'),
+  autopilot: z.boolean().default(false),
 })
 
 export const updateAgentProjectSchema = createAgentProjectSchema

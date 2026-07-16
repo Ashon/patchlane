@@ -12,6 +12,7 @@ export const emptyProjectDraft: ProjectDraft = {
   defaultAgentRuntime: 'patchlane',
   defaultAgentRuntimeConnectorId: '',
   branchPrefix: 'agent',
+  autopilot: false,
 }
 
 export const emptyIssueDraft: IssueDraft = {

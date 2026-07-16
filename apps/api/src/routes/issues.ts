@@ -16,6 +16,7 @@ import {
   updateIssueSubtaskSchema,
 } from '@patchlane/shared'
 import type { AgentRunStore } from '../agent/agentRunStore'
+import type { AutopilotDriver } from '../agent/autopilotDriver'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
 import { buildIssueArtifactManifest } from '../issues/issueArtifacts'
@@ -45,6 +46,7 @@ import type { SandboxWorkspaceStore } from '../sandbox/sandboxWorkspaceStore'
 import type { ToolSettingsStore } from '../tools/toolSettingsStore'
 
 type IssuesRouterOptions = {
+  autopilot: AutopilotDriver
   endpointStore: LlmEndpointStore
   issueStore: IssueStore
   runStore: AgentRunStore
@@ -54,6 +56,7 @@ type IssuesRouterOptions = {
 }
 
 export const createIssuesRouter = ({
+  autopilot,
   endpointStore,
   issueStore,
   runStore,
@@ -115,6 +118,9 @@ export const createIssuesRouter = ({
       const issue = await issueStore.createIssue(
         createIssueSchema.parse(request.body),
       )
+      // Autopilot projects begin planning + task execution immediately; the
+      // driver decides whether the project has opted in.
+      autopilot.handleIssueCreated(issue)
       response.status(201).json({ issue })
     }),
   )
@@ -493,6 +499,9 @@ export const createIssuesRouter = ({
         throw badRequest(message)
       }
 
+      const relatedIssues = (await issueStore.listIssues()).filter(
+        (item) => item.projectId === project.id,
+      )
       const run = await runStore.create({
         workspaceId: taskWorkspace.id,
         endpointId: runtimeConnectorId ?? endpointId,
@@ -506,6 +515,7 @@ export const createIssuesRouter = ({
           branchName,
           issue: runnableIssue,
           project,
+          relatedIssues,
         }),
       })
       await workspaceStore.linkAgentRun(taskWorkspace.id, run.id)
@@ -766,6 +776,9 @@ export const createIssuesRouter = ({
       validateAgentRuntimeConnector(selectedAgentRuntime, connector.runtimeType)
     }
 
+    const relatedIssues = (await issueStore.listIssues()).filter(
+      (item) => item.projectId === project.id,
+    )
     const run = await runStore.create({
       workspaceId: workspace.id,
       endpointId: selectedRuntimeConnectorId ?? selectedEndpointId,
@@ -781,6 +794,7 @@ export const createIssuesRouter = ({
         issue,
         project,
         task,
+        relatedIssues,
       }),
     })
     await workspaceStore.linkAgentRun(workspace.id, run.id)

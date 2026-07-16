@@ -24,6 +24,12 @@ import {
 import { Badge } from '@patchlane/ui/badge'
 import { Button } from '@patchlane/ui/button'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@patchlane/ui/dropdown-menu'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -31,6 +37,7 @@ import {
   SelectValue,
 } from '@patchlane/ui/select'
 import { Textarea } from '@patchlane/ui/textarea'
+import { DangerConfirmDialog } from '@/components/app/danger-confirm-dialog'
 import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
@@ -404,6 +411,7 @@ const AgentTaskContentPane = ({
               <TaskActionsMenu
                 deleting={runDeletingId === selectedRun.id}
                 onDelete={() => onDeleteAgentRun(selectedRun)}
+                run={selectedRun}
               />
             ) : null}
           </AgentTaskHeaderActions>
@@ -597,49 +605,58 @@ const AgentRunCard = ({
 const TaskActionsMenu = ({
   deleting,
   onDelete,
+  run,
 }: {
   deleting: boolean
   onDelete: () => void
+  run: AgentRun
 }) => {
-  const [open, setOpen] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   return (
-    <div className="relative shrink-0">
-      <Button
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="h-6 w-6 shadow-xs"
-        onClick={() => setOpen((value) => !value)}
-        size="icon-xs"
-        type="button"
-        variant="outline"
-      >
-        <MoreHorizontal />
-      </Button>
-      {open ? (
-        <div
-          className="absolute right-0 top-full z-50 mt-1 min-w-36 rounded-md border bg-popover p-1"
-          role="menu"
-        >
-          <button
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
-            disabled={deleting}
-            onClick={() => {
-              onDelete()
-              setOpen(false)
-            }}
-            role="menuitem"
+    <div className="shrink-0">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            aria-label="Task actions"
+            className="h-6 w-6 shadow-xs"
+            size="icon-xs"
             type="button"
+            variant="outline"
           >
-            {deleting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={() => setConfirmOpen(true)}
+            variant="destructive"
+          >
+            <Trash2 />
             Delete task
-          </button>
-        </div>
-      ) : null}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DangerConfirmDialog
+        confirmLabel="Delete task"
+        description={
+          <>
+            This permanently deletes the agent task{' '}
+            <span className="font-semibold text-foreground">{run.title}</span>{' '}
+            and its full run history. This cannot be undone.
+          </>
+        }
+        loading={deleting}
+        onConfirm={onDelete}
+        onOpenChange={(open) => {
+          if (!deleting) {
+            setConfirmOpen(open)
+          }
+        }}
+        open={confirmOpen}
+        title="Delete task"
+      />
     </div>
   )
 }

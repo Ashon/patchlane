@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Folder, Loader2, Plus, Trash2 } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
+import { DangerConfirmDialog } from '@/components/app/danger-confirm-dialog'
 import {
   emptySandboxWorkspaceDraft,
   type SandboxWorkspaceDraft,
@@ -46,6 +47,11 @@ export const WorkspaceManagementPage = () => {
   )
   const [workspaceCreating, setWorkspaceCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SandboxWorkspace | null>(
+    null,
+  )
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const sandboxSettingsQuery = useQuery({
     queryKey: queryKeys.sandboxSettings,
@@ -69,7 +75,10 @@ export const WorkspaceManagementPage = () => {
   )
   const visibleError =
     error ??
-    getQueryErrorMessage(sandboxSettingsQuery.error, sandboxWorkspacesQuery.error)
+    getQueryErrorMessage(
+      sandboxSettingsQuery.error,
+      sandboxWorkspacesQuery.error,
+    )
 
   const selectWorkspace = (workspace: SandboxWorkspace) => {
     void setSelectedWorkspaceId(workspace.id)
@@ -102,18 +111,28 @@ export const WorkspaceManagementPage = () => {
     }
   }
 
-  const deleteWorkspace = async (workspace: SandboxWorkspace) => {
-    setWorkspaceCreating(true)
-    setError(null)
+  const requestDeleteWorkspace = (workspace: SandboxWorkspace) => {
+    setDeleteError(null)
+    setDeleteTarget(workspace)
+  }
+
+  const confirmDeleteWorkspace = async () => {
+    if (!deleteTarget) {
+      return
+    }
+
+    setDeletingWorkspace(true)
+    setDeleteError(null)
 
     try {
-      await api.deleteSandboxWorkspace(workspace.id)
+      await api.deleteSandboxWorkspace(deleteTarget.id)
       const response = await api.listSandboxWorkspaces()
       queryClient.setQueryData(queryKeys.sandboxWorkspaces, response)
-    } catch (deleteError) {
-      setError(getErrorMessage(deleteError))
+      setDeleteTarget(null)
+    } catch (deleteFailure) {
+      setDeleteError(getErrorMessage(deleteFailure))
     } finally {
-      setWorkspaceCreating(false)
+      setDeletingWorkspace(false)
     }
   }
 
@@ -155,7 +174,7 @@ export const WorkspaceManagementPage = () => {
               {workspaces.map((workspace) => (
                 <SandboxWorkspaceRow
                   key={workspace.id}
-                  onDelete={() => void deleteWorkspace(workspace)}
+                  onDelete={() => requestDeleteWorkspace(workspace)}
                   onSelect={() => selectWorkspace(workspace)}
                   selected={selectedWorkspace?.id === workspace.id}
                   workspace={workspace}
@@ -269,6 +288,32 @@ export const WorkspaceManagementPage = () => {
           </div>
         </PageSection>
       </PageAside>
+
+      <DangerConfirmDialog
+        confirmLabel="Delete workspace"
+        description={
+          deleteTarget ? (
+            <>
+              This removes the sandbox workspace{' '}
+              <span className="font-semibold text-foreground">
+                {deleteTarget.name}
+              </span>{' '}
+              and its files on disk. Any project linked to it will lose its
+              cached clone. This cannot be undone.
+            </>
+          ) : null
+        }
+        error={deleteError}
+        loading={deletingWorkspace}
+        onConfirm={() => void confirmDeleteWorkspace()}
+        onOpenChange={(open) => {
+          if (!open && !deletingWorkspace) {
+            setDeleteTarget(null)
+          }
+        }}
+        open={Boolean(deleteTarget)}
+        title="Delete workspace"
+      />
     </PageSplit>
   )
 }

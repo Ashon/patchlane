@@ -15,6 +15,7 @@ import type { IssueDraft, ProjectDraft } from './types'
 export const normalizeProjectDraft = (
   draft: ProjectDraft,
 ): CreateAgentProjectInput | UpdateAgentProjectInput => ({
+  autopilot: draft.autopilot,
   branchPrefix: draft.branchPrefix.trim() || 'agent',
   code: draft.code.trim().toUpperCase() || undefined,
   defaultEndpointId: draft.defaultEndpointId || undefined,
@@ -35,6 +36,7 @@ export const toProjectDraft = (
   project
     ? {
         targetId: project.id,
+        autopilot: project.autopilot,
         branchPrefix: project.branchPrefix,
         code: project.code,
         defaultEndpointId: project.defaultEndpointId ?? '',
@@ -105,6 +107,30 @@ export const upsertProject = (
         project,
         ...(current?.projects ?? []).filter((item) => item.id !== project.id),
       ],
+    }),
+  )
+}
+
+export const removeProjectFromCache = (
+  queryClient: QueryClient,
+  projectId: string,
+) => {
+  queryClient.setQueryData<{ projects: AgentProject[] }>(
+    queryKeys.projects,
+    (current) => ({
+      projects: (current?.projects ?? []).filter(
+        (item) => item.id !== projectId,
+      ),
+    }),
+  )
+  // Deleting a project cascades to its issues on the server; mirror that in the
+  // issue cache so the UI does not keep showing orphaned issues.
+  queryClient.setQueryData<{ issues: Issue[] }>(
+    queryKeys.issues,
+    (current) => ({
+      issues: (current?.issues ?? []).filter(
+        (item) => item.projectId !== projectId,
+      ),
     }),
   )
 }

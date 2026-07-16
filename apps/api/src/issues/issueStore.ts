@@ -67,6 +67,7 @@ type AgentProjectRow = {
   default_agent_runtime: AgentRuntime | null
   default_agent_runtime_connector_id: string | null
   branch_prefix: string
+  autopilot: number | null
   created_at: string
   updated_at: string
 }
@@ -185,7 +186,7 @@ export class IssueStore {
           UPDATE agent_projects
           SET code = ?, name = ?, description = ?, repository_url = ?, repository_ref = ?, workspace_id = ?,
             default_endpoint_id = ?, default_agent_runtime = ?, default_agent_runtime_connector_id = ?,
-            branch_prefix = ?, updated_at = ?
+            branch_prefix = ?, autopilot = ?, updated_at = ?
           WHERE id = ?
         `,
         )
@@ -200,6 +201,7 @@ export class IssueStore {
           updated.defaultAgentRuntime,
           updated.defaultAgentRuntimeConnectorId ?? null,
           updated.branchPrefix,
+          updated.autopilot ? 1 : 0,
           updated.updatedAt,
           updated.id,
         )
@@ -209,13 +211,22 @@ export class IssueStore {
   }
 
   async removeProject(id: string) {
-    const result = this.database.sqlite
-      .prepare('DELETE FROM agent_projects WHERE id = ?')
-      .run(id)
+    // Throws notFound when the project is missing, preserving the 404 contract.
+    await this.getProject(id)
 
-    if (result.changes === 0) {
-      throw notFound(`Project '${id}' was not found`)
-    }
+    this.database.transaction(() => {
+      // issues.project_id references agent_projects without ON DELETE CASCADE,
+      // so the child issues must be removed first (with foreign_keys ON a raw
+      // project delete would otherwise fail for any project that has issues).
+      // issue_events, issue_comments, and issue_subtasks cascade from issues,
+      // and agent_project_workspaces cascades from agent_projects.
+      this.database.sqlite
+        .prepare('DELETE FROM issues WHERE project_id = ?')
+        .run(id)
+      this.database.sqlite
+        .prepare('DELETE FROM agent_projects WHERE id = ?')
+        .run(id)
+    })
   }
 
   async listIssues() {
@@ -818,8 +829,8 @@ export class IssueStore {
         INSERT INTO agent_projects (
           id, code, name, description, repository_url, repository_ref, workspace_id,
           default_endpoint_id, default_agent_runtime, default_agent_runtime_connector_id,
-          branch_prefix, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          branch_prefix, autopilot, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -834,6 +845,7 @@ export class IssueStore {
         project.defaultAgentRuntime,
         project.defaultAgentRuntimeConnectorId ?? null,
         project.branchPrefix,
+        project.autopilot ? 1 : 0,
         project.createdAt,
         project.updatedAt,
       )
@@ -854,6 +866,7 @@ export class IssueStore {
         row.default_agent_runtime_connector_id,
       ),
       branchPrefix: row.branch_prefix,
+      autopilot: Boolean(row.autopilot),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })

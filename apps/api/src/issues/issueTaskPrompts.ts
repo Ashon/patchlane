@@ -1,13 +1,94 @@
 import type { AgentProject, Issue, IssueTask } from '@patchlane/shared'
 
+const MAX_RELATED_ISSUES = 12
+const MAX_RECENT_UPDATES = 6
+const COMMENT_PREVIEW_CHARS = 220
+
+const truncate = (value: string, max: number) => {
+  const trimmed = value.trim().replace(/\s+/g, ' ')
+  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
+}
+
+const formatRelatedIssues = (
+  relatedIssues: Issue[],
+  currentIssueId: string,
+) => {
+  const others = relatedIssues
+    .filter((item) => item.id !== currentIssueId)
+    .slice(0, MAX_RELATED_ISSUES)
+
+  if (others.length === 0) {
+    return 'Other issues in this project: none.'
+  }
+
+  return [
+    'Other issues in this project (for context — do not work on them here):',
+    ...others.map((item) => `- #${item.number} ${item.title} [${item.status}]`),
+  ].join('\n')
+}
+
+const formatRecentUpdates = (issue: Issue) => {
+  const recent = (issue.comments ?? []).slice(-MAX_RECENT_UPDATES)
+
+  if (recent.length === 0) {
+    return 'Recent issue updates: none.'
+  }
+
+  return [
+    'Recent issue updates (prior decisions and blockers to respect):',
+    ...recent.map(
+      (comment) =>
+        `- [${comment.author}/${comment.kind}] ${truncate(comment.body, COMMENT_PREVIEW_CHARS)}`,
+    ),
+  ].join('\n')
+}
+
+const formatTaskPlan = (issue: Issue, currentTaskId: string) => {
+  if (issue.subtasks.length === 0) {
+    return 'Issue task plan: none.'
+  }
+
+  const ordered = [...issue.subtasks].sort((a, b) => a.sequence - b.sequence)
+  const positionById = new Map(
+    ordered.map((task, index) => [task.id, index + 1]),
+  )
+
+  const lines = ordered.map((task, index) => {
+    const isCurrent = task.id === currentTaskId
+    const marker = isCurrent ? '>' : ' '
+    const state = isCurrent
+      ? `current · ${task.kind}`
+      : `${task.status} · ${task.kind}`
+    const deps = (task.dependsOnSubtaskIds ?? [])
+      .map((id) => positionById.get(id))
+      .filter((position): position is number => typeof position === 'number')
+    const dependsOn = deps.length ? ` (depends on #${deps.join(', #')})` : ''
+    const summary =
+      !isCurrent &&
+      (task.status === 'completed' || task.status === 'skipped') &&
+      task.resultSummary
+        ? ` — ${truncate(task.resultSummary, COMMENT_PREVIEW_CHARS)}`
+        : ''
+
+    return `${marker} #${index + 1} [${state}] ${task.title}${dependsOn}${summary}`
+  })
+
+  return [
+    'Issue task plan (you own only the current task, marked ">"):',
+    ...lines,
+  ].join('\n')
+}
+
 export const buildIssueRunTaskPrompt = ({
   branchName,
   issue,
   project,
+  relatedIssues = [],
 }: {
   branchName: string
   issue: Issue
   project: AgentProject
+  relatedIssues?: Issue[]
 }) => {
   return [
     `Issue: ${issue.title}`,
@@ -29,6 +110,10 @@ export const buildIssueRunTaskPrompt = ({
       ? `Prior issue context:\n${issue.analysis}`
       : 'Prior issue context: none. You must assess the issue directly.',
     '',
+    formatRecentUpdates(issue),
+    '',
+    formatRelatedIssues(relatedIssues, issue.id),
+    '',
     'Agent-driven workflow:',
     '- Own this issue from triage through completion. Do not wait for separate requirement-analysis or planning tasks.',
     '- Inspect the workspace enough to classify scope as tiny, small, medium, large, or risky.',
@@ -41,6 +126,7 @@ export const buildIssueRunTaskPrompt = ({
     '- Avoid broad repo tours. After the initial targeted inspection, every tool call should support one of these: edit, verify, inspect diff/status, or resolve a specific error.',
     '- Treat failing tests, type errors, and build errors as tutoring signals. Summarize the first actionable cause to yourself, patch it, and re-run the narrowest relevant check.',
     '- If the requested behavior is ambiguous but a conservative implementation is obvious, implement that safe interpretation and mention the assumption in the final summary.',
+    '- Stay scoped to THIS issue. If you notice work that belongs to another issue listed above, record it with add_issue_comment (kind=decision) instead of changing it here.',
     '- Use add_issue_comment at meaningful progress points, decisions, blockers, and final issue summaries so the issue timeline stays useful without exposing raw logs.',
     '- Keep work isolated to this issue branch/worktree context.',
     '- Implement the requested change when actionable, run relevant verification, inspect git status/diff, add a summary issue comment, and call finish with the outcome.',
@@ -54,22 +140,14 @@ export const buildIssueTaskRunTaskPrompt = ({
   issue,
   project,
   task,
+  relatedIssues = [],
 }: {
   branchName: string
   issue: Issue
   project: AgentProject
   task: IssueTask
+  relatedIssues?: Issue[]
 }) => {
-  const previousTaskSummaries = issue.subtasks
-    .filter(
-      (item) =>
-        item.sequence < task.sequence &&
-        (item.status === 'completed' || item.status === 'skipped'),
-    )
-    .map(
-      (item) => `- ${item.title}: ${item.resultSummary || `${item.status}.`}`,
-    )
-
   return [
     `Issue: ${issue.title}`,
     `Current task: ${task.title}`,
@@ -92,13 +170,17 @@ export const buildIssueTaskRunTaskPrompt = ({
     'Task completion target:',
     task.description || task.title,
     '',
-    previousTaskSummaries.length
-      ? ['Previous completed tasks:', ...previousTaskSummaries].join('\n')
-      : 'Previous completed tasks: none.',
+    formatTaskPlan(issue, task.id),
+    '',
+    formatRecentUpdates(issue),
+    '',
+    formatRelatedIssues(relatedIssues, issue.id),
     '',
     'Task execution rules:',
     '- Complete only this task, while preserving the existing issue branch/worktree changes.',
-    '- Use earlier task summaries and the current workspace state as context. Do not restart the whole issue from scratch.',
+    '- Use the task plan, earlier task summaries, and the current workspace state as context. Do not restart the whole issue from scratch.',
+    '- Coordinate with siblings using the plan above: do not redo tasks already marked completed, and do not do work explicitly assigned to a later task. Keep your changes consistent with prior task summaries and decisions.',
+    '- If you discover work that belongs to another task or issue, record it with add_issue_comment (kind=decision) so the owning task/issue can pick it up. Do not silently expand this task to cover it.',
     getIssueTaskBudgetGuidance(task),
     getIssueTaskKindGuidance(task),
     '- If this is a research task, finish with evidence-backed findings, a recommended implementation plan, a verification strategy, and an explicit no-file-changes note.',
@@ -117,17 +199,20 @@ export const buildIssueSubtaskRunTaskPrompt = ({
   issue,
   project,
   subtask,
+  relatedIssues = [],
 }: {
   branchName: string
   issue: Issue
   project: AgentProject
   subtask: IssueTask
+  relatedIssues?: Issue[]
 }) =>
   buildIssueTaskRunTaskPrompt({
     branchName,
     issue,
     project,
     task: subtask,
+    relatedIssues,
   })
 
 const getIssueTaskKindGuidance = (task: IssueTask) => {

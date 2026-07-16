@@ -1,7 +1,4 @@
-import type {
-  AgentRuntime,
-  IssuePriority,
-} from '@patchlane/shared'
+import type { AgentRuntime, IssuePriority } from '@patchlane/shared'
 
 export type ProjectDraft = {
   targetId: string | null
@@ -15,6 +12,7 @@ export type ProjectDraft = {
   defaultAgentRuntime: AgentRuntime
   defaultAgentRuntimeConnectorId: string
   branchPrefix: string
+  autopilot: boolean
 }
 
 export type IssueDraft = {

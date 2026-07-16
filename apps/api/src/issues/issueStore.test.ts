@@ -330,4 +330,50 @@ describe('Given issue comments', () => {
     expect(updatedIssue?.subtasks[0]?.status).toBe('pending')
     expect(updatedIssue?.subtasks[0]?.agentRunId).toBeUndefined()
   })
+
+  it('when a project with issues is removed, then its issues, comments, and tasks are cascaded', async () => {
+    const project = await store.createProject({
+      branchPrefix: 'agent',
+      description: 'Use isolated task worktrees.',
+      name: 'Patchlane',
+    })
+    const issue = await store.createIssue({
+      description: 'Work that should be removed alongside its project.',
+      priority: 'medium',
+      projectId: project.id,
+      title: 'Removable issue',
+    })
+    await store.addIssueComment(issue.id, {
+      body: 'Progress note that must not outlive the project.',
+      kind: 'progress',
+    })
+    await store.replaceIssueTasks(issue.id, {
+      tasks: [{ kind: 'edit', title: 'Task that must be cascaded' }],
+    })
+
+    // foreign_keys is ON, so a project that still has issues can only be
+    // removed if removeProject cascades to the child issues first.
+    await store.removeProject(project.id)
+
+    await expect(store.getProject(project.id)).rejects.toThrow()
+    expect(await store.listIssues()).toEqual([])
+
+    const remainingComments = database.sqlite
+      .prepare(
+        'SELECT COUNT(*) AS count FROM issue_comments WHERE issue_id = ?',
+      )
+      .get(issue.id) as { count: number }
+    const remainingTasks = database.sqlite
+      .prepare(
+        'SELECT COUNT(*) AS count FROM issue_subtasks WHERE issue_id = ?',
+      )
+      .get(issue.id) as { count: number }
+
+    expect(remainingComments.count).toBe(0)
+    expect(remainingTasks.count).toBe(0)
+  })
+
+  it('when a missing project is removed, then it reports not found', async () => {
+    await expect(store.removeProject('does-not-exist')).rejects.toThrow()
+  })
 })

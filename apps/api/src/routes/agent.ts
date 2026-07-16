@@ -1,5 +1,6 @@
 import { Router, type Response } from 'express'
 import {
+  type AgentRun,
   appendAgentRunMessageSchema,
   continueAgentRunSchema,
   createAgentRunSchema,
@@ -11,6 +12,7 @@ import {
 } from '@patchlane/shared'
 import { AgentRuntime } from '../agent/agentRuntime'
 import type { AgentRunStore } from '../agent/agentRunStore'
+import type { AutopilotDriver } from '../agent/autopilotDriver'
 import { CodexRuntime } from '../agent/codexRuntime'
 import { OpenCodeRuntime } from '../agent/opencodeRuntime'
 import { agentRunCancellationMessage } from '../agent/runtimeCancellation'
@@ -27,6 +29,7 @@ import type { SandboxWorkspaceStore } from '../sandbox/sandboxWorkspaceStore'
 import type { ToolSettingsStore } from '../tools/toolSettingsStore'
 
 type AgentRouterOptions = {
+  autopilot: AutopilotDriver
   runStore: AgentRunStore
   endpointStore: LlmEndpointStore
   issueStore: IssueStore
@@ -39,6 +42,7 @@ type AgentRouterOptions = {
 }
 
 export const createAgentRouter = ({
+  autopilot,
   contextTokenBudget,
   durabilityMaxRetries,
   endpointStore,
@@ -50,6 +54,10 @@ export const createAgentRouter = ({
   workspaceStore,
 }: AgentRouterOptions) => {
   const agentLogger = createChildLogger({ component: 'agent' })
+  const handleRunFinished = async (run: AgentRun) => {
+    await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)
+    autopilot.handleRunFinished(run)
+  }
   const patchlaneRuntime = new AgentRuntime({
     runStore,
     settings: sandboxSettings,
@@ -66,9 +74,7 @@ export const createAgentRouter = ({
     },
     addIssueComment: (issueId, input) =>
       issueStore.addIssueComment(issueId, input),
-    onRunFinished: async (run) => {
-      await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)
-    },
+    onRunFinished: handleRunFinished,
   })
   const opencodeRuntime = new OpenCodeRuntime({
     runStore,
@@ -77,9 +83,7 @@ export const createAgentRouter = ({
     getWorkspace: (id) => workspaceStore.get(id),
     addIssueComment: (issueId, input) =>
       issueStore.addIssueComment(issueId, input),
-    onRunFinished: async (run) => {
-      await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)
-    },
+    onRunFinished: handleRunFinished,
   })
   const codexRuntime = new CodexRuntime({
     runStore,
@@ -88,9 +92,7 @@ export const createAgentRouter = ({
     getWorkspace: (id) => workspaceStore.get(id),
     addIssueComment: (issueId, input) =>
       issueStore.addIssueComment(issueId, input),
-    onRunFinished: async (run) => {
-      await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)
-    },
+    onRunFinished: handleRunFinished,
   })
   const activeRunControllers = new Map<string, AbortController>()
 

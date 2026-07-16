@@ -193,6 +193,23 @@ export const ProjectForm = ({
         </Field>
       </div>
 
+      <label className="flex items-start gap-2.5 rounded-md border p-3">
+        <input
+          checked={draft.autopilot}
+          className="mt-0.5 size-4"
+          onChange={(event) => onChange({ autopilot: event.target.checked })}
+          type="checkbox"
+        />
+        <span className="min-w-0">
+          <span className="text-sm font-medium">Autopilot</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Automatically plan new issues in this project and run their tasks
+            through to review. Pauses on agent questions, failures, or when
+            blocked. Requires a configured repository and endpoint.
+          </span>
+        </span>
+      </label>
+
       <div className="flex justify-end border-t pt-4">
         <Button className="min-w-28" disabled={saving} type="submit">
           {saving ? <Loader2 className="animate-spin" /> : <SubmitIcon />}

@@ -25,6 +25,7 @@ import type {
   SandboxWorkspace,
   CreateSandboxWorkspaceInput,
   StartIssueInput,
+  SupervisorChatRequest,
   UpdateAgentRunRuntimeInput,
   UpdateAgentProjectInput,
   UpdateGitHubToolSettingsInput,
@@ -98,6 +99,46 @@ type ChatStreamEvent =
 type ChatStreamHandlers = {
   signal?: AbortSignal
   onEvent: (event: ChatStreamEvent) => void
+}
+
+export type SupervisorStreamEvent =
+  | {
+      type: 'meta'
+      endpointId: string
+      model: string
+    }
+  | {
+      type: 'tool_call'
+      id: string
+      name: string
+      arguments: string
+    }
+  | {
+      type: 'tool_result'
+      id: string
+      name: string
+      ok: boolean
+      result: string
+    }
+  | {
+      type: 'delta'
+      content?: string
+    }
+  | {
+      type: 'finish'
+      finishReason: string
+    }
+  | {
+      type: 'done'
+    }
+  | {
+      type: 'error'
+      error: string
+    }
+
+type SupervisorStreamHandlers = {
+  signal?: AbortSignal
+  onEvent: (event: SupervisorStreamEvent) => void
 }
 
 type AgentRunStreamEvent =
@@ -552,5 +593,20 @@ export const api = {
   },
   async streamChat(input: LlmChatRequest, handlers: ChatStreamHandlers) {
     return streamRequest(input, handlers)
+  },
+  async streamSupervisorChat(
+    input: SupervisorChatRequest,
+    { onEvent, signal }: SupervisorStreamHandlers,
+  ) {
+    const response = await fetch(`${apiBaseUrl}/api/supervisor/chat/stream`, {
+      body: JSON.stringify(input),
+      headers: {
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+      signal,
+    })
+
+    await readSseResponse(response, onEvent)
   },
 }
