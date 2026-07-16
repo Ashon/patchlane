@@ -21,6 +21,7 @@ import {
   ResizablePanelGroup,
   useResizableDefaultLayout,
 } from '@patchlane/ui/resizable'
+import { sanitizeSupervisorLayout } from '@/components/layout/supervisor-layout'
 import { cn } from '@/lib/utils'
 
 type AppRoute = {
@@ -64,13 +65,20 @@ export const AppShell = ({
     id: 'patchlane-supervisor-layout',
     panelIds: supervisorPanelIds,
   })
+  // A stale persisted split can restore below the panels' px constraints and
+  // collapse the main content to a sliver; ignore it when it starves main.
+  const supervisorDefaultLayout = sanitizeSupervisorLayout(
+    supervisorLayout.defaultLayout,
+  )
   const [resizableLayoutEnabled, setResizableLayoutEnabled] = useState(() =>
     typeof window === 'undefined'
       ? true
       : window.matchMedia('(min-width: 1280px)').matches,
   )
   const desktopPlatform =
-    typeof window === 'undefined' ? undefined : window.patchlaneDesktop?.platform
+    typeof window === 'undefined'
+      ? undefined
+      : window.patchlaneDesktop?.platform
   const isDesktop = Boolean(desktopPlatform)
   const isDesktopMac = desktopPlatform === 'darwin'
   const showResizableSupervisor = supervisorChatOpen && resizableLayoutEnabled
@@ -195,7 +203,7 @@ export const AppShell = ({
           {showResizableSupervisor ? (
             <ResizablePanelGroup
               className="min-w-0 flex-1"
-              defaultLayout={supervisorLayout.defaultLayout}
+              defaultLayout={supervisorDefaultLayout}
               direction="horizontal"
               id="patchlane-supervisor-layout"
               onLayoutChanged={supervisorLayout.onLayoutChanged}
