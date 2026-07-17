@@ -1,7 +1,8 @@
 # Patchlane
 
-Patchlane is an issue-driven agentic coding workspace for planning,
-executing, reviewing, and turning scoped project issues into pull requests.
+Patchlane is an agentic coding workspace for creating isolated sandbox
+workspaces, cloning repositories, and running coding agents that produce
+pull requests.
 
 ## Stack
 
@@ -79,7 +80,6 @@ SANDBOX_ENV_ALLOWLIST=PATH,HOME,LANG,LC_ALL
 
 ## Product Specs
 
-- [Agent Task Management Policy](docs/agent-task-management-policy.md): project, issue, agent task, task workspace, verification, and PR flow policy.
 - [Agent Design System Guidelines](docs/agent-design-system-guidelines.md): compact app shell, page primitives, chat work blocks, overlays, typography, and visual QA guidance for agents changing UI.
 
 ## API

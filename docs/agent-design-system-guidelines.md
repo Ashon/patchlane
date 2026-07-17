@@ -27,7 +27,7 @@ calls, metadata, and user messages.
 Use these files as the first stop when implementing UI:
 
 - `apps/web/src/components/layout/app-shell.tsx`: global header, primary nav,
-  supervisor panel layout, and top-level resizable panels.
+  and main content layout.
 - `apps/web/src/components/layout/settings-shell.tsx`: settings sidebar and
   settings page structure.
 - `apps/web/src/components/layout/page-primitives.tsx`: page shells, headers,
@@ -159,7 +159,7 @@ Agent work rows:
   borders, shadows, margins, or transforms that make the handle drift while
   dragging.
 - Prefer one continuous divider line between panels. Avoid doubled or broken
-  1px lines around the supervisor chat panel.
+  1px lines around a panel divider.
 - Store default layouts with stable panel IDs when the layout should persist.
 
 ## Borders, Overlays, And 1px Seams
