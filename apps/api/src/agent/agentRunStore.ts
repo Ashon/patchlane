@@ -572,6 +572,10 @@ export class AgentRunStore {
   }
 
   private ensureSeeded() {
+    if (!this.database.createdFresh) {
+      return
+    }
+
     const countRow = this.database.sqlite
       .prepare('SELECT COUNT(*) AS count FROM agent_runs')
       .get() as { count: number }

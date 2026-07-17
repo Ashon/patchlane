@@ -139,6 +139,10 @@ export class SandboxWorkspaceStore {
   }
 
   private ensureSeeded() {
+    if (!this.database.createdFresh) {
+      return
+    }
+
     const countRow = this.database.sqlite
       .prepare('SELECT COUNT(*) AS count FROM sandbox_workspaces')
       .get() as { count: number }

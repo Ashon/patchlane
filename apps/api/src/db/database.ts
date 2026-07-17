@@ -1,13 +1,19 @@
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 export class AppDatabase {
   readonly sqlite: DatabaseSync
+  // True when the SQLite file did not exist before this process opened it.
+  // Legacy JSON import (the file->SQLite migration) must run only on a
+  // brand-new database — never when a user has emptied a table — otherwise
+  // deleted records would be resurrected from the stale JSON on the next start.
+  readonly createdFresh: boolean
 
   constructor(filePath: string) {
     mkdirSync(path.dirname(filePath), { recursive: true })
 
+    this.createdFresh = !existsSync(filePath)
     this.sqlite = new DatabaseSync(filePath)
     this.sqlite.exec('PRAGMA foreign_keys = ON')
     this.sqlite.exec('PRAGMA journal_mode = WAL')

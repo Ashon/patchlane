@@ -150,6 +150,10 @@ export class LlmEndpointStore {
   }
 
   private ensureSeeded() {
+    if (!this.database.createdFresh) {
+      return
+    }
+
     const countRow = this.database.sqlite
       .prepare('SELECT COUNT(*) AS count FROM llm_endpoints')
       .get() as { count: number }

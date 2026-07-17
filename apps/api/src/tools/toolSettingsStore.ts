@@ -141,6 +141,10 @@ export class ToolSettingsStore {
   }
 
   private ensureSeeded() {
+    if (!this.database.createdFresh) {
+      return
+    }
+
     const row = this.database.sqlite
       .prepare("SELECT id FROM github_tool_settings WHERE id = 'github'")
       .get()
