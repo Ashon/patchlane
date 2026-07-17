@@ -151,7 +151,7 @@ export const ChatConversation = ({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+    <section className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
       {header}
 
       {error ? (
