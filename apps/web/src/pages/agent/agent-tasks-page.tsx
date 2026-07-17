@@ -1,8 +1,6 @@
 import type {
-  AgentProject,
   AgentRun,
   AgentRuntime,
-  Issue,
   LlmEndpoint,
   SandboxWorkspace,
 } from '@patchlane/shared'
@@ -41,17 +39,12 @@ import { DangerConfirmDialog } from '@/components/app/danger-confirm-dialog'
 import { EmptyState, Field } from '@/components/app/panel-primitives'
 import { StateBadge } from '@/components/app/status-badges'
 import { AgentTaskConversation } from '@/components/agent/agent-task-conversation'
-import {
-  AgentRunStatusBadge,
-  IssueReferenceBadge,
-  IssueTaskStatusBadge,
-} from '@/components/issues/common'
+import { AgentRunStatusBadge } from '@/components/issues/common'
 import {
   buildTaskWorkItems,
   type TaskWorkItem,
 } from '@/components/issues/task-work-items'
 import { TaskRunMetricBadge } from '@/components/issues/task-list-meta'
-import { formatIssueReference } from '@/components/issues/utils'
 import {
   ErrorBanner,
   PageHeader,
@@ -83,7 +76,6 @@ export const AgentTasksPage = () => {
     endpoint,
     endpoints,
     error,
-    issues,
     onAgentReplyChange,
     onAgentRunRuntimeChange,
     onAgentRuntimeChange,
@@ -96,25 +88,13 @@ export const AgentTasksPage = () => {
     onSendAgentMessage,
     onStartNewAgentRun,
     onStopAgentRun,
-    projects,
     runDeletingId,
     runs,
     selectedRun,
     selectedRunStreaming,
     selectedWorkspace,
   } = useAgentRunController()
-  const issueById = useMemo(
-    () => new Map(issues.map((issue) => [issue.id, issue])),
-    [issues],
-  )
-  const projectById = useMemo(
-    () => new Map(projects.map((project) => [project.id, project])),
-    [projects],
-  )
-  const taskItems = useMemo(
-    () => buildTaskWorkItems({ issues, runs }),
-    [issues, runs],
-  )
+  const taskItems = useMemo(() => buildTaskWorkItems({ runs }), [runs])
   const agentTaskLayout = useResizableDefaultLayout({
     id: 'patchlane-agent-tasks-layout',
     panelIds: agentTaskPanelIds,
@@ -139,10 +119,8 @@ export const AgentTasksPage = () => {
   const taskListPane = (
     <AgentTaskListPane
       agentRunning={agentRunning}
-      issueById={issueById}
       onSelectAgentRun={onSelectAgentRun}
       onStartNewAgentRun={onStartNewAgentRun}
-      projectById={projectById}
       items={taskItems}
       selectedRun={selectedRun}
       variant={resizableLayoutEnabled ? 'resizable' : 'stacked'}
@@ -158,8 +136,6 @@ export const AgentTasksPage = () => {
       endpoint={endpoint}
       endpoints={endpoints}
       error={error}
-      issueById={issueById}
-      projectById={projectById}
       onAgentReplyChange={onAgentReplyChange}
       onAgentRunRuntimeChange={onAgentRunRuntimeChange}
       onAgentRuntimeChange={onAgentRuntimeChange}
@@ -221,19 +197,15 @@ export const AgentTasksPage = () => {
 const AgentTaskListPane = ({
   agentRunning,
   items,
-  issueById,
   onSelectAgentRun,
   onStartNewAgentRun,
-  projectById,
   selectedRun,
   variant,
 }: {
   agentRunning: boolean
   items: TaskWorkItem[]
-  issueById: Map<string, Issue>
   onSelectAgentRun: (run: AgentRun) => void
   onStartNewAgentRun: () => void
-  projectById: Map<string, AgentProject>
   selectedRun: AgentRun | null
   variant: 'resizable' | 'stacked'
 }) => {
@@ -265,40 +237,14 @@ const AgentTaskListPane = ({
       <PageScroll className="min-h-[220px] min-w-0">
         {items.length ? (
           <PageList>
-            {items.map((item) => {
-              if (item.type === 'issueTask') {
-                const run = item.run
-
-                return (
-                  <AgentIssueTaskCard
-                    item={item}
-                    key={item.id}
-                    onSelect={run ? () => onSelectAgentRun(run) : undefined}
-                    project={projectById.get(item.issue.projectId)}
-                    selected={run ? selectedRun?.id === run.id : false}
-                  />
-                )
-              }
-
-              return (
-                <AgentRunCard
-                  key={item.id}
-                  onSelect={() => onSelectAgentRun(item.run)}
-                  issue={
-                    item.run.issueId
-                      ? issueById.get(item.run.issueId)
-                      : undefined
-                  }
-                  project={
-                    item.run.projectId
-                      ? projectById.get(item.run.projectId)
-                      : undefined
-                  }
-                  run={item.run}
-                  selected={selectedRun?.id === item.run.id}
-                />
-              )
-            })}
+            {items.map((item) => (
+              <AgentRunCard
+                key={item.id}
+                onSelect={() => onSelectAgentRun(item.run)}
+                run={item.run}
+                selected={selectedRun?.id === item.run.id}
+              />
+            ))}
           </PageList>
         ) : (
           <div className="p-2">
@@ -319,8 +265,6 @@ const AgentTaskContentPane = ({
   endpoint,
   endpoints,
   error,
-  issueById,
-  projectById,
   onAgentReplyChange,
   onAgentRunRuntimeChange,
   onAgentRuntimeChange,
@@ -344,8 +288,6 @@ const AgentTaskContentPane = ({
   endpoint: LlmEndpoint | null
   endpoints: LlmEndpoint[]
   error: string | null
-  issueById: Map<string, Issue>
-  projectById: Map<string, AgentProject>
   onAgentReplyChange: (value: string) => void
   onAgentRunRuntimeChange: (run: AgentRun, runtime: AgentRuntime) => void
   onAgentRuntimeChange: (value: AgentRuntime) => void
@@ -361,14 +303,6 @@ const AgentTaskContentPane = ({
   selectedRunStreaming: boolean
   selectedWorkspace: SandboxWorkspace | null
 }) => {
-  const selectedIssue = selectedRun?.issueId
-    ? issueById.get(selectedRun.issueId)
-    : undefined
-  const selectedProject = selectedIssue
-    ? projectById.get(selectedIssue.projectId)
-    : selectedRun?.projectId
-      ? projectById.get(selectedRun.projectId)
-      : undefined
   const selectedRunStoppable = selectedRun
     ? isStoppableAgentRun(selectedRun)
     : false
@@ -419,15 +353,9 @@ const AgentTaskContentPane = ({
         description={getAgentTaskHeaderDescription(
           selectedRun,
           selectedWorkspace,
-          selectedIssue,
-          selectedProject,
         )}
         icon={<Bot className="h-4 w-4" />}
-        title={
-          selectedRun
-            ? getAgentTaskHeaderTitle(selectedRun, selectedIssue)
-            : 'Agent task'
-        }
+        title={selectedRun ? selectedRun.title : 'Agent task'}
       />
       <div className="min-h-0 flex-1">
         {selectedRun ? (
@@ -524,55 +452,12 @@ const AgentTaskHeaderActions = ({ children }: { children: ReactNode }) => {
   )
 }
 
-const AgentIssueTaskCard = ({
-  item,
-  onSelect,
-  project,
-  selected,
-}: {
-  item: Extract<TaskWorkItem, { type: 'issueTask' }>
-  onSelect?: () => void
-  project?: AgentProject
-  selected: boolean
-}) => {
-  const mainContent = (
-    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left">
-      <IssueReferenceBadge issue={item.issue} project={project} />
-      <h3 className="min-w-0 truncate text-sm">{item.task.title}</h3>
-      <IssueTaskStatusBadge status={item.task.status} />
-    </div>
-  )
-  if (!item.run || !onSelect) {
-    return (
-      <PageListItem interactive={false} selected={selected}>
-        {mainContent}
-      </PageListItem>
-    )
-  }
-
-  return (
-    <PageListItem selected={selected}>
-      <button
-        className="min-w-0 overflow-hidden text-left"
-        onClick={onSelect}
-        type="button"
-      >
-        {mainContent}
-      </button>
-    </PageListItem>
-  )
-}
-
 const AgentRunCard = ({
-  issue,
   onSelect,
-  project,
   run,
   selected,
 }: {
-  issue?: Issue
   onSelect: () => void
-  project?: AgentProject
   run: AgentRun
   selected: boolean
 }) => {
@@ -583,17 +468,7 @@ const AgentRunCard = ({
         onClick={onSelect}
         type="button"
       >
-        <div
-          className={cn(
-            'grid min-w-0 items-center gap-2',
-            issue
-              ? 'grid-cols-[auto_minmax(0,1fr)_auto]'
-              : 'grid-cols-[minmax(0,1fr)_auto]',
-          )}
-        >
-          {issue ? (
-            <IssueReferenceBadge issue={issue} project={project} />
-          ) : null}
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
           <h3 className="min-w-0 truncate text-sm">{run.title}</h3>
           <AgentRunStatusBadge status={run.status} />
         </div>
@@ -664,31 +539,14 @@ const TaskActionsMenu = ({
 const getAgentTaskHeaderDescription = (
   run: AgentRun | null,
   workspace: SandboxWorkspace | null,
-  issue?: Issue,
-  project?: AgentProject,
 ) => {
   if (run) {
-    const items = [
-      issue ? formatIssueReference(issue, project) : null,
-      run.branchName,
-    ].filter(Boolean)
-
-    return items.length ? items.join(' · ') : 'Agent task chat'
+    return 'Agent task chat'
   }
 
   const items = [workspace?.name].filter(Boolean)
 
   return items.length ? items.join(' · ') : 'Select a task or start a new run'
-}
-
-const getAgentTaskHeaderTitle = (run: AgentRun, issue?: Issue) => {
-  return getRunIssueTask(run, issue)?.title ?? run.title
-}
-
-const getRunIssueTask = (run: AgentRun, issue?: Issue) => {
-  return issue?.subtasks.find(
-    (task) => task.id === run.subtaskId || task.agentRunId === run.id,
-  )
 }
 
 const AgentRunContextBadge = ({

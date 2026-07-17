@@ -1,26 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useIsFetching, useQuery } from '@tanstack/react-query'
-import { parseAsString, useQueryState } from 'nuqs'
+import { useQuery } from '@tanstack/react-query'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   applyThemeMode,
-  getInitialSupervisorChatOpen,
   getStoredThemeMode,
-  supervisorChatStorageKey,
   themeStorageKey,
 } from '@/components/app/app-theme'
 import { AppCommandPalette } from '@/components/app/app-command-palette'
 import type { ThemeMode } from '@/components/app/app-types'
-import { ChatPanel } from '@/components/chat/chat-panel'
 import { AppShell } from '@/components/layout/app-shell'
 import { SettingsShell } from '@/components/layout/settings-shell'
-import {
-  AgentRunControllerProvider,
-  useAgentRunController,
-} from '@/pages/agent/agent-run-controller'
+import { AgentRunControllerProvider } from '@/pages/agent/agent-run-controller'
 import { AgentTasksPage } from '@/pages/agent/agent-tasks-page'
-import { ProjectDetailPage } from '@/pages/projects/project-detail-page'
-import { ProjectsListPage } from '@/pages/projects/projects-list-page'
 import { EndpointSettingsPage } from '@/pages/settings/endpoint-settings-page'
 import { ToolSettingsPage } from '@/pages/settings/tool-settings-page'
 import { StatisticsPage } from '@/pages/stats/statistics-page'
@@ -38,20 +29,7 @@ export default function App() {
 
 const AppContent = () => {
   const location = useLocation()
-  const fetchingCount = useIsFetching()
-  const { issues, projects, selectedRun } = useAgentRunController()
-  const [selectedChatEndpointId, setSelectedChatEndpointId] = useQueryState(
-    'chatEndpoint',
-    parseAsString.withOptions({ history: 'replace', shallow: true }),
-  )
-  const [selectedIssueId] = useQueryState(
-    'issue',
-    parseAsString.withOptions({ history: 'replace', shallow: true }),
-  )
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode)
-  const [supervisorChatOpen, setSupervisorChatOpen] = useState(
-    getInitialSupervisorChatOpen,
-  )
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
 
   const healthQuery = useQuery({
@@ -71,84 +49,12 @@ const AppContent = () => {
     () => endpointsQuery.data?.endpoints ?? [],
     [endpointsQuery.data?.endpoints],
   )
-  const chatEndpoints = useMemo(
-    () =>
-      endpoints.filter(
-        (endpoint) => endpoint.runtimeType === 'openai_compatible',
-      ),
-    [endpoints],
-  )
   const toolSettings = toolSettingsQuery.data?.settings ?? null
-  const defaultEndpoint = useMemo(
-    () =>
-      chatEndpoints.find((endpoint) => endpoint.enabled) ??
-      chatEndpoints[0] ??
-      null,
-    [chatEndpoints],
-  )
-  const selectedChatEndpoint = useMemo(() => {
-    if (!selectedChatEndpointId) {
-      return defaultEndpoint
-    }
-
-    return (
-      chatEndpoints.find(
-        (endpoint) => endpoint.id === selectedChatEndpointId,
-      ) ?? defaultEndpoint
-    )
-  }, [chatEndpoints, defaultEndpoint, selectedChatEndpointId])
   const enabledCount = endpoints.filter((endpoint) => endpoint.enabled).length
   const githubReady = Boolean(
     toolSettings?.github.enabled && toolSettings.github.tokenConfigured,
   )
-  const loading = fetchingCount > 0
   const apiOnline = healthQuery.isError ? false : (healthQuery.data?.ok ?? null)
-
-  const supervisorContextLabel = useMemo(() => {
-    if (location.pathname.startsWith('/projects')) {
-      const selectedIssue =
-        issues.find((issue) => issue.id === selectedIssueId) ?? null
-
-      if (selectedIssue) {
-        const issueProject =
-          projects.find((project) => project.id === selectedIssue.projectId) ??
-          null
-
-        return `Projects / ${issueProject?.name ?? 'Unknown project'} / ${selectedIssue.title}`
-      }
-
-      return 'Projects'
-    }
-
-    if (location.pathname.startsWith('/agent')) {
-      return selectedRun ? `Agent Tasks / ${selectedRun.title}` : 'Agent Tasks'
-    }
-
-    if (location.pathname.startsWith('/settings')) {
-      return 'Settings'
-    }
-
-    if (location.pathname.startsWith('/stats')) {
-      return 'Statistics'
-    }
-
-    if (location.pathname.startsWith('/workspaces')) {
-      return 'Workspaces'
-    }
-
-    return 'Patchlane'
-  }, [issues, location.pathname, projects, selectedIssueId, selectedRun])
-
-  const supervisorChatSystemPrompt = useMemo(
-    () =>
-      [
-        'You are the Supervisor Chat for Patchlane.',
-        'You can orchestrate the workspace directly with tools: create and update projects, create/triage/update issues, plan issues, and start coding runs.',
-        `Current app context: ${supervisorContextLabel}.`,
-        'Prefer taking action with tools over describing manual UI steps. Confirm ids and results after acting. Deleting projects, issues, or runs is not available as a tool and must be done from the UI.',
-      ].join('\n'),
-    [supervisorContextLabel],
-  )
 
   const buildRoute = useCallback(
     (pathname: string, updates: Record<string, string | null> = {}) => {
@@ -185,22 +91,6 @@ const AppContent = () => {
   }, [themeMode])
 
   useEffect(() => {
-    window.localStorage.setItem(
-      supervisorChatStorageKey,
-      String(supervisorChatOpen),
-    )
-  }, [supervisorChatOpen])
-
-  useEffect(() => {
-    if (
-      selectedChatEndpointId &&
-      !chatEndpoints.some((endpoint) => endpoint.id === selectedChatEndpointId)
-    ) {
-      void setSelectedChatEndpointId(null)
-    }
-  }, [chatEndpoints, selectedChatEndpointId, setSelectedChatEndpointId])
-
-  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
@@ -228,43 +118,17 @@ const AppContent = () => {
         endpointCount={endpoints.length}
         githubReady={githubReady}
         onCommandMenuOpen={() => setCommandMenuOpen(true)}
-        onSupervisorChatOpenChange={setSupervisorChatOpen}
         onThemeModeChange={setThemeMode}
-        projectCount={projects.length}
-        supervisorChatOpen={supervisorChatOpen}
-        supervisorPanel={
-          <ChatPanel
-            contextLabel={supervisorContextLabel}
-            endpoint={selectedChatEndpoint}
-            endpoints={chatEndpoints}
-            loading={loading}
-            onEndpointChange={(id) => void setSelectedChatEndpointId(id)}
-            orchestrator
-            systemPrompt={supervisorChatSystemPrompt}
-            title="Supervisor Chat"
-            variant="sidebar"
-          />
-        }
         themeMode={themeMode}
       >
         <Routes>
           <Route
-            element={<Navigate replace to={buildRoute('/projects')} />}
+            element={<Navigate replace to={buildRoute('/workspaces')} />}
             path="/"
           />
           <Route
-            element={<Navigate replace to={buildRoute('/projects')} />}
+            element={<Navigate replace to={buildRoute('/workspaces')} />}
             path="/chat"
-          />
-          <Route element={<ProjectsListPage />} path="/projects" />
-          <Route element={<ProjectDetailPage />} path="/projects/:projectId" />
-          <Route
-            element={<ProjectDetailPage />}
-            path="/projects/:projectId/:tab"
-          />
-          <Route
-            element={<Navigate replace to={buildRoute('/projects')} />}
-            path="/issues"
           />
           <Route
             element={
@@ -292,19 +156,15 @@ const AppContent = () => {
           <Route element={<AgentTasksPage />} path="/agent" />
           <Route element={<StatisticsPage />} path="/stats" />
           <Route
-            element={<Navigate replace to={buildRoute('/projects')} />}
+            element={<Navigate replace to={buildRoute('/workspaces')} />}
             path="*"
           />
         </Routes>
       </AppShell>
       {commandMenuOpen ? (
         <AppCommandPalette
-          defaultEndpoint={defaultEndpoint}
-          endpoints={chatEndpoints}
-          issues={issues}
           onOpenChange={setCommandMenuOpen}
           open={commandMenuOpen}
-          projects={projects}
         />
       ) : null}
     </>

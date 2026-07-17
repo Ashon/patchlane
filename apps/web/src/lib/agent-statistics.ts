@@ -1,9 +1,4 @@
-import type {
-  AgentProject,
-  AgentRun,
-  Issue,
-  LlmEndpoint,
-} from '@patchlane/shared'
+import type { AgentRun, LlmEndpoint } from '@patchlane/shared'
 
 export type AgentStatisticsMetrics = {
   activeRuns: number
@@ -40,10 +35,8 @@ export type AgentStatisticsRow = {
 }
 
 export type AgentStatistics = {
-  issueRows: AgentStatisticsRow[]
   kindRows: AgentStatisticsRow[]
   modelRows: AgentStatisticsRow[]
-  projectRows: AgentStatisticsRow[]
   recentRunRows: AgentStatisticsRow[]
   sourceRows: AgentStatisticsRow[]
   toolRows: AgentStatisticsRow[]
@@ -52,35 +45,24 @@ export type AgentStatistics = {
 
 type BuildAgentStatisticsInput = {
   endpoints: LlmEndpoint[]
-  issues: Issue[]
-  projects: AgentProject[]
   runs: AgentRun[]
 }
 
 type MutableStatisticsRow = AgentStatisticsRow
 
 const sourceSegmentLabels = {
-  adHocAgentTask: 'Agent ad-hoc tasks',
-  issueWork: 'Project issue work',
-  projectTask: 'Project tasks',
-  supervisorChat: 'Supervisor ad-hoc chat',
+  adHocAgentTask: 'Agent tasks',
 }
 
 export const buildAgentStatistics = ({
   endpoints,
-  issues,
-  projects,
   runs,
 }: BuildAgentStatisticsInput): AgentStatistics => {
-  const projectsById = new Map(projects.map((project) => [project.id, project]))
-  const issuesById = new Map(issues.map((issue) => [issue.id, issue]))
   const endpointsById = new Map(
     endpoints.map((endpoint) => [endpoint.id, endpoint]),
   )
   const totals = createMetrics()
   const sourceRows = new Map<string, MutableStatisticsRow>()
-  const projectRows = new Map<string, MutableStatisticsRow>()
-  const issueRows = new Map<string, MutableStatisticsRow>()
   const kindRows = new Map<string, MutableStatisticsRow>()
   const modelRows = new Map<string, MutableStatisticsRow>()
   const toolRows = new Map<string, MutableStatisticsRow>()
@@ -88,11 +70,10 @@ export const buildAgentStatistics = ({
 
   for (const run of runs) {
     addRunMetrics(totals, run)
-    const runIssue = run.issueId ? issuesById.get(run.issueId) : undefined
 
     addRunMetrics(
-      getOrCreateRow(sourceRows, getSourceSegmentId(run), () =>
-        getSourceSegmentRow(run),
+      getOrCreateRow(sourceRows, getSourceSegmentId(), () =>
+        getSourceSegmentRow(),
       ).metrics,
       run,
     )
@@ -106,40 +87,12 @@ export const buildAgentStatistics = ({
       run,
     )
 
-    if (run.projectId) {
-      const project = projectsById.get(run.projectId)
-      addRunMetrics(
-        getOrCreateRow(projectRows, run.projectId, () => ({
-          id: run.projectId!,
-          label: project?.name ?? 'Unknown project',
-          description: project?.repositoryUrl,
-          metrics: createMetrics(),
-        })).metrics,
-        run,
-      )
-    }
-
-    if (run.issueId) {
-      const issue = runIssue
-      const project = issue ? projectsById.get(issue.projectId) : undefined
-      addRunMetrics(
-        getOrCreateRow(issueRows, run.issueId, () => ({
-          id: run.issueId!,
-          label: issue?.title ?? 'Unknown issue',
-          description: project?.name,
-          metadata: issue?.status,
-          metrics: createMetrics(),
-        })).metrics,
-        run,
-      )
-    }
-
     const runMetrics = createMetrics()
     addRunMetrics(runMetrics, run)
     recentRunRows.push({
       id: run.id,
-      label: getRecentRunLabel(run, runIssue),
-      description: getRunScopeLabel(run, projectsById, issuesById),
+      label: run.title,
+      description: getRunScopeLabel(),
       metadata: run.status,
       timestamp: run.updatedAt,
       metrics: runMetrics,
@@ -180,20 +133,9 @@ export const buildAgentStatistics = ({
     }
   }
 
-  sourceRows.set('supervisor-chat', {
-    id: 'supervisor-chat',
-    label: sourceSegmentLabels.supervisorChat,
-    description:
-      'Not persisted yet. Supervisor/chat-panel messages stay in browser state, so usage cannot be aggregated after reload.',
-    status: 'not_collected',
-    metrics: createMetrics(),
-  })
-
   return {
-    issueRows: sortRows(issueRows, byTotalTokens),
     kindRows: sortRows(kindRows, byRunsThenTokens),
     modelRows: sortRows(modelRows, byProviderRequests),
-    projectRows: sortRows(projectRows, byTotalTokens),
     recentRunRows: recentRunRows
       .sort((left, right) =>
         (right.timestamp ?? '').localeCompare(left.timestamp ?? ''),
@@ -369,104 +311,18 @@ const getOrCreateRow = (
   return next
 }
 
-const getSourceSegmentId = (run: AgentRun) => {
-  if (run.issueId) {
-    return 'issue-work'
-  }
+const getSourceSegmentId = () => 'ad-hoc-agent-task'
 
-  if (run.projectId) {
-    return 'project-task'
-  }
+const getSourceSegmentRow = (): MutableStatisticsRow => ({
+  id: getSourceSegmentId(),
+  label: sourceSegmentLabels.adHocAgentTask,
+  description: 'Coding agent tasks run against a workspace.',
+  metrics: createMetrics(),
+})
 
-  return 'ad-hoc-agent-task'
-}
+const getRunScopeLabel = () => 'Agent task'
 
-const getSourceSegmentRow = (run: AgentRun): MutableStatisticsRow => {
-  const id = getSourceSegmentId(run)
-
-  if (id === 'issue-work') {
-    return {
-      id,
-      label: sourceSegmentLabels.issueWork,
-      description:
-        'Runs linked to project issues, requirement analysis, planning, and implementation.',
-      metrics: createMetrics(),
-    }
-  }
-
-  if (id === 'project-task') {
-    return {
-      id,
-      label: sourceSegmentLabels.projectTask,
-      description: 'Runs linked to a project without a specific issue.',
-      metrics: createMetrics(),
-    }
-  }
-
-  return {
-    id,
-    label: sourceSegmentLabels.adHocAgentTask,
-    description: 'Manual Agent tasks started outside a project issue.',
-    metrics: createMetrics(),
-  }
-}
-
-const getRunScopeLabel = (
-  run: AgentRun,
-  projectsById: Map<string, AgentProject>,
-  issuesById: Map<string, Issue>,
-) => {
-  const issue = run.issueId ? issuesById.get(run.issueId) : undefined
-  const project = run.projectId ? projectsById.get(run.projectId) : undefined
-
-  if (project && issue) {
-    return `${project.name} / ${project.code}-${issue.number}`
-  }
-
-  if (project) {
-    return project.name
-  }
-
-  return 'Ad-hoc agent task'
-}
-
-const getRecentRunLabel = (run: AgentRun, issue?: Issue) => {
-  const subtask = issue?.subtasks.find(
-    (task) => task.id === run.subtaskId || task.agentRunId === run.id,
-  )
-
-  if (subtask) {
-    return subtask.title
-  }
-
-  const issuePrefix = issue?.title ? `${issue.title}:` : ''
-
-  if (issuePrefix && run.title.startsWith(issuePrefix)) {
-    const taskTitle = run.title.slice(issuePrefix.length).trim()
-
-    if (taskTitle) {
-      return taskTitle
-    }
-  }
-
-  return run.title
-}
-
-const getAgentRunKindLabel = (kind: AgentRun['kind']) => {
-  if (kind === 'planning') {
-    return 'plan'
-  }
-
-  if (kind === 'research') {
-    return 'research'
-  }
-
-  if (kind === 'verification') {
-    return 'verify'
-  }
-
-  return kind
-}
+const getAgentRunKindLabel = (kind: AgentRun['kind']) => kind
 
 const sortRows = (
   rows: Map<string, AgentStatisticsRow>,

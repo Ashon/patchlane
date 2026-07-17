@@ -1,13 +1,5 @@
-import { useEffect, useState } from 'react'
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import {
-  Bot,
-  Command,
-  GitPullRequestArrow,
-  Monitor,
-  Moon,
-  Sun,
-} from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Command, GitPullRequestArrow, Monitor, Moon, Sun } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { navigationItems } from '@/components/app/app-navigation'
 import { getNextThemeMode } from '@/components/app/app-theme'
@@ -15,21 +7,12 @@ import type { ThemeMode } from '@/components/app/app-types'
 import { StateBadge, StatusBadge } from '@/components/app/status-badges'
 import { Badge } from '@patchlane/ui/badge'
 import { Button } from '@patchlane/ui/button'
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  useResizableDefaultLayout,
-} from '@patchlane/ui/resizable'
-import { sanitizeSupervisorLayout } from '@/components/layout/supervisor-layout'
 import { cn } from '@/lib/utils'
 
 type AppRoute = {
   pathname: string
   search?: string
 }
-
-const supervisorPanelIds = ['main', 'supervisor']
 
 export const AppShell = ({
   apiOnline,
@@ -39,11 +22,7 @@ export const AppShell = ({
   endpointCount,
   githubReady,
   onCommandMenuOpen,
-  onSupervisorChatOpenChange,
   onThemeModeChange,
-  projectCount,
-  supervisorChatOpen,
-  supervisorPanel,
   themeMode,
 }: {
   apiOnline: boolean | null
@@ -53,46 +32,16 @@ export const AppShell = ({
   endpointCount: number
   githubReady: boolean
   onCommandMenuOpen: () => void
-  onSupervisorChatOpenChange: Dispatch<SetStateAction<boolean>>
   onThemeModeChange: (mode: ThemeMode) => void
-  projectCount: number
-  supervisorChatOpen: boolean
-  supervisorPanel: ReactNode
   themeMode: ThemeMode
 }) => {
   const location = useLocation()
-  const supervisorLayout = useResizableDefaultLayout({
-    id: 'patchlane-supervisor-layout',
-    panelIds: supervisorPanelIds,
-  })
-  // A stale persisted split can restore below the panels' px constraints and
-  // collapse the main content to a sliver; ignore it when it starves main.
-  const supervisorDefaultLayout = sanitizeSupervisorLayout(
-    supervisorLayout.defaultLayout,
-  )
-  const [resizableLayoutEnabled, setResizableLayoutEnabled] = useState(() =>
-    typeof window === 'undefined'
-      ? true
-      : window.matchMedia('(min-width: 1280px)').matches,
-  )
   const desktopPlatform =
     typeof window === 'undefined'
       ? undefined
       : window.patchlaneDesktop?.platform
   const isDesktop = Boolean(desktopPlatform)
   const isDesktopMac = desktopPlatform === 'darwin'
-  const showResizableSupervisor = supervisorChatOpen && resizableLayoutEnabled
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(min-width: 1280px)')
-    const syncResizableLayout = () =>
-      setResizableLayoutEnabled(mediaQuery.matches)
-
-    syncResizableLayout()
-    mediaQuery.addEventListener('change', syncResizableLayout)
-
-    return () => mediaQuery.removeEventListener('change', syncResizableLayout)
-  }, [])
 
   return (
     <main className="h-screen overflow-hidden bg-background">
@@ -129,9 +78,7 @@ export const AppShell = ({
                 const active =
                   item.value === 'settings'
                     ? location.pathname.startsWith('/settings')
-                    : item.value === 'projects'
-                      ? location.pathname.startsWith('/projects')
-                      : location.pathname === item.path
+                    : location.pathname === item.path
 
                 return (
                   <NavLink
@@ -164,7 +111,6 @@ export const AppShell = ({
                 <StateBadge tone={githubReady ? 'success' : 'warning'}>
                   {githubReady ? 'GitHub ready' : 'GitHub missing'}
                 </StateBadge>
-                <Badge variant="secondary">{projectCount} projects</Badge>
               </div>
 
               <Button
@@ -177,79 +123,15 @@ export const AppShell = ({
               >
                 <Command />
               </Button>
-              <Button
-                aria-label={
-                  supervisorChatOpen ? 'Close supervisor' : 'Open supervisor'
-                }
-                aria-pressed={supervisorChatOpen}
-                onClick={() =>
-                  onSupervisorChatOpenChange((current) => !current)
-                }
-                size="icon-xs"
-                title={
-                  supervisorChatOpen ? 'Close supervisor' : 'Open supervisor'
-                }
-                type="button"
-                variant={supervisorChatOpen ? 'default' : 'outline'}
-              >
-                <Bot />
-              </Button>
               <ThemeToggle mode={themeMode} onChange={onThemeModeChange} />
             </div>
           </div>
         </header>
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          {showResizableSupervisor ? (
-            <ResizablePanelGroup
-              className="min-w-0 flex-1"
-              defaultLayout={supervisorDefaultLayout}
-              direction="horizontal"
-              id="patchlane-supervisor-layout"
-              onLayoutChanged={supervisorLayout.onLayoutChanged}
-            >
-              <ResizablePanel
-                className="min-w-0 overflow-hidden"
-                defaultSize="70%"
-                id="main"
-                minSize="520px"
-              >
-                <div className="@container h-full min-w-0 overflow-hidden">
-                  {children}
-                </div>
-              </ResizablePanel>
-              <ResizableHandle />
-              <ResizablePanel
-                className="min-w-0 overflow-hidden"
-                defaultSize="30%"
-                id="supervisor"
-                maxSize="560px"
-                minSize="320px"
-              >
-                <aside className="flex h-full min-h-0 bg-background">
-                  {supervisorPanel}
-                </aside>
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          ) : (
-            <div className="@container min-w-0 flex-1 overflow-hidden">
-              {children}
-            </div>
-          )}
-
-          {supervisorChatOpen && !resizableLayoutEnabled ? (
-            <>
-              <button
-                aria-label="Close supervisor chat backdrop"
-                className="absolute inset-0 z-30 bg-background/60 backdrop-blur-sm xl:hidden"
-                onClick={() => onSupervisorChatOpenChange(false)}
-                type="button"
-              />
-              <aside className="absolute inset-y-0 right-0 z-40 flex w-full max-w-[420px] min-h-0 border-l bg-background shadow-xl xl:relative xl:z-auto xl:w-[380px] xl:max-w-none xl:shrink-0 xl:shadow-none 2xl:w-[420px]">
-                {supervisorPanel}
-              </aside>
-            </>
-          ) : null}
+          <div className="@container min-w-0 flex-1 overflow-hidden">
+            {children}
+          </div>
         </div>
       </div>
     </main>

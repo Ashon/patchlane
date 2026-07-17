@@ -1,38 +1,24 @@
 import type {
-  AgentExecution,
   AgentRun,
   AgentRunMessageMetadata,
   AppendAgentRunMessageInput,
-  AgentProject,
-  CreateAgentProjectInput,
-  CreateIssueInput,
   ContinueAgentRunInput,
   CreateAgentRunInput,
   CreateLlmEndpointInput,
-  Issue,
-  IssueArtifactManifest,
   GitHubToolTestResult,
   LlmChatRequest,
   LlmEndpoint,
   LlmEndpointTestResult,
   PublicToolSettings,
-  ReplaceIssueTasksInput,
   RewindAgentRunInput,
-  ReplaceIssueSubtasksInput,
   SandboxExecRequest,
   SandboxExecResult,
   SandboxSettings,
   SandboxWorkspace,
   CreateSandboxWorkspaceInput,
-  StartIssueInput,
-  SupervisorChatRequest,
   UpdateAgentRunRuntimeInput,
-  UpdateAgentProjectInput,
   UpdateGitHubToolSettingsInput,
   UpdateLlmEndpointInput,
-  UpdateIssueInput,
-  UpdateIssueTaskInput,
-  UpdateIssueSubtaskInput,
 } from '@patchlane/shared'
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 
@@ -99,46 +85,6 @@ type ChatStreamEvent =
 type ChatStreamHandlers = {
   signal?: AbortSignal
   onEvent: (event: ChatStreamEvent) => void
-}
-
-export type SupervisorStreamEvent =
-  | {
-      type: 'meta'
-      endpointId: string
-      model: string
-    }
-  | {
-      type: 'tool_call'
-      id: string
-      name: string
-      arguments: string
-    }
-  | {
-      type: 'tool_result'
-      id: string
-      name: string
-      ok: boolean
-      result: string
-    }
-  | {
-      type: 'delta'
-      content?: string
-    }
-  | {
-      type: 'finish'
-      finishReason: string
-    }
-  | {
-      type: 'done'
-    }
-  | {
-      type: 'error'
-      error: string
-    }
-
-type SupervisorStreamHandlers = {
-  signal?: AbortSignal
-  onEvent: (event: SupervisorStreamEvent) => void
 }
 
 type AgentRunStreamEvent =
@@ -327,133 +273,6 @@ export const api = {
       method: 'POST',
     })
   },
-  async listProjects() {
-    return request<{ projects: AgentProject[] }>('/api/issues/projects')
-  },
-  async createProject(input: CreateAgentProjectInput) {
-    return request<{ project: AgentProject }>('/api/issues/projects', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    })
-  },
-  async updateProject(id: string, input: UpdateAgentProjectInput) {
-    return request<{ project: AgentProject }>(`/api/issues/projects/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(input),
-    })
-  },
-  async deleteProject(id: string) {
-    return request<void>(`/api/issues/projects/${id}`, {
-      method: 'DELETE',
-    })
-  },
-  async listIssues() {
-    return request<{ issues: Issue[] }>('/api/issues')
-  },
-  async createIssue(input: CreateIssueInput) {
-    return request<{ issue: Issue }>('/api/issues', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    })
-  },
-  async updateIssue(id: string, input: UpdateIssueInput) {
-    return request<{ issue: Issue }>(`/api/issues/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(input),
-    })
-  },
-  async finalizeIssue(id: string) {
-    return request<{ issue: Issue; manifest: IssueArtifactManifest }>(
-      `/api/issues/${id}/finalize`,
-      {
-        method: 'POST',
-      },
-    )
-  },
-  async replaceIssueSubtasks(id: string, input: ReplaceIssueSubtasksInput) {
-    return request<{ issue: Issue }>(`/api/issues/${id}/subtasks`, {
-      method: 'PUT',
-      body: JSON.stringify(input),
-    })
-  },
-  async replaceIssueTasks(id: string, input: ReplaceIssueTasksInput) {
-    return request<{ issue: Issue }>(`/api/issues/${id}/tasks`, {
-      method: 'PUT',
-      body: JSON.stringify(input),
-    })
-  },
-  async updateIssueSubtask(
-    id: string,
-    subtaskId: string,
-    input: UpdateIssueSubtaskInput,
-  ) {
-    return request<{ issue: Issue; subtask: Issue['subtasks'][number] }>(
-      `/api/issues/${id}/subtasks/${subtaskId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(input),
-      },
-    )
-  },
-  async updateIssueTask(
-    id: string,
-    taskId: string,
-    input: UpdateIssueTaskInput,
-  ) {
-    return request<{ issue: Issue; task: Issue['subtasks'][number] }>(
-      `/api/issues/${id}/tasks/${taskId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(input),
-      },
-    )
-  },
-  async planIssue(id: string, input: StartIssueInput) {
-    return request<{ issue: Issue }>(`/api/issues/${id}/plan`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    })
-  },
-  async continueIssueWorkflow(id: string, input: StartIssueInput) {
-    return request<{ run?: AgentRun; issue: Issue; runs?: AgentRun[] }>(
-      `/api/issues/${id}/workflow/continue`,
-      {
-        method: 'POST',
-        body: JSON.stringify(input),
-      },
-    )
-  },
-  async startIssueSubtask(
-    id: string,
-    subtaskId: string,
-    input: StartIssueInput,
-  ) {
-    return request<{ run: AgentRun; issue: Issue; runs: AgentRun[] }>(
-      `/api/issues/${id}/subtasks/${subtaskId}/start`,
-      {
-        method: 'POST',
-        body: JSON.stringify(input),
-      },
-    )
-  },
-  async startIssueTask(id: string, taskId: string, input: StartIssueInput) {
-    return request<{ run: AgentRun; issue: Issue; runs: AgentRun[] }>(
-      `/api/issues/${id}/tasks/${taskId}/start`,
-      {
-        method: 'POST',
-        body: JSON.stringify(input),
-      },
-    )
-  },
-  async startIssue(id: string, input: StartIssueInput) {
-    return request<{ run?: AgentRun; issue: Issue; runs?: AgentRun[] }>(
-      `/api/issues/${id}/start`,
-      {
-        method: 'POST',
-        body: JSON.stringify(input),
-      },
-    )
-  },
   async getSandboxSettings() {
     return request<{ settings: SandboxSettings }>('/api/sandbox/settings')
   },
@@ -491,43 +310,6 @@ export const api = {
   async listAgentRunEvents(id: string) {
     return request<{ events: AgentRunEvent[] }>(`/api/agent/runs/${id}/events`)
   },
-  async listExecutions(
-    filters: {
-      issueId?: string
-      projectId?: string
-      taskId?: string
-    } = {},
-  ) {
-    const params = new URLSearchParams()
-
-    if (filters.issueId) {
-      params.set('issueId', filters.issueId)
-    }
-
-    if (filters.projectId) {
-      params.set('projectId', filters.projectId)
-    }
-
-    if (filters.taskId) {
-      params.set('taskId', filters.taskId)
-    }
-
-    const query = params.toString()
-    return request<{ executions: AgentExecution[] }>(
-      `/api/executions${query ? `?${query}` : ''}`,
-    )
-  },
-  async getExecution(id: string) {
-    return request<{ execution: AgentExecution }>(`/api/executions/${id}`)
-  },
-  async listExecutionEvents(id: string) {
-    return request<{ events: AgentRunEvent[] }>(`/api/executions/${id}/events`)
-  },
-  async listIssueTaskExecutions(id: string, taskId: string) {
-    return request<{ executions: AgentExecution[] }>(
-      `/api/issues/${id}/tasks/${taskId}/executions`,
-    )
-  },
   async createAgentRun(input: CreateAgentRunInput) {
     return request<{ run: AgentRun }>('/api/agent/runs', {
       method: 'POST',
@@ -540,12 +322,8 @@ export const api = {
       body: JSON.stringify(input),
     })
   },
-  async deleteAgentRun(
-    id: string,
-    options: { cleanupWorkspace?: boolean } = {},
-  ) {
-    const query = options.cleanupWorkspace ? '?cleanupWorkspace=true' : ''
-    return request<void>(`/api/agent/runs/${id}${query}`, {
+  async deleteAgentRun(id: string) {
+    return request<void>(`/api/agent/runs/${id}`, {
       method: 'DELETE',
     })
   },
@@ -593,20 +371,5 @@ export const api = {
   },
   async streamChat(input: LlmChatRequest, handlers: ChatStreamHandlers) {
     return streamRequest(input, handlers)
-  },
-  async streamSupervisorChat(
-    input: SupervisorChatRequest,
-    { onEvent, signal }: SupervisorStreamHandlers,
-  ) {
-    const response = await fetch(`${apiBaseUrl}/api/supervisor/chat/stream`, {
-      body: JSON.stringify(input),
-      headers: {
-        'content-type': 'application/json',
-      },
-      method: 'POST',
-      signal,
-    })
-
-    await readSseResponse(response, onEvent)
   },
 }

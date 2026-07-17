@@ -1,7 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   ChartColumn,
-  ClipboardList,
   Folder,
   Server,
   Settings,
@@ -11,12 +10,6 @@ import {
 import type { AppView } from './app-types'
 
 export const navigationItems = [
-  {
-    value: 'projects',
-    label: 'Projects',
-    icon: ClipboardList,
-    path: '/projects',
-  },
   { value: 'sandbox', label: 'Agent Tasks', icon: Terminal, path: '/agent' },
   {
     value: 'workspaces',

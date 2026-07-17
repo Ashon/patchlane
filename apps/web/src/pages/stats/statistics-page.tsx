@@ -37,13 +37,12 @@ type StatsTableGroup = {
 }
 
 export const StatisticsPage = () => {
-  const { endpoints, error, issues, issuesError, loading, projects, runs } =
-    useAgentRunController()
+  const { endpoints, error, loading, runs } = useAgentRunController()
   const stats = useMemo(
-    () => buildAgentStatistics({ endpoints, issues, projects, runs }),
-    [endpoints, issues, projects, runs],
+    () => buildAgentStatistics({ endpoints, runs }),
+    [endpoints, runs],
   )
-  const visibleError = error ?? issuesError
+  const visibleError = error
 
   return (
     <Page>
@@ -72,7 +71,7 @@ export const StatisticsPage = () => {
           <StatsNote />
 
           <StatsSection
-            description="Stored workflow sources, project scopes, issue scopes, and run kinds in one table."
+            description="Stored workflow sources and run kinds in one table."
             icon={<Workflow />}
             title="Work Segments"
           >
@@ -84,18 +83,6 @@ export const StatisticsPage = () => {
                   id: 'sources',
                   rows: stats.sourceRows,
                   title: 'Sources',
-                },
-                {
-                  emptyLabel: 'No project-scoped runs',
-                  id: 'projects',
-                  rows: stats.projectRows,
-                  title: 'Projects',
-                },
-                {
-                  emptyLabel: 'No issue-scoped runs',
-                  id: 'issues',
-                  rows: stats.issueRows,
-                  title: 'Issues',
                 },
                 {
                   emptyLabel: 'No task kinds',

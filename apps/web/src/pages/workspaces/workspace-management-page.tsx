@@ -298,8 +298,7 @@ export const WorkspaceManagementPage = () => {
               <span className="font-semibold text-foreground">
                 {deleteTarget.name}
               </span>{' '}
-              and its files on disk. Any project linked to it will lose its
-              cached clone. This cannot be undone.
+              and its files on disk. This cannot be undone.
             </>
           ) : null
         }

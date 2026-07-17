@@ -24,12 +24,7 @@ export type SandboxWorkspaceDraft = {
   ref: string
 }
 
-export type AppView =
-  | 'projects'
-  | 'workspaces'
-  | 'sandbox'
-  | 'settings'
-  | 'stats'
+export type AppView = 'workspaces' | 'sandbox' | 'settings' | 'stats'
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export const emptyEndpointDraft: EndpointDraft = {
