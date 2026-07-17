@@ -1,6 +1,5 @@
 import { Router, type Response } from 'express'
 import {
-  type AgentRun,
   appendAgentRunMessageSchema,
   continueAgentRunSchema,
   createAgentRunSchema,
@@ -12,27 +11,21 @@ import {
 } from '@patchlane/shared'
 import { AgentRuntime } from '../agent/agentRuntime'
 import type { AgentRunStore } from '../agent/agentRunStore'
-import type { AutopilotDriver } from '../agent/autopilotDriver'
 import { CodexRuntime } from '../agent/codexRuntime'
 import { OpenCodeRuntime } from '../agent/opencodeRuntime'
 import { agentRunCancellationMessage } from '../agent/runtimeCancellation'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
-import { reconcileIssueAfterAgentRun } from '../issues/issueReconciliation'
 import { getRequestLogger } from '../logging/accessLog'
 import { createChildLogger } from '../logging/logger'
-import type { IssueStore } from '../issues/issueStore'
 import type { LlmEndpointStore } from '../llm/endpointStore'
 import { createChatCompletion } from '../llm/openaiClient'
-import { removeWorktreeFromCache } from '../sandbox/gitSandbox'
 import type { SandboxWorkspaceStore } from '../sandbox/sandboxWorkspaceStore'
 import type { ToolSettingsStore } from '../tools/toolSettingsStore'
 
 type AgentRouterOptions = {
-  autopilot: AutopilotDriver
   runStore: AgentRunStore
   endpointStore: LlmEndpointStore
-  issueStore: IssueStore
   workspaceStore: SandboxWorkspaceStore
   toolSettingsStore: ToolSettingsStore
   sandboxSettings: SandboxSettings
@@ -42,11 +35,9 @@ type AgentRouterOptions = {
 }
 
 export const createAgentRouter = ({
-  autopilot,
   contextTokenBudget,
   durabilityMaxRetries,
   endpointStore,
-  issueStore,
   runStore,
   sandboxSettings,
   outputTokenBudget,
@@ -54,10 +45,6 @@ export const createAgentRouter = ({
   workspaceStore,
 }: AgentRouterOptions) => {
   const agentLogger = createChildLogger({ component: 'agent' })
-  const handleRunFinished = async (run: AgentRun) => {
-    await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)
-    autopilot.handleRunFinished(run)
-  }
   const patchlaneRuntime = new AgentRuntime({
     runStore,
     settings: sandboxSettings,
@@ -72,27 +59,18 @@ export const createAgentRouter = ({
       const settings = await toolSettingsStore.get()
       return settings.github.enabled ? settings.github.token : undefined
     },
-    addIssueComment: (issueId, input) =>
-      issueStore.addIssueComment(issueId, input),
-    onRunFinished: handleRunFinished,
   })
   const opencodeRuntime = new OpenCodeRuntime({
     runStore,
     logger: agentLogger,
     getConnector: (id) => endpointStore.get(id),
     getWorkspace: (id) => workspaceStore.get(id),
-    addIssueComment: (issueId, input) =>
-      issueStore.addIssueComment(issueId, input),
-    onRunFinished: handleRunFinished,
   })
   const codexRuntime = new CodexRuntime({
     runStore,
     logger: agentLogger,
     getConnector: (id) => endpointStore.get(id),
     getWorkspace: (id) => workspaceStore.get(id),
-    addIssueComment: (issueId, input) =>
-      issueStore.addIssueComment(issueId, input),
-    onRunFinished: handleRunFinished,
   })
   const activeRunControllers = new Map<string, AbortController>()
 
@@ -129,38 +107,8 @@ export const createAgentRouter = ({
     '/runs/:id',
     asyncHandler(async (request, response) => {
       const id = getRouteParam(request.params.id, 'id')
-      const run = await runStore.get(id)
-
-      await issueStore.unlinkAgentRunReferences(run)
+      await runStore.get(id)
       await runStore.remove(id)
-
-      if (request.query.cleanupWorkspace === 'true') {
-        const workspace = await workspaceStore
-          .get(run.workspaceId)
-          .catch(() => undefined)
-
-        if (workspace?.kind === 'task_worktree') {
-          const cache = workspace.parentWorkspaceId
-            ? await workspaceStore
-                .get(workspace.parentWorkspaceId)
-                .catch(() => undefined)
-            : undefined
-
-          if (cache) {
-            const settings = await toolSettingsStore.get()
-            await removeWorktreeFromCache({
-              cache,
-              target: workspace,
-              settings: sandboxSettings,
-              githubToken: settings.github.enabled
-                ? settings.github.token
-                : undefined,
-            })
-          }
-
-          await workspaceStore.remove(workspace.id)
-        }
-      }
 
       response.status(204).send()
     }),
@@ -192,8 +140,6 @@ export const createAgentRouter = ({
           runKind: run.kind,
           workspaceId: run.workspaceId,
           endpointId: run.endpointId,
-          issueId: run.issueId,
-          subtaskId: run.subtaskId,
         },
         'Agent run created',
       )
@@ -339,7 +285,6 @@ export const createAgentRouter = ({
       await runStore.requestCancellation(id)
       activeRunControllers.get(id)?.abort(agentRunCancellationMessage)
       const run = await runStore.cancel(id, agentRunCancellationMessage)
-      await reconcileIssueAfterAgentRun({ issueStore, runStore }, run)
       getRequestLogger(response).warn(
         {
           component: 'agent',

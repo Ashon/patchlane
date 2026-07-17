@@ -18,10 +18,9 @@ describe('Given coding agent prompts', () => {
   }
 
   const workspace: SandboxWorkspace = {
-    cleanupStatus: 'active',
     createdAt: '2026-06-03T00:00:00.000Z',
     id: 'workspace-1',
-    kind: 'task_worktree',
+    kind: 'manual',
     name: 'Patchlane task',
     path: '/tmp/patchlane/repo',
     repositoryUrl: 'https://github.com/ashon/patchlane',
@@ -44,23 +43,6 @@ describe('Given coding agent prompts', () => {
     expect(prompt).toContain('three consecutive tool calls')
     expect(prompt).toContain('Verification failures are normal coding feedback')
     expect(prompt).toContain('read the error')
-    expect(prompt).toContain('use add_issue_comment')
-    expect(prompt).toContain('final summary issue comment')
-  })
-
-  it('when building a research system prompt, then it prevents implementation drift', () => {
-    const prompt = buildCodingSystemPrompt({
-      runKind: 'research',
-      settings,
-      workspace,
-    })
-
-    expect(prompt).toContain('research-only run')
-    expect(prompt).toContain('Do not modify files')
-    expect(prompt).toContain('read-only inspection')
-    expect(prompt).toContain('Do not stop at the first plausible answer')
-    expect(prompt).toContain('confirm no repository files changed')
-    expect(prompt).toContain('final research summary issue comment')
   })
 
   it('when building a durability retry prompt, then it preserves retry budget context', () => {

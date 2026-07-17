@@ -98,40 +98,4 @@ describe('Given OpenCode runtime helpers', () => {
       'Update the backend connector.',
     )
   })
-
-  it('builds a read-only prompt for research runs', () => {
-    const run = agentRunSchema.parse({
-      id: 'run-1',
-      workspaceId: 'workspace-1',
-      agentRuntime: 'opencode',
-      title: 'Research prompt mode',
-      kind: 'research',
-      status: 'idle',
-      messages: [
-        {
-          id: 'message-1',
-          role: 'user',
-          content: 'Research task execution prompts.',
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    })
-    const workspace: SandboxWorkspace = {
-      id: 'workspace-1',
-      name: 'Patchlane',
-      path: '/tmp/patchlane',
-      status: 'ready',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    }
-    const prompt = buildOpenCodePrompt({ run, workspace })
-
-    expect(prompt).toContain('research-only run')
-    expect(prompt).toContain('do not modify files')
-    expect(prompt).toContain('evidence-backed findings')
-    expect(prompt).toContain('respond in Markdown with short sections')
-    expect(prompt).toContain('avoid a progress log')
-  })
 })

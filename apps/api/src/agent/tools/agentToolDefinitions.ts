@@ -124,30 +124,6 @@ export const agentTools = [
   {
     type: 'function',
     function: {
-      name: 'add_issue_comment',
-      description:
-        'Record a concise user-facing update on the current project issue. Use this only for meaningful progress, decisions, blockers, or final issue summaries; do not copy raw tool output or private reasoning.',
-      parameters: {
-        type: 'object',
-        required: ['body'],
-        properties: {
-          body: {
-            type: 'string',
-            description:
-              'A concise update written for the user, not an internal log.',
-          },
-          kind: {
-            type: 'string',
-            enum: ['progress', 'decision', 'blocked', 'summary'],
-            description: 'The type of issue update. Defaults to progress.',
-          },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
       name: 'request_user_input',
       description: 'Ask the user a blocking clarification question.',
       parameters: {

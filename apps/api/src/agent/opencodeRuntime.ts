@@ -1,17 +1,12 @@
 import { spawn } from 'node:child_process'
 import type {
   AgentRun,
-  CreateIssueCommentInput,
-  IssueComment,
   LlmEndpoint,
   LlmEndpointTestResult,
   SandboxWorkspace,
 } from '@patchlane/shared'
 import { estimateTextTokens } from './agentContext'
-import {
-  formatAgentIssueSummary,
-  formatAgentResultSummary,
-} from './agentSummary'
+import { formatAgentResultSummary } from './agentSummary'
 import { logger as rootLogger, type ApiLogger } from '../logging/logger'
 import type { AgentRunStore } from './agentRunStore'
 import type { AgentRuntimeStreamEmit } from './agentRuntime'
@@ -24,10 +19,6 @@ type OpenCodeRuntimeOptions = {
   runStore: AgentRunStore
   getWorkspace: (id: string) => Promise<SandboxWorkspace>
   getConnector?: (id: string) => Promise<LlmEndpoint>
-  addIssueComment?: (
-    issueId: string,
-    input: CreateIssueCommentInput,
-  ) => Promise<{ comment: IssueComment }>
   onRunFinished?: (run: AgentRun) => Promise<void>
   command?: string
   commandArgs?: string[]
@@ -188,7 +179,6 @@ export class OpenCodeRuntime {
         },
         'OpenCode agent run finished',
       )
-      await this.addIssueSummaryComment(run, content)
       await this.options.onRunFinished?.(run)
       emit?.({ type: 'done', run })
 
@@ -426,19 +416,6 @@ export class OpenCodeRuntime {
     return updated
   }
 
-  private async addIssueSummaryComment(run: AgentRun, content: string) {
-    if (!run.issueId || !this.options.addIssueComment) {
-      return
-    }
-
-    await this.options.addIssueComment(run.issueId, {
-      runId: run.id,
-      author: 'agent',
-      kind: 'summary',
-      body: formatAgentIssueSummary(content),
-    })
-  }
-
   private async getConnector(run: AgentRun) {
     if (!run.endpointId || !this.options.getConnector) {
       return undefined
@@ -460,10 +437,7 @@ export class OpenCodeRuntime {
   }
 
   private getRunLogger(
-    run: Pick<
-      AgentRun,
-      'agentRuntime' | 'id' | 'issueId' | 'kind' | 'subtaskId' | 'workspaceId'
-    >,
+    run: Pick<AgentRun, 'agentRuntime' | 'id' | 'kind' | 'workspaceId'>,
     bindings: Record<string, unknown> = {},
   ) {
     return (this.options.logger ?? rootLogger).child({
@@ -471,8 +445,6 @@ export class OpenCodeRuntime {
       agentRuntime: run.agentRuntime,
       runKind: run.kind,
       workspaceId: run.workspaceId,
-      issueId: run.issueId,
-      subtaskId: run.subtaskId,
       ...bindings,
     })
   }
@@ -486,26 +458,15 @@ export const buildOpenCodePrompt = ({
   workspace: SandboxWorkspace
 }) => {
   const messages = run.messages.map(formatRunMessage).join('\n\n')
-  const isResearch = run.kind === 'research'
   const prompt = [
     'You are OpenCode running as the Patchlane coding backend.',
     '',
-    isResearch
-      ? 'This is a research-only run. Inspect the repository, but do not modify files, create commits, push, or continue into implementation.'
-      : 'Work directly in the workspace below. Inspect the repository, make the requested changes, and run focused verification when possible.',
-    isResearch
-      ? 'Use targeted searches, file reads, and safe read-only commands to produce evidence-backed findings and an implementation plan.'
-      : 'Do not wait for confirmation unless the task is blocked by missing credentials, destructive ambiguity, or unavailable external state.',
-    isResearch
-      ? 'When finished, respond in Markdown with short sections: Findings, Evidence, Recommendation, Verification, and Risks. Use bullets and avoid a progress log.'
-      : 'When finished, respond in Markdown with short sections: Summary, Changes, Verification, and Risks. Use bullets and avoid a progress log.',
+    'Work directly in the workspace below. Inspect the repository, make the requested changes, and run focused verification when possible.',
+    'Do not wait for confirmation unless the task is blocked by missing credentials, destructive ambiguity, or unavailable external state.',
+    'When finished, respond in Markdown with short sections: Summary, Changes, Verification, and Risks. Use bullets and avoid a progress log.',
     '',
     `Workspace name: ${workspace.name}`,
     `Workspace path: ${workspace.path}`,
-    workspace.branchName ? `Branch: ${workspace.branchName}` : undefined,
-    run.kind ? `Run kind: ${run.kind}` : undefined,
-    run.issueId ? `Issue id: ${run.issueId}` : undefined,
-    run.subtaskId ? `Task id: ${run.subtaskId}` : undefined,
     '',
     'Patchlane conversation:',
     truncatePrompt(messages),

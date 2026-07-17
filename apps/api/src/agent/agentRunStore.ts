@@ -29,10 +29,6 @@ type AgentRunRow = {
   runtime_session_id: string | null
   title: string
   kind: AgentRun['kind']
-  project_id: string | null
-  issue_id: string | null
-  subtask_id: string | null
-  branch_name: string | null
   pr_url: string | null
   result_summary: string | null
   status: AgentRunStatus
@@ -111,18 +107,6 @@ export type HeartbeatAgentExecutionInput = {
   now?: Date
 }
 
-export type ListAgentExecutionsFilter = {
-  issueId?: string
-  projectId?: string
-  subtaskId?: string
-}
-
-const activeAgentExecutionStatuses: AgentRunStatus[] = [
-  'idle',
-  'running',
-  'awaiting_user',
-]
-
 export class AgentRunStore {
   constructor(
     private readonly database: AppDatabase,
@@ -132,66 +116,11 @@ export class AgentRunStore {
   }
 
   async list() {
-    return this.listExecutions()
-  }
-
-  async listExecutions(filter: ListAgentExecutionsFilter = {}) {
-    const conditions: string[] = []
-    const args: string[] = []
-
-    if (filter.projectId) {
-      conditions.push('project_id = ?')
-      args.push(filter.projectId)
-    }
-
-    if (filter.issueId) {
-      conditions.push('issue_id = ?')
-      args.push(filter.issueId)
-    }
-
-    if (filter.subtaskId) {
-      conditions.push('subtask_id = ?')
-      args.push(filter.subtaskId)
-    }
-
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const rows = this.database.sqlite
-      .prepare(`SELECT * FROM agent_runs ${where} ORDER BY created_at DESC`)
-      .all(...args) as unknown as AgentRunRow[]
+      .prepare('SELECT * FROM agent_runs ORDER BY created_at DESC')
+      .all() as unknown as AgentRunRow[]
 
     return agentRunListSchema.parse(rows.map((row) => this.toRun(row)))
-  }
-
-  async listForIssueTask(issueId: string, taskId: string) {
-    const rows = this.database.sqlite
-      .prepare(
-        `
-        SELECT * FROM agent_runs
-        WHERE issue_id = ? AND subtask_id = ?
-        ORDER BY attempt DESC, created_at DESC
-      `,
-      )
-      .all(issueId, taskId) as unknown as AgentRunRow[]
-
-    return agentRunListSchema.parse(rows.map((row) => this.toRun(row)))
-  }
-
-  async findActiveForIssueTask(issueId: string, taskId: string) {
-    const row = this.database.sqlite
-      .prepare(
-        `
-        SELECT * FROM agent_runs
-        WHERE issue_id = ? AND subtask_id = ?
-          AND status IN (${activeAgentExecutionStatuses.map(() => '?').join(', ')})
-        ORDER BY created_at DESC
-        LIMIT 1
-      `,
-      )
-      .get(issueId, taskId, ...activeAgentExecutionStatuses) as
-      | AgentRunRow
-      | undefined
-
-    return row ? this.toRun(row) : undefined
   }
 
   async get(id: string) {
@@ -223,7 +152,7 @@ export class AgentRunStore {
   async create(input: CreateAgentRunInput) {
     const parsed = createAgentRunSchema.parse(input)
     const now = new Date().toISOString()
-    const attempt = this.getNextAttempt(parsed)
+    const attempt = 1
     const run = agentRunSchema.parse({
       id: randomUUID(),
       workspaceId: parsed.workspaceId,
@@ -232,10 +161,6 @@ export class AgentRunStore {
       agentRuntime: parsed.agentRuntime ?? 'patchlane',
       title: parsed.title || getTitle(parsed.task),
       kind: parsed.kind ?? 'coding',
-      projectId: parsed.projectId,
-      issueId: parsed.issueId,
-      subtaskId: parsed.subtaskId,
-      branchName: parsed.branchName,
       status: 'idle',
       attempt,
       queuedAt: now,
@@ -552,8 +477,8 @@ export class AgentRunStore {
         .prepare(
           `
           UPDATE agent_runs
-          SET workspace_id = ?, endpoint_id = ?, model = ?, agent_runtime = ?, runtime_session_id = ?, title = ?, kind = ?, project_id = ?, issue_id = ?,
-            subtask_id = ?, branch_name = ?, pr_url = ?, result_summary = ?, status = ?, attempt = ?, queued_at = ?, started_at = ?, heartbeat_at = ?,
+          SET workspace_id = ?, endpoint_id = ?, model = ?, agent_runtime = ?, runtime_session_id = ?, title = ?, kind = ?,
+            pr_url = ?, result_summary = ?, status = ?, attempt = ?, queued_at = ?, started_at = ?, heartbeat_at = ?,
             lease_owner = ?, lease_expires_at = ?, cancellation_requested_at = ?, finished_at = ?, context_json = ?, error = ?, updated_at = ?
           WHERE id = ?
         `,
@@ -566,10 +491,6 @@ export class AgentRunStore {
           updated.runtimeSessionId ?? null,
           updated.title,
           updated.kind,
-          updated.projectId ?? null,
-          updated.issueId ?? null,
-          updated.subtaskId ?? null,
-          updated.branchName ?? null,
           updated.prUrl ?? null,
           updated.resultSummary ?? null,
           updated.status,
@@ -631,10 +552,6 @@ export class AgentRunStore {
       runtimeSessionId: optionalString(row.runtime_session_id),
       title: row.title,
       kind: row.kind ?? 'coding',
-      projectId: optionalString(row.project_id),
-      issueId: optionalString(row.issue_id),
-      subtaskId: optionalString(row.subtask_id),
-      branchName: optionalString(row.branch_name),
       prUrl: optionalString(row.pr_url),
       resultSummary: optionalString(row.result_summary),
       status: row.status,
@@ -681,10 +598,10 @@ export class AgentRunStore {
       .prepare(
         `
         INSERT INTO agent_runs (
-          id, workspace_id, endpoint_id, model, agent_runtime, runtime_session_id, title, kind, project_id, issue_id, subtask_id, branch_name, pr_url,
+          id, workspace_id, endpoint_id, model, agent_runtime, runtime_session_id, title, kind, pr_url,
           result_summary, status, attempt, queued_at, started_at, heartbeat_at, lease_owner, lease_expires_at, cancellation_requested_at, finished_at,
           context_json, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -696,10 +613,6 @@ export class AgentRunStore {
         run.runtimeSessionId ?? null,
         run.title,
         run.kind,
-        run.projectId ?? null,
-        run.issueId ?? null,
-        run.subtaskId ?? null,
-        run.branchName ?? null,
         run.prUrl ?? null,
         run.resultSummary ?? null,
         run.status,
@@ -718,37 +631,6 @@ export class AgentRunStore {
       )
 
     this.insertMessages(run.id, run.messages)
-  }
-
-  private getNextAttempt(
-    input: Pick<CreateAgentRunInput, 'issueId' | 'kind' | 'subtaskId'>,
-  ) {
-    if (!input.issueId) {
-      return 1
-    }
-
-    const kind = input.kind ?? 'coding'
-    const row = input.subtaskId
-      ? (this.database.sqlite
-          .prepare(
-            `
-            SELECT COALESCE(MAX(attempt), 0) + 1 AS attempt
-            FROM agent_runs
-            WHERE issue_id = ? AND subtask_id = ?
-          `,
-          )
-          .get(input.issueId, input.subtaskId) as { attempt: number })
-      : (this.database.sqlite
-          .prepare(
-            `
-            SELECT COALESCE(MAX(attempt), 0) + 1 AS attempt
-            FROM agent_runs
-            WHERE issue_id = ? AND subtask_id IS NULL AND kind = ?
-          `,
-          )
-          .get(input.issueId, kind) as { attempt: number })
-
-    return row.attempt
   }
 
   private insertMessages(runId: string, messages: AgentRunMessage[]) {

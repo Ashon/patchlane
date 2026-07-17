@@ -10,7 +10,6 @@ import {
   getCodexEventText,
   getCodexRunEventInput,
   getCodexRuntimeSessionId,
-  getCodexSandboxMode,
   getCodexToolResultEvent,
   getCodexToolStartEvent,
   parseCodexJsonLine,
@@ -255,43 +254,6 @@ describe('Given Codex runtime helpers', () => {
     expect(buildCodexPrompt({ run, workspace })).toContain(
       'Update the backend connector.',
     )
-  })
-
-  it('uses read-only sandbox mode and prompt language for research runs', () => {
-    const run = agentRunSchema.parse({
-      id: 'run-1',
-      workspaceId: 'workspace-1',
-      agentRuntime: 'codex',
-      title: 'Research prompt mode',
-      kind: 'research',
-      status: 'idle',
-      messages: [
-        {
-          id: 'message-1',
-          role: 'user',
-          content: 'Research task execution prompts.',
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    })
-    const workspace: SandboxWorkspace = {
-      id: 'workspace-1',
-      name: 'Patchlane',
-      path: '/tmp/patchlane',
-      status: 'ready',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    }
-    const prompt = buildCodexPrompt({ run, workspace })
-
-    expect(getCodexSandboxMode(run)).toBe('read-only')
-    expect(prompt).toContain('research-only run')
-    expect(prompt).toContain('do not modify files')
-    expect(prompt).toContain('evidence-backed findings')
-    expect(prompt).toContain('respond in Markdown with short sections')
-    expect(prompt).toContain('avoid a progress log')
   })
 
   it('defaults Codex CLI endpoints to the codex command', () => {

@@ -3,11 +3,9 @@ import cors from 'cors'
 import express from 'express'
 import { ZodError } from 'zod'
 import { AgentRunStore } from './agent/agentRunStore'
-import { AutopilotDriver } from './agent/autopilotDriver'
 import { env } from './config/env'
 import { AppDatabase } from './db/database'
 import { HttpError } from './http/errors'
-import { IssueStore } from './issues/issueStore'
 import {
   createAccessLogMiddleware,
   getRequestLogger,
@@ -15,11 +13,8 @@ import {
 import { logger } from './logging/logger'
 import { LlmEndpointStore } from './llm/endpointStore'
 import { createAgentRouter } from './routes/agent'
-import { createExecutionsRouter } from './routes/executions'
-import { createIssuesRouter } from './routes/issues'
 import { createLlmRouter } from './routes/llm'
 import { createSandboxRouter } from './routes/sandbox'
-import { createSupervisorRouter } from './routes/supervisor'
 import { createToolsRouter } from './routes/tools'
 import { SandboxWorkspaceStore } from './sandbox/sandboxWorkspaceStore'
 import { ToolSettingsStore } from './tools/toolSettingsStore'
@@ -44,12 +39,6 @@ export const createApiApp = (config: ApiEnvironment = env) => {
     config.sandboxWorkspacesFile,
   )
   const agentRunStore = new AgentRunStore(database, config.agentRunsFile)
-  const issueStore = new IssueStore(database)
-  const autopilot = new AutopilotDriver({
-    issueStore,
-    baseUrl: config.internalBaseUrl,
-    log: (message) => console.warn('[autopilot]', message),
-  })
 
   app.use(
     cors({
@@ -68,42 +57,18 @@ export const createApiApp = (config: ApiEnvironment = env) => {
   })
 
   app.use('/api/llm', createLlmRouter({ store: llmStore }))
-  app.use(
-    '/api/supervisor',
-    createSupervisorRouter({ endpointStore: llmStore }),
-  )
   app.use('/api/tools', createToolsRouter({ store: toolSettingsStore }))
-  app.use(
-    '/api/issues',
-    createIssuesRouter({
-      autopilot,
-      endpointStore: llmStore,
-      issueStore,
-      runStore: agentRunStore,
-      sandboxSettings: config.sandbox,
-      toolSettingsStore,
-      workspaceStore: sandboxWorkspaceStore,
-    }),
-  )
   app.use(
     '/api/agent',
     createAgentRouter({
-      autopilot,
       contextTokenBudget: config.agent.contextTokenBudget,
       durabilityMaxRetries: config.agent.durabilityMaxRetries,
       outputTokenBudget: config.agent.outputTokenBudget,
       endpointStore: llmStore,
-      issueStore,
       runStore: agentRunStore,
       sandboxSettings: config.sandbox,
       toolSettingsStore,
       workspaceStore: sandboxWorkspaceStore,
-    }),
-  )
-  app.use(
-    '/api/executions',
-    createExecutionsRouter({
-      runStore: agentRunStore,
     }),
   )
   app.use(

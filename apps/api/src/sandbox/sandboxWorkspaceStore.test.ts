@@ -40,8 +40,8 @@ describe('Given a sandbox workspace with a stale foreign path', () => {
     database.sqlite
       .prepare(
         `INSERT INTO sandbox_workspaces
-          (id, name, path, kind, cleanup_status, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'manual', 'active', 'ready', ?, ?)`,
+          (id, name, path, kind, status, created_at, updated_at)
+         VALUES (?, ?, ?, 'manual', 'ready', ?, ?)`,
       )
       .run(
         id,

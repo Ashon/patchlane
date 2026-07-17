@@ -4,8 +4,6 @@ import type {
   AgentRunContext,
   AgentRunMessage,
   AgentRunMessageMetadata,
-  CreateIssueCommentInput,
-  IssueComment,
   LlmEndpoint,
   SandboxFileContent,
   SandboxSettings,
@@ -21,7 +19,6 @@ import {
 } from '../sandbox/workspaceFiles'
 import { logger as rootLogger, type ApiLogger } from '../logging/logger'
 import { estimateTextTokens, prepareAgentContext } from './agentContext'
-import { getFinishRejection } from './agentFinishGuard'
 import {
   getToolLoopNudgePrompt,
   isToolCallBlocked,
@@ -56,10 +53,6 @@ type AgentRuntimeOptions = {
   getEndpoint: (id?: string) => Promise<LlmEndpoint>
   getWorkspace: (id: string) => Promise<SandboxWorkspace>
   getGitHubToken: () => Promise<string | undefined>
-  addIssueComment?: (
-    issueId: string,
-    input: CreateIssueCommentInput,
-  ) => Promise<{ comment: IssueComment }>
   logger?: ApiLogger
   onRunFinished?: (run: AgentRun) => Promise<void>
 }
@@ -67,9 +60,8 @@ type AgentRuntimeOptions = {
 type ToolContext = {
   settings: SandboxSettings
   workspace: SandboxWorkspace
-  run: Pick<AgentRun, 'id' | 'issueId'>
+  run: Pick<AgentRun, 'id'>
   githubToken?: string
-  addIssueComment?: AgentRuntimeOptions['addIssueComment']
 }
 
 type AgentToolResult = {
@@ -374,7 +366,6 @@ export class AgentRuntime {
         const preparedContext = prepareAgentContext({
           messages: run.messages,
           systemPrompt: buildCodingSystemPrompt({
-            runKind: run.kind,
             settings: this.options.settings,
             workspace,
           }),
@@ -561,7 +552,6 @@ export class AgentRuntime {
                   workspace,
                   run,
                   githubToken,
-                  addIssueComment: this.options.addIssueComment,
                 })
             throwIfAgentRunCancelled(signal)
             runLogger.info(
@@ -787,7 +777,6 @@ export class AgentRuntime {
         const preparedContext = prepareAgentContext({
           messages: run.messages,
           systemPrompt: buildCodingSystemPrompt({
-            runKind: run.kind,
             settings: this.options.settings,
             workspace,
           }),
@@ -1056,7 +1045,6 @@ export class AgentRuntime {
                   workspace,
                   run,
                   githubToken,
-                  addIssueComment: this.options.addIssueComment,
                 })
             throwIfAgentRunCancelled(signal)
             runLogger.info(
@@ -1245,10 +1233,7 @@ export class AgentRuntime {
   }
 
   private getRunLogger(
-    run: Pick<
-      AgentRun,
-      'agentRuntime' | 'id' | 'issueId' | 'kind' | 'subtaskId' | 'workspaceId'
-    >,
+    run: Pick<AgentRun, 'agentRuntime' | 'id' | 'kind' | 'workspaceId'>,
     bindings: Record<string, unknown> = {},
   ) {
     return (this.options.logger ?? rootLogger).child({
@@ -1256,8 +1241,6 @@ export class AgentRuntime {
       agentRuntime: run.agentRuntime,
       runKind: run.kind,
       workspaceId: run.workspaceId,
-      issueId: run.issueId,
-      subtaskId: run.subtaskId,
       ...bindings,
     })
   }
@@ -1465,36 +1448,6 @@ const executeAgentTool = async (
       return { ...toolResult({ url }), prUrl: url }
     }
 
-    if (name === 'add_issue_comment') {
-      if (!context.run.issueId) {
-        throw new Error('Issue comments are only available during issue runs')
-      }
-
-      if (!context.addIssueComment) {
-        throw new Error('Issue comment storage is not configured')
-      }
-
-      const { comment } = await context.addIssueComment(context.run.issueId, {
-        runId: context.run.id,
-        author: 'agent',
-        kind: getString(args.kind) as CreateIssueCommentInput['kind'],
-        body: requireString(args.body, 'body'),
-      })
-
-      return toolResult({
-        recorded: true,
-        comment: {
-          id: comment.id,
-          issueId: comment.issueId,
-          runId: comment.runId,
-          author: comment.author,
-          kind: comment.kind,
-          body: comment.body,
-          createdAt: comment.createdAt,
-        },
-      })
-    }
-
     if (name === 'request_user_input') {
       return {
         content: requireString(args.question, 'question'),
@@ -1504,20 +1457,6 @@ const executeAgentTool = async (
 
     if (name === 'finish') {
       const summary = requireString(args.summary, 'summary')
-      const rejection = getFinishRejection({
-        gitStatusShort: await getGitStatusShort(context),
-        issueRun: Boolean(context.run.issueId),
-        summary,
-      })
-
-      if (rejection) {
-        return toolResult({
-          error: rejection,
-          completed: false,
-          requiredNextStep:
-            'Continue the run with implementation, verification, or a precise blocker question.',
-        })
-      }
 
       return {
         content: summary,
@@ -1549,27 +1488,6 @@ const getBlockedToolResult = (
     requiredNextStep:
       'Use the existing context, call the same tool with a different focused input, edit, verify with a narrower command, call finish if complete, or ask one precise blocker question.',
   })
-}
-
-const getGitStatusShort = async (context: ToolContext) => {
-  if (!context.run.issueId) {
-    return undefined
-  }
-
-  const result = await executeSandboxCommand(
-    context.settings,
-    context.workspace,
-    {
-      command: 'git',
-      args: ['status', '--short'],
-    },
-  )
-
-  if (!result.ok) {
-    return undefined
-  }
-
-  return result.stdout
 }
 
 const getAvailableAgentTools = (_recentToolCalls: RecentToolCall[]) => {
@@ -1640,8 +1558,8 @@ const getReplayRecoveryPrompt = (run: AgentRun) => {
 }
 
 export const shouldAwaitUserAfterPlainTextAssistant = (
-  run: Pick<AgentRun, 'issueId'>,
-) => !run.issueId
+  _run: Pick<AgentRun, 'id'>,
+) => true
 
 const getDurabilityMaxRetries = (value: number | undefined) => {
   const parsed = value ?? defaultDurabilityMaxRetries
