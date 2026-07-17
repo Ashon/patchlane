@@ -2,9 +2,9 @@
  * Guards the persisted supervisor split layout.
  *
  * react-resizable-panels stores a layout as a `{ [panelId]: flexGrow }` map and
- * restores it verbatim — it is NOT re-clamped against the panels' pixel
- * min/max sizes on restore. Because the supervisor panel is capped
- * (maxSize=560px) and the main panel has a large minimum (minSize=520px), an
+ * restores it verbatim — it is NOT re-clamped against the panels' size
+ * constraints on restore. Because the supervisor panel is capped below half the
+ * group (maxSize=45%) and the main panel has a large minimum (minSize=520px), an
  * interactive resize can never make the main panel narrower than the
  * supervisor panel. So any restored split where the supervisor is wider than
  * main is stale/corrupt and, if applied, collapses the main content to a

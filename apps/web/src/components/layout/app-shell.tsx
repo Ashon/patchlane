@@ -223,7 +223,7 @@ export const AppShell = ({
                 className="min-w-0 overflow-hidden"
                 defaultSize="30%"
                 id="supervisor"
-                maxSize="560px"
+                maxSize="45%"
                 minSize="320px"
               >
                 <aside className="flex h-full min-h-0 bg-background">
