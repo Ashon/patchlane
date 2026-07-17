@@ -177,12 +177,6 @@ export const llmChatRequestSchema = z.object({
   maxTokens: z.number().int().positive().max(8192).optional(),
 })
 
-export const supervisorChatRequestSchema = z.object({
-  endpointId: z.string().min(1).optional(),
-  model: z.string().trim().min(1).optional(),
-  messages: z.array(llmChatMessageSchema).min(1),
-})
-
 export type AgentRuntimeConnectorType = z.infer<
   typeof agentRuntimeConnectorTypeSchema
 >
@@ -201,7 +195,6 @@ export type UpdateLlmEndpointInput = Partial<CreateLlmEndpointInput>
 export type LlmEndpoint = z.infer<typeof llmEndpointSchema>
 export type LlmChatMessage = z.infer<typeof llmChatMessageSchema>
 export type LlmChatRequest = z.infer<typeof llmChatRequestSchema>
-export type SupervisorChatRequest = z.infer<typeof supervisorChatRequestSchema>
 
 export type LlmEndpointTestResult = {
   ok: boolean

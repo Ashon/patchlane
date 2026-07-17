@@ -10,15 +10,7 @@ export const agentRunStatusSchema = z.enum([
   'cancelled',
   'failed',
 ])
-export const agentRunKindSchema = z.enum([
-  'coding',
-  'requirements',
-  'planning',
-  'research',
-  'verification',
-  'publish',
-  'followup',
-])
+export const agentRunKindSchema = z.enum(['coding'])
 export const agentRuntimeSchema = z.enum(['patchlane', 'opencode', 'codex'])
 
 export const agentRunContextSchema = z.object({
@@ -94,10 +86,6 @@ export const agentRunSchema = z.object({
   runtimeSessionId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).max(120),
   kind: agentRunKindSchema.default('coding'),
-  projectId: z.string().min(1).optional(),
-  issueId: z.string().min(1).optional(),
-  subtaskId: z.string().min(1).optional(),
-  branchName: z.string().trim().min(1).max(200).optional(),
   prUrl: z.string().url().optional(),
   resultSummary: z.string().max(8_000).optional(),
   status: agentRunStatusSchema,
@@ -125,10 +113,6 @@ export const createAgentRunSchema = z.object({
   agentRuntime: agentRuntimeSchema.optional(),
   title: z.string().trim().min(1).max(120).optional(),
   kind: agentRunKindSchema.optional(),
-  projectId: z.string().min(1).optional(),
-  issueId: z.string().min(1).optional(),
-  subtaskId: z.string().min(1).optional(),
-  branchName: z.string().trim().min(1).max(200).optional(),
   task: z.string().trim().min(1).max(20_000),
 })
 
