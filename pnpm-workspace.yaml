@@ -9,4 +9,5 @@ onlyBuiltDependencies:
 allowBuilds:
   electron: true
   esbuild: true
+  sqlite3: set this to true or false
   unrs-resolver: true

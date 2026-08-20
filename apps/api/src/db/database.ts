@@ -142,6 +142,23 @@ export class AppDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_agent_run_events_run_id_sequence
         ON agent_run_events (run_id, sequence);
+
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        google_id TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        picture TEXT,
+        role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_users_email
+        ON users (email);
+
+      CREATE INDEX IF NOT EXISTS idx_users_google_id
+        ON users (google_id);
     `)
     this.ensureColumn(
       'llm_endpoints',
@@ -183,6 +200,10 @@ export class AppDatabase {
     this.ensureColumn('agent_runs', 'context_json', 'TEXT')
     this.ensureColumn('agent_run_messages', 'tool_input_json', 'TEXT')
     this.ensureColumn('agent_run_messages', 'metadata_json', 'TEXT')
+    this.ensureColumn('llm_endpoints', 'user_id', 'TEXT')
+    this.ensureColumn('sandbox_workspaces', 'user_id', 'TEXT')
+    this.ensureColumn('agent_runs', 'user_id', 'TEXT')
+    this.ensureColumn('github_tool_settings', 'user_id', 'TEXT')
     this.rebuildLlmEndpointsIfNeeded()
     this.rebuildAgentRunsIfNeeded()
     this.rebuildSandboxWorkspacesIfNeeded()

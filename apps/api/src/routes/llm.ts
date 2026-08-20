@@ -1,5 +1,6 @@
 import { Router, type Response } from 'express'
 import { llmChatRequestSchema } from '@patchlane/shared'
+import { isAuthenticated } from '../auth/authMiddleware'
 import type { LlmEndpointStore } from '../llm/endpointStore'
 import {
   createChatCompletion,
@@ -13,13 +14,16 @@ import { badRequest } from '../http/errors'
 
 type LlmRouterOptions = {
   store: LlmEndpointStore
+  requireAuth?: boolean
 }
 
-export const createLlmRouter = ({ store }: LlmRouterOptions) => {
+export const createLlmRouter = ({ store, requireAuth = false }: LlmRouterOptions) => {
   const router = Router()
+  const authMiddleware = requireAuth ? isAuthenticated : (_req: unknown, _res: unknown, next: () => void) => next()
 
   router.get(
     '/endpoints',
+    authMiddleware,
     asyncHandler(async (_request, response) => {
       response.json({ endpoints: await store.list() })
     }),
@@ -27,6 +31,7 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
 
   router.post(
     '/endpoints',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       const endpoint = await store.create(request.body)
       response.status(201).json({ endpoint })
@@ -35,6 +40,7 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
 
   router.patch(
     '/endpoints/:id',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       const endpoint = await store.update(
         getRouteParam(request.params.id, 'id'),
@@ -46,6 +52,7 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
 
   router.delete(
     '/endpoints/:id',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       await store.remove(getRouteParam(request.params.id, 'id'))
       response.status(204).send()
@@ -54,6 +61,7 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
 
   router.post(
     '/endpoints/:id/test',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       const endpoint = await store.get(getRouteParam(request.params.id, 'id'))
       const result =
@@ -68,6 +76,7 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
 
   router.post(
     '/chat',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       const parsed = llmChatRequestSchema.parse(request.body)
       const endpoint = parsed.endpointId
@@ -98,7 +107,7 @@ export const createLlmRouter = ({ store }: LlmRouterOptions) => {
     }),
   )
 
-  router.post('/chat/stream', async (request, response, next) => {
+  router.post('/chat/stream', authMiddleware, async (request, response, next) => {
     let streaming = false
 
     try {

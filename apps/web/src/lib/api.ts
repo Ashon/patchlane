@@ -372,4 +372,30 @@ export const api = {
   async streamChat(input: LlmChatRequest, handlers: ChatStreamHandlers) {
     return streamRequest(input, handlers)
   },
+  async getCurrentUser() {
+    try {
+      return request<{ user: AuthUser | null }>('/auth/me')
+    } catch {
+      return { user: null }
+    }
+  },
+  async logout() {
+    return request<{ ok: boolean }>('/auth/logout', {
+      method: 'POST',
+    })
+  },
+  getLoginUrl() {
+    return `${apiBaseUrl}/auth/google`
+  },
+}
+
+export type AuthUser = {
+  id: string
+  googleId: string
+  email: string
+  name: string
+  picture?: string
+  role: 'user' | 'admin'
+  createdAt: string
+  updatedAt: string
 }

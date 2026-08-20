@@ -119,4 +119,13 @@ export const env = {
     apiKeyEnvVar: readOptional('DEFAULT_LLM_API_KEY_ENV_VAR'),
     enabled: true,
   },
+  googleOAuth: {
+    clientId: readOptional('GOOGLE_OAUTH_CLIENT_ID'),
+    clientSecret: readOptional('GOOGLE_OAUTH_CLIENT_SECRET'),
+    callbackUrl: process.env.GOOGLE_OAUTH_CALLBACK_URL?.trim() || '/auth/google/callback',
+  },
+  sessionSecret: process.env.SESSION_SECRET?.trim() || 'dev-secret-change-in-production',
+  auth: {
+    enabled: Boolean(readOptional('GOOGLE_OAUTH_CLIENT_ID')),
+  },
 }

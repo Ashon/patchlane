@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
@@ -16,15 +16,37 @@ import { EndpointSettingsPage } from '@/pages/settings/endpoint-settings-page'
 import { ToolSettingsPage } from '@/pages/settings/tool-settings-page'
 import { StatisticsPage } from '@/pages/stats/statistics-page'
 import { WorkspaceManagementPage } from '@/pages/workspaces/workspace-management-page'
+import { LoginPage } from '@/pages/auth/login-page'
+import { AuthProvider, AuthContext } from '@/pages/auth/auth-context'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/lib/query-client'
 
 export default function App() {
   return (
-    <AgentRunControllerProvider>
-      <AppContent />
-    </AgentRunControllerProvider>
+    <AuthProvider>
+      <AgentRunControllerProvider>
+        <AppContent />
+      </AgentRunControllerProvider>
+    </AuthProvider>
   )
+}
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated, isLoading } = useContext(AuthContext)!
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />
+  }
+
+  return <>{children}</>
 }
 
 const AppContent = () => {
@@ -122,6 +144,7 @@ const AppContent = () => {
         themeMode={themeMode}
       >
         <Routes>
+          <Route element={<LoginPage />} path="/login" />
           <Route
             element={<Navigate replace to={buildRoute('/workspaces')} />}
             path="/"
@@ -138,23 +161,48 @@ const AppContent = () => {
           />
           <Route
             element={
-              <SettingsShell>
-                <EndpointSettingsPage />
-              </SettingsShell>
+              <ProtectedRoute>
+                <SettingsShell>
+                  <EndpointSettingsPage />
+                </SettingsShell>
+              </ProtectedRoute>
             }
             path="/settings/endpoints"
           />
           <Route
             element={
-              <SettingsShell>
-                <ToolSettingsPage />
-              </SettingsShell>
+              <ProtectedRoute>
+                <SettingsShell>
+                  <ToolSettingsPage />
+                </SettingsShell>
+              </ProtectedRoute>
             }
             path="/settings/tools"
           />
-          <Route element={<WorkspaceManagementPage />} path="/workspaces" />
-          <Route element={<AgentTasksPage />} path="/agent" />
-          <Route element={<StatisticsPage />} path="/stats" />
+          <Route
+            element={
+              <ProtectedRoute>
+                <WorkspaceManagementPage />
+              </ProtectedRoute>
+            }
+            path="/workspaces"
+          />
+          <Route
+            element={
+              <ProtectedRoute>
+                <AgentTasksPage />
+              </ProtectedRoute>
+            }
+            path="/agent"
+          />
+          <Route
+            element={
+              <ProtectedRoute>
+                <StatisticsPage />
+              </ProtectedRoute>
+            }
+            path="/stats"
+          />
           <Route
             element={<Navigate replace to={buildRoute('/workspaces')} />}
             path="*"

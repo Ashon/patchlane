@@ -9,6 +9,7 @@ import {
   type AgentRuntimeConnectorType,
   type SandboxSettings,
 } from '@patchlane/shared'
+import { isAuthenticated } from '../auth/authMiddleware'
 import { AgentRuntime } from '../agent/agentRuntime'
 import type { AgentRunStore } from '../agent/agentRunStore'
 import { CodexRuntime } from '../agent/codexRuntime'
@@ -32,6 +33,7 @@ type AgentRouterOptions = {
   contextTokenBudget: number
   durabilityMaxRetries: number
   outputTokenBudget: number
+  requireAuth?: boolean
 }
 
 export const createAgentRouter = ({
@@ -43,6 +45,7 @@ export const createAgentRouter = ({
   outputTokenBudget,
   toolSettingsStore,
   workspaceStore,
+  requireAuth = false,
 }: AgentRouterOptions) => {
   const agentLogger = createChildLogger({ component: 'agent' })
   const patchlaneRuntime = new AgentRuntime({
@@ -75,6 +78,9 @@ export const createAgentRouter = ({
   const activeRunControllers = new Map<string, AbortController>()
 
   const router = Router()
+  const authMiddleware = requireAuth ? isAuthenticated : (_req: unknown, _res: unknown, next: () => void) => next()
+
+  router.use(authMiddleware)
 
   router.get(
     '/runs',

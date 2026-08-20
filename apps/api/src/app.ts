@@ -1,7 +1,12 @@
 import type { Server } from 'node:http'
 import cors from 'cors'
 import express from 'express'
+import session from 'express-session'
+import passport from 'passport'
 import { ZodError } from 'zod'
+import { AuthStore } from './auth/authStore'
+import { createAuthRouter } from './auth/authRoutes'
+import { createPassportConfig } from './auth/passport'
 import { AgentRunStore } from './agent/agentRunStore'
 import { env } from './config/env'
 import { AppDatabase } from './db/database'
@@ -39,6 +44,43 @@ export const createApiApp = (config: ApiEnvironment = env) => {
     config.sandboxWorkspacesFile,
   )
   const agentRunStore = new AgentRunStore(database, config.agentRunsFile)
+  const authStore = new AuthStore(database)
+
+  const sessionMiddleware = session({
+    secret: config.sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
+  })
+
+  app.use(sessionMiddleware)
+
+  if (config.googleOAuth.clientId && config.googleOAuth.clientSecret) {
+    createPassportConfig(
+      {
+        clientID: config.googleOAuth.clientId,
+        clientSecret: config.googleOAuth.clientSecret,
+        callbackURL: config.googleOAuth.callbackUrl,
+      },
+      (profile) => {
+        const existing = authStore.findByGoogleId(profile.googleId)
+        if (existing) {
+          authStore.update(existing.id, {
+            name: profile.name,
+            picture: profile.picture,
+          })
+          return { ...existing, ...profile }
+        }
+        return authStore.create(profile)
+      },
+    )
+    app.use(passport.initialize())
+    app.use(passport.session())
+  }
 
   app.use(
     cors({
@@ -56,8 +98,17 @@ export const createApiApp = (config: ApiEnvironment = env) => {
     response.json({ ok: true })
   })
 
-  app.use('/api/llm', createLlmRouter({ store: llmStore }))
-  app.use('/api/tools', createToolsRouter({ store: toolSettingsStore }))
+  if (config.googleOAuth.clientId && config.googleOAuth.clientSecret) {
+    app.use(
+      createAuthRouter({
+        authStore,
+        baseUrl: config.webOrigin,
+      }),
+    )
+  }
+
+  app.use('/api/llm', createLlmRouter({ store: llmStore, requireAuth: config.auth.enabled }))
+  app.use('/api/tools', createToolsRouter({ store: toolSettingsStore, requireAuth: config.auth.enabled }))
   app.use(
     '/api/agent',
     createAgentRouter({
@@ -69,6 +120,7 @@ export const createApiApp = (config: ApiEnvironment = env) => {
       sandboxSettings: config.sandbox,
       toolSettingsStore,
       workspaceStore: sandboxWorkspaceStore,
+      requireAuth: config.auth.enabled,
     }),
   )
   app.use(
@@ -77,6 +129,7 @@ export const createApiApp = (config: ApiEnvironment = env) => {
       settings: config.sandbox,
       toolSettingsStore,
       workspaceStore: sandboxWorkspaceStore,
+      requireAuth: config.auth.enabled,
     }),
   )
 

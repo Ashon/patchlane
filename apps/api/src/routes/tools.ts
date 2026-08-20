@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAuthenticated } from '../auth/authMiddleware'
 import type { ToolSettingsStore } from '../tools/toolSettingsStore'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
@@ -6,13 +7,16 @@ import { testGitHubToken } from '../tools/githubClient'
 
 type ToolsRouterOptions = {
   store: ToolSettingsStore
+  requireAuth?: boolean
 }
 
-export const createToolsRouter = ({ store }: ToolsRouterOptions) => {
+export const createToolsRouter = ({ store, requireAuth = false }: ToolsRouterOptions) => {
   const router = Router()
+  const authMiddleware = requireAuth ? isAuthenticated : (_req: unknown, _res: unknown, next: () => void) => next()
 
   router.get(
     '/settings',
+    authMiddleware,
     asyncHandler(async (_request, response) => {
       response.json({ settings: await store.getPublic() })
     }),
@@ -20,6 +24,7 @@ export const createToolsRouter = ({ store }: ToolsRouterOptions) => {
 
   router.patch(
     '/settings/github',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       response.json({ settings: await store.updateGitHub(request.body) })
     }),
@@ -27,6 +32,7 @@ export const createToolsRouter = ({ store }: ToolsRouterOptions) => {
 
   router.post(
     '/github/test',
+    authMiddleware,
     asyncHandler(async (_request, response) => {
       const settings = await store.get()
 

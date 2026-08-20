@@ -4,6 +4,7 @@ import {
   sandboxExecRequestSchema,
   type SandboxSettings,
 } from '@patchlane/shared'
+import { isAuthenticated } from '../auth/authMiddleware'
 import { asyncHandler } from '../http/asyncHandler'
 import { badRequest } from '../http/errors'
 import { executeSandboxCommand } from '../sandbox/sandboxExecutor'
@@ -15,21 +16,25 @@ type SandboxRouterOptions = {
   settings: SandboxSettings
   workspaceStore: SandboxWorkspaceStore
   toolSettingsStore: ToolSettingsStore
+  requireAuth?: boolean
 }
 
 export const createSandboxRouter = ({
   settings,
   workspaceStore,
   toolSettingsStore,
+  requireAuth = false,
 }: SandboxRouterOptions) => {
   const router = Router()
+  const authMiddleware = requireAuth ? isAuthenticated : (_req: unknown, _res: unknown, next: () => void) => next()
 
-  router.get('/settings', (_request, response) => {
+  router.get('/settings', authMiddleware, (_request, response) => {
     response.json({ settings })
   })
 
   router.get(
     '/workspaces',
+    authMiddleware,
     asyncHandler(async (_request, response) => {
       response.json({ workspaces: await workspaceStore.list() })
     }),
@@ -37,6 +42,7 @@ export const createSandboxRouter = ({
 
   router.post(
     '/workspaces',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       const input = createSandboxWorkspaceSchema.parse(request.body)
       const workspace = await workspaceStore.create(input)
@@ -68,6 +74,7 @@ export const createSandboxRouter = ({
 
   router.post(
     '/workspaces/:id/exec',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       const workspace = await workspaceStore.get(
         getRouteParam(request.params.id, 'id'),
@@ -81,6 +88,7 @@ export const createSandboxRouter = ({
 
   router.delete(
     '/workspaces/:id',
+    authMiddleware,
     asyncHandler(async (request, response) => {
       await workspaceStore.remove(getRouteParam(request.params.id, 'id'))
       response.status(204).send()
