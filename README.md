@@ -50,6 +50,63 @@ pnpm dev:api
 pnpm dev:web
 ```
 
+## macOS App
+
+Build an installable app on a Mac with Node.js 22.13+ and pnpm installed:
+
+```bash
+pnpm install
+pnpm package:mac
+```
+
+The macOS Command Line Tools are required for icon generation and signing.
+Install them with `xcode-select --install` if they are missing.
+
+Outputs are written to `release/` for the build machine's architecture:
+
+- `mac-arm64/Patchlane.app` on Apple Silicon, or `mac-x64/Patchlane.app` on Intel.
+- `Patchlane-0.1.0-mac-<arch>.dmg`, with an Applications folder shortcut.
+- `Patchlane-0.1.0-mac-<arch>.zip`, containing the same app.
+
+Open the DMG and drag Patchlane into Applications, or unzip the ZIP and copy
+`Patchlane.app` into Applications. Launch it from Finder or Spotlight. The
+installed app includes Electron, the API, SQLite support, and the web UI; it
+does not need the source checkout, Node.js, pnpm, or a separate API server to
+launch. The local app opens directly without Google login.
+
+Agent tools still need their own dependencies: configure an LLM endpoint, or
+install Codex/OpenCode for the corresponding runtime. Git and project-specific
+build tools must be installed to work on repositories. The app loads the login
+shell's PATH so tools installed through Homebrew or nvm can be found.
+
+Data is stored in `~/.patchlane`, including `patchlane.sqlite`, `sandboxes/`,
+and `desktop.log`. An optional `~/.patchlane/.env` can configure LLM credentials
+and agent settings. Closing the window keeps the app in the menu bar; use
+`Quit Patchlane` to stop the app and its API. `Restart API` restarts the local
+service without deleting data.
+
+These artifacts are ad-hoc signed for local installation. Public distribution
+requires [Developer ID signing and Apple notarization](https://www.electronjs.org/docs/latest/tutorial/code-signing).
+If macOS blocks a downloaded local build, use the per-app Open Anyway control
+in System Settings > Privacy & Security after attempting to open it.
+
+Run the packaged integration check in a macOS graphical session:
+
+```bash
+pnpm --filter @patchlane/desktop test:packaged
+```
+
+It uses temporary data to verify the real renderer, preload bridge, bundled
+API, workspace/run creation, and persistence across app restarts. It does not
+call an LLM or use existing user data. A screenshot is saved to
+`release/desktop-smoke.png`.
+
+For desktop development, run `pnpm dev:desktop`. Set `PATCHLANE_API_URL` before
+launch to use an external API; the UI follows that API's authentication settings.
+The managed desktop API always has Google authentication disabled.
+`PATCHLANE_DATA_DIR` and `PATCHLANE_USER_DATA_DIR` can override the
+data and Electron profile directories for isolated testing.
+
 The frontend is a standalone Vite app. It calls the backend through `VITE_API_BASE_URL`, so it does not depend on a Vite proxy.
 
 ## Local LLM Endpoint Defaults

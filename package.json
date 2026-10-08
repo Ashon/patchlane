@@ -11,6 +11,7 @@
     "dev:web": "pnpm --filter @patchlane/web dev",
     "build": "pnpm -r build",
     "build:desktop": "VITE_BASE=./ pnpm --filter @patchlane/web build && pnpm --filter @patchlane/desktop build",
+    "package:mac": "pnpm build:desktop && pnpm --filter @patchlane/desktop package:mac",
     "desktop": "pnpm --filter @patchlane/desktop start",
     "format": "prettier --write . --ignore-path .gitignore --ignore-unknown",
     "format:check": "prettier --check . --ignore-path .gitignore --ignore-unknown",

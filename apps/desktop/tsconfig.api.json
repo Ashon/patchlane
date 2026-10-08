@@ -1,0 +1,7 @@
+{
+  "extends": "../api/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "electron"]
+  },
+  "include": ["src/api-entry.ts"]
+}

@@ -1,7 +1,6 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 
-contextBridge.exposeInMainWorld('patchlaneDesktop', {
-  apiBaseUrl: process.env.PATCHLANE_API_URL || 'http://localhost:8787',
-  dataDir: process.env.PATCHLANE_DATA_DIR,
-  platform: process.platform,
-})
+contextBridge.exposeInMainWorld(
+  'patchlaneDesktop',
+  ipcRenderer.sendSync('patchlane:desktop-config'),
+)

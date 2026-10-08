@@ -114,6 +114,9 @@ importers:
       electron:
         specifier: ^39.2.7
         version: 39.8.10
+      esbuild:
+        specifier: 0.28.0
+        version: 0.28.0
 
   apps/web:
     dependencies:
