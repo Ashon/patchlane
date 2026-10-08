@@ -49,6 +49,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
   --patchlane-logo-gradient: linear-gradient(
     45deg,
@@ -100,6 +101,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --chat-user: oklch(0.269 0 0);
   --chat-user-foreground: oklch(0.91 0.008 285);
