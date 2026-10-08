@@ -98,6 +98,11 @@ export const createApiApp = (config: ApiEnvironment = env) => {
     response.json({ ok: true })
   })
 
+  app.get('/auth/config', (_request, response) => {
+    response.set('Cache-Control', 'no-store')
+    response.json({ enabled: config.auth.enabled })
+  })
+
   if (config.googleOAuth.clientId && config.googleOAuth.clientSecret) {
     app.use(
       createAuthRouter({
@@ -107,8 +112,17 @@ export const createApiApp = (config: ApiEnvironment = env) => {
     )
   }
 
-  app.use('/api/llm', createLlmRouter({ store: llmStore, requireAuth: config.auth.enabled }))
-  app.use('/api/tools', createToolsRouter({ store: toolSettingsStore, requireAuth: config.auth.enabled }))
+  app.use(
+    '/api/llm',
+    createLlmRouter({ store: llmStore, requireAuth: config.auth.enabled }),
+  )
+  app.use(
+    '/api/tools',
+    createToolsRouter({
+      store: toolSettingsStore,
+      requireAuth: config.auth.enabled,
+    }),
+  )
   app.use(
     '/api/agent',
     createAgentRouter({

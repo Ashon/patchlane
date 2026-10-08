@@ -43,7 +43,7 @@ const dataDir = path.resolve(
 )
 
 export const env = {
-  host: process.env.HOST?.trim() || '0.0.0.0',
+  host: process.env.HOST?.trim() || '127.0.0.1',
   port: readInt('PORT', 8787),
   webOrigin: process.env.WEB_ORIGIN?.trim() || 'http://localhost:8788',
   databaseFile: path.resolve(
@@ -122,9 +122,11 @@ export const env = {
   googleOAuth: {
     clientId: readOptional('GOOGLE_OAUTH_CLIENT_ID'),
     clientSecret: readOptional('GOOGLE_OAUTH_CLIENT_SECRET'),
-    callbackUrl: process.env.GOOGLE_OAUTH_CALLBACK_URL?.trim() || '/auth/google/callback',
+    callbackUrl:
+      process.env.GOOGLE_OAUTH_CALLBACK_URL?.trim() || '/auth/google/callback',
   },
-  sessionSecret: process.env.SESSION_SECRET?.trim() || 'dev-secret-change-in-production',
+  sessionSecret:
+    process.env.SESSION_SECRET?.trim() || 'dev-secret-change-in-production',
   auth: {
     enabled: Boolean(readOptional('GOOGLE_OAUTH_CLIENT_ID')),
   },

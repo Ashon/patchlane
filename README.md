@@ -24,6 +24,18 @@ pnpm dev
 The web app runs on `http://localhost:8788`.
 The API runs on `http://localhost:8787`.
 
+For personal local development, leave `GOOGLE_OAUTH_CLIENT_ID` and
+`GOOGLE_OAUTH_CLIENT_SECRET` empty in `apps/api/.env`. The web app reads
+`GET /auth/config` and opens without Google login when the API has authentication
+disabled. If the API cannot be reached, the app shows a retry screen instead of
+enabling local access. Restart the API and reload the web app after changing
+authentication settings.
+
+The API listens on `127.0.0.1` by default. Keep that setting for local use without
+authentication; deployments that need another bind address must set `HOST`
+explicitly. Codex authentication is separate from Patchlane's Google login and
+continues to use the official CLI's login.
+
 API logs default to a local-friendly pretty format. Use structured JSON logs in deployments:
 
 ```bash
@@ -85,6 +97,7 @@ SANDBOX_ENV_ALLOWLIST=PATH,HOME,LANG,LC_ALL
 ## API
 
 - `GET /health`
+- `GET /auth/config`
 - `GET /api/llm/endpoints`
 - `POST /api/llm/endpoints`
 - `PATCH /api/llm/endpoints/:id`

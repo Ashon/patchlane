@@ -4,7 +4,8 @@ import { AuthContext } from './auth-context'
 
 export const LoginPage = () => {
   const navigate = useNavigate()
-  const { login, isAuthenticated, isLoading } = useContext(AuthContext)
+  const { login, isAuthenticated, isLoading, error, refetch } =
+    useContext(AuthContext)
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
@@ -20,13 +21,27 @@ export const LoginPage = () => {
     )
   }
 
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
+        <p role="alert" className="text-muted-foreground text-center">
+          {error}
+        </p>
+        <button
+          className="rounded-md border border-input px-4 py-2 text-sm"
+          onClick={() => void refetch()}
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-4">
       <div className="text-center">
         <h1 className="text-3xl font-bold">Patchlane</h1>
-        <p className="text-muted-foreground mt-2">
-          Agentic coding workspace
-        </p>
+        <p className="text-muted-foreground mt-2">Agentic coding workspace</p>
       </div>
       <button
         className="flex items-center gap-3 rounded-md border border-input bg-background px-6 py-3 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

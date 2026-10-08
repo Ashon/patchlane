@@ -35,6 +35,7 @@ const apiBaseUrl = (
 
 const apiClient = axios.create({
   baseURL: apiBaseUrl,
+  withCredentials: true,
   headers: {
     'content-type': 'application/json',
   },
@@ -197,6 +198,7 @@ const streamRequest = async (
   { onEvent, signal }: ChatStreamHandlers,
 ) => {
   const response = await fetch(`${apiBaseUrl}/api/llm/chat/stream`, {
+    credentials: 'include',
     body: JSON.stringify(input),
     headers: {
       'content-type': 'application/json',
@@ -358,6 +360,7 @@ export const api = {
     const response = await fetch(
       `${apiBaseUrl}/api/agent/runs/${id}/continue/stream`,
       {
+        credentials: 'include',
         body: JSON.stringify(input),
         headers: {
           'content-type': 'application/json',
@@ -372,11 +375,20 @@ export const api = {
   async streamChat(input: LlmChatRequest, handlers: ChatStreamHandlers) {
     return streamRequest(input, handlers)
   },
+  async getAuthConfig() {
+    return request<{ enabled: boolean }>('/auth/config')
+  },
   async getCurrentUser() {
     try {
-      return request<{ user: AuthUser | null }>('/auth/me')
-    } catch {
-      return { user: null }
+      const response = await apiClient.get<{ user: AuthUser | null }>(
+        '/auth/me',
+      )
+      return response.data
+    } catch (error) {
+      if (error instanceof AxiosError && error.response?.status === 401) {
+        return { user: null }
+      }
+      throw normalizeApiError(error)
     }
   },
   async logout() {
