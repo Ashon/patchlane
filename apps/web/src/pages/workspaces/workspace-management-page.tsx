@@ -161,6 +161,7 @@ export const WorkspaceManagementPage = () => {
               {workspaces.length} total
             </span>
           }
+          description="Isolated workspaces for repositories and coding tasks"
           icon={<Folder className="h-4 w-4" />}
           title="Workspaces"
         />
